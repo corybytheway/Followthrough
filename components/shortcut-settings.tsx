@@ -76,19 +76,16 @@ export default function ShortcutSettings() {
       <h3>Connect your shortcut</h3>
       <ol>
         <li>
-          <a href="/shortcuts/Followthrough%20Task.shortcut?v=5" download>
+          <a href="/shortcuts/Followthrough%20Task.shortcut?v=6" download>
             Install Followthrough Task
           </a>{' '}
           and tap Add Shortcut. This version has no setup questions during
           installation. Replace the older shortcut if asked.
         </li>
         <li>
-          Copy your connection code below. Then{' '}
-          <a href="shortcuts://run-shortcut?name=Followthrough%20Task&input=text&text=connect">
-            open the shortcut to connect
-          </a>{' '}
-          and paste it when the shortcut runs. It remembers the code for future
-          tasks.
+          Copy your connection code below. In Shortcuts, touch and hold
+          Followthrough Task and choose Edit. Replace {'{}'} in the first Text
+          action with the entire code, then tap Done. You only do this once.
         </li>
         <li>
           On your iPhone, choose Settings → Action Button → Shortcut →
@@ -106,7 +103,10 @@ export default function ShortcutSettings() {
             : 'Create connection code'}
       </Button>
       {connected && !connection && (
-        <p>Replacing the code disconnects the previous copy.</p>
+        <p>
+          Already saving tasks? Keep your installed shortcut. Replacing this code
+          disconnects it until you update its first Text action.
+        </p>
       )}
       {connection && (
         <>
@@ -126,7 +126,7 @@ export default function ShortcutSettings() {
                 .writeText(connection)
                 .then(() =>
                   setMessage(
-                    'Copied. Open the shortcut to connect, then paste when it asks.',
+                    'Copied. Edit Followthrough Task and replace the first Text action with this code.',
                   ),
                 )
                 .catch(() => setMessage('Select and copy the code above.'))

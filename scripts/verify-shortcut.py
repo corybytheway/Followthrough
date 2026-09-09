@@ -35,21 +35,11 @@ def references(value):
 for index, action in enumerate(actions):
     identifier = action['WFWorkflowActionIdentifier']
     assert identifier not in {'is.workflow.actions.openurl', 'is.workflow.actions.openin',
-                              'is.workflow.actions.runjavascriptonwebpage'}
+                              'is.workflow.actions.runjavascriptonwebpage',
+                              'is.workflow.actions.conditional',
+                              'is.workflow.actions.documentpicker.open',
+                              'is.workflow.actions.documentpicker.save'}, 'Direct capture must not use browser or file/If setup'
     p = action['WFWorkflowActionParameters']
-    if identifier == 'is.workflow.actions.conditional' and p.get('WFControlFlowMode') == 0:
-        condition_input = p.get('WFInput', {})
-        assert condition_input.get('Type') == 'Variable', f'Empty If input at action {index}: missing WFInputVariable wrapper'
-        attachment = condition_input.get('Variable', {})
-        assert attachment.get('WFSerializationType') == 'WFTextTokenAttachment'
-        assert attachment.get('Value', {}).get('Type') in {'ActionOutput', 'Variable', 'ExtensionInput'}
-        condition = p.get('WFCondition')
-        if condition in {4, 5, 8, 9, 99, 999}:
-            assert isinstance(p.get('WFConditionalActionString'), str), 'Missing comparison text'
-        elif condition in {100, 101}:
-            assert 'WFConditionalActionString' not in p and 'WFNumberValue' not in p
-        else:
-            raise AssertionError(f'Unverified condition code: {condition}')
     references(p)
     if 'UUID' in p:
         assert p['UUID'] not in seen, 'Duplicate action identity'
@@ -66,14 +56,9 @@ for index, action in enumerate(actions):
                 groups.pop()
 assert not groups
 
-load = by_name['Saved connection file'][1]
-save = by_name['Remembered connection file'][1]
-assert load['WFFileErrorIfNotFound'] is False
-assert load['WFGetFilePath'] == save['WFFileDestinationPath'] == '/Followthrough-connection.json'
-assert save['WFAskWhereToSave'] is False and save['WFSaveFileOverwrite'] is True
-assert by_name['Request ID'][0] < by_name['Connection failed'][0] < by_name['Remembered connection file'][0]
-assert by_name['Remembered connection file'][0] < by_name['Task text'][0]
-assert by_name['Connecting only'][0] < by_name['Task text'][0]
+assert by_name['Private connection'][0] == 0
+assert by_name['Private connection'][1]['WFTextActionText'] == '{}', 'The distributed template must remain unpaired'
+assert by_name['Task text'][0] < by_name['Capture request'][0] < by_name['Request ID'][0] < by_name['Save response'][0]
 assert by_name['Save response'][1]['WFHTTPBodyType'] == 'JSON'
 assert by_name['Save response'][1]['WFHTTPMethod'] == 'POST'
 assert by_name['Capture request'][1]['WFHTTPMethod'] == 'GET'
@@ -82,4 +67,4 @@ for name in ['Capture request', 'Save response']:
     assert 'WFInput' not in request, 'HTTP actions require WFURL, not WFInput'
     assert request['WFURL']['WFSerializationType'] == 'WFTextTokenString'
     assert request['WFURL']['Value']['string'] == 'https://followthrough.corybytheway.chatgpt.site/api/shortcuts/capture'
-print('PASS: all If inputs have the native variable wrapper and required parameters; no import questions or browser actions; variables and branches resolve; connection is checked before storage; direct save remains intact.')
+print('PASS: secret-free direct capture; no import questions, browser actions, or file/If setup; variables resolve; task input precedes the nonce and authenticated save; both HTTP addresses are populated.')
