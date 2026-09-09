@@ -8,15 +8,279 @@
 	<array>
 		<dict>
 			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.comment</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>WFCommentActionText</key>
+				<string>Created by Cory McCabe. Add this shortcut first, then run it to connect. On the first run, paste the connection code copied from Followthrough Settings. The code is checked before it is remembered in iCloud Drive/Shortcuts/Followthrough-connection.json. Keep that file private. Talk or Type then saves directly and shows the server confirmation. To reconnect, use Open shortcut to connect in Followthrough Settings. No browser-opening action.</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.documentpicker.open</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Saved connection file</string>
+				<key>UUID</key>
+				<string>594BDF47-2757-59D8-BFEF-652ADD168370</string>
+				<key>WFFileErrorIfNotFound</key>
+				<false/>
+				<key>WFGetFilePath</key>
+				<string>/Followthrough-connection.json</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
 			<string>is.workflow.actions.gettext</string>
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>CustomOutputName</key>
-				<string>Private connection</string>
+				<string>Saved connection</string>
 				<key>UUID</key>
-				<string>981EFD88-592D-4FFA-BB9A-67E2F7790842</string>
+				<string>B55D6827-0B07-54A1-8EDD-B571E7A6340A</string>
 				<key>WFTextActionText</key>
-				<string>{}</string>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>attachmentsByRange</key>
+						<dict>
+							<key>{0, 1}</key>
+							<dict>
+								<key>OutputName</key>
+								<string>Saved connection file</string>
+								<key>OutputUUID</key>
+								<string>594BDF47-2757-59D8-BFEF-652ADD168370</string>
+								<key>Type</key>
+								<string>ActionOutput</string>
+							</dict>
+						</dict>
+						<key>string</key>
+						<string>￼</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenString</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>93B526E9-4334-5B5A-97C6-A85154BFC3D5</string>
+				<key>WFCondition</key>
+				<integer>4</integer>
+				<key>WFConditionalActionString</key>
+				<string>connect</string>
+				<key>WFControlFlowMode</key>
+				<integer>0</integer>
+				<key>WFInput</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>Type</key>
+						<string>ExtensionInput</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenAttachment</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.nothing</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict/>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>93B526E9-4334-5B5A-97C6-A85154BFC3D5</string>
+				<key>WFControlFlowMode</key>
+				<integer>1</integer>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.gettext</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Existing connection</string>
+				<key>UUID</key>
+				<string>ADDA930D-496E-58A8-9B1E-CCA6FBE459D7</string>
+				<key>WFTextActionText</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>attachmentsByRange</key>
+						<dict>
+							<key>{0, 1}</key>
+							<dict>
+								<key>OutputName</key>
+								<string>Saved connection</string>
+								<key>OutputUUID</key>
+								<string>B55D6827-0B07-54A1-8EDD-B571E7A6340A</string>
+								<key>Type</key>
+								<string>ActionOutput</string>
+							</dict>
+						</dict>
+						<key>string</key>
+						<string>￼</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenString</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Connection to use</string>
+				<key>GroupingIdentifier</key>
+				<string>93B526E9-4334-5B5A-97C6-A85154BFC3D5</string>
+				<key>UUID</key>
+				<string>93B526E9-4334-5B5A-97C6-A85154BFC3D5</string>
+				<key>WFControlFlowMode</key>
+				<integer>2</integer>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>6BC26FF7-E65A-5592-8D76-00C20F8BDF56</string>
+				<key>WFCondition</key>
+				<integer>101</integer>
+				<key>WFControlFlowMode</key>
+				<integer>0</integer>
+				<key>WFInput</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>OutputName</key>
+						<string>Connection to use</string>
+						<key>OutputUUID</key>
+						<string>93B526E9-4334-5B5A-97C6-A85154BFC3D5</string>
+						<key>Type</key>
+						<string>ActionOutput</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenAttachment</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.ask</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Pasted connection</string>
+				<key>UUID</key>
+				<string>58F3849C-C5A9-543B-9879-E5DBE31404C5</string>
+				<key>WFAskActionAllowsMultilineText</key>
+				<true/>
+				<key>WFAskActionDefaultAnswer</key>
+				<string></string>
+				<key>WFAskActionPrompt</key>
+				<string>Connect Followthrough: paste the connection code you copied from Followthrough Settings. This is saved for future runs.</string>
+				<key>WFInputType</key>
+				<string>Text</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>6BC26FF7-E65A-5592-8D76-00C20F8BDF56</string>
+				<key>WFControlFlowMode</key>
+				<integer>1</integer>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.gettext</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Remembered connection</string>
+				<key>UUID</key>
+				<string>EDCD09FF-C700-531F-8565-356CA6AD1F72</string>
+				<key>WFTextActionText</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>attachmentsByRange</key>
+						<dict>
+							<key>{0, 1}</key>
+							<dict>
+								<key>OutputName</key>
+								<string>Connection to use</string>
+								<key>OutputUUID</key>
+								<string>93B526E9-4334-5B5A-97C6-A85154BFC3D5</string>
+								<key>Type</key>
+								<string>ActionOutput</string>
+							</dict>
+						</dict>
+						<key>string</key>
+						<string>￼</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenString</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Private connection</string>
+				<key>GroupingIdentifier</key>
+				<string>6BC26FF7-E65A-5592-8D76-00C20F8BDF56</string>
+				<key>UUID</key>
+				<string>6BC26FF7-E65A-5592-8D76-00C20F8BDF56</string>
+				<key>WFControlFlowMode</key>
+				<integer>2</integer>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.detect.dictionary</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Connection details</string>
+				<key>UUID</key>
+				<string>7E261DF2-4696-51B2-92B6-3949D05B05B2</string>
+				<key>WFInput</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>OutputName</key>
+						<string>Private connection</string>
+						<key>OutputUUID</key>
+						<string>6BC26FF7-E65A-5592-8D76-00C20F8BDF56</string>
+						<key>Type</key>
+						<string>ActionOutput</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenAttachment</string>
+				</dict>
 			</dict>
 		</dict>
 		<dict>
@@ -27,7 +291,7 @@
 				<key>CustomOutputName</key>
 				<string>Site connection</string>
 				<key>UUID</key>
-				<string>FC798C14-F907-4476-A5CE-30028EAA6EAF</string>
+				<string>D5BD2A83-1F10-5314-9A0E-79790985DCF4</string>
 				<key>WFDictionaryKey</key>
 				<string>site</string>
 				<key>WFInput</key>
@@ -35,9 +299,9 @@
 					<key>Value</key>
 					<dict>
 						<key>OutputName</key>
-						<string>Private connection</string>
+						<string>Connection details</string>
 						<key>OutputUUID</key>
-						<string>981EFD88-592D-4FFA-BB9A-67E2F7790842</string>
+						<string>7E261DF2-4696-51B2-92B6-3949D05B05B2</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -54,7 +318,7 @@
 				<key>CustomOutputName</key>
 				<string>Capture connection</string>
 				<key>UUID</key>
-				<string>57827318-B074-4F1A-BDAB-CD021AEEA709</string>
+				<string>DAC1E160-2E8A-54DE-9922-CA7C4EE49EE3</string>
 				<key>WFDictionaryKey</key>
 				<string>capture</string>
 				<key>WFInput</key>
@@ -62,9 +326,9 @@
 					<key>Value</key>
 					<dict>
 						<key>OutputName</key>
-						<string>Private connection</string>
+						<string>Connection details</string>
 						<key>OutputUUID</key>
-						<string>981EFD88-592D-4FFA-BB9A-67E2F7790842</string>
+						<string>7E261DF2-4696-51B2-92B6-3949D05B05B2</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -75,103 +339,13 @@
 		</dict>
 		<dict>
 			<key>WFWorkflowActionIdentifier</key>
-			<string>is.workflow.actions.comment</string>
-			<key>WFWorkflowActionParameters</key>
-			<dict>
-				<key>WFCommentActionText</key>
-				<string>Created by Cory McCabe. Talk or Type → save directly to Followthrough → show the server confirmation. One-time setup: copy your private connection code from Followthrough Settings and paste it into the first Text action. Keep the configured copy private. No browser is opened. Requires internet.</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>WFWorkflowActionIdentifier</key>
-			<string>is.workflow.actions.choosefrommenu</string>
-			<key>WFWorkflowActionParameters</key>
-			<dict>
-				<key>GroupingIdentifier</key>
-				<string>C11CD631-BB44-41B4-919B-65A0AF54EF09</string>
-				<key>WFControlFlowMode</key>
-				<integer>0</integer>
-				<key>WFMenuItems</key>
-				<array>
-					<string>Talk</string>
-					<string>Type</string>
-				</array>
-				<key>WFMenuPrompt</key>
-				<string>New Followthrough task</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>WFWorkflowActionIdentifier</key>
-			<string>is.workflow.actions.choosefrommenu</string>
-			<key>WFWorkflowActionParameters</key>
-			<dict>
-				<key>GroupingIdentifier</key>
-				<string>C11CD631-BB44-41B4-919B-65A0AF54EF09</string>
-				<key>WFControlFlowMode</key>
-				<integer>1</integer>
-				<key>WFMenuItemTitle</key>
-				<string>Talk</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>WFWorkflowActionIdentifier</key>
-			<string>is.workflow.actions.dictatetext</string>
-			<key>WFWorkflowActionParameters</key>
-			<dict>
-				<key>UUID</key>
-				<string>9FD6D2EA-C8B7-42DA-8F16-C5358DA36339</string>
-				<key>WFDictateTextStopListening</key>
-				<string>On Tap</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>WFWorkflowActionIdentifier</key>
-			<string>is.workflow.actions.choosefrommenu</string>
-			<key>WFWorkflowActionParameters</key>
-			<dict>
-				<key>GroupingIdentifier</key>
-				<string>C11CD631-BB44-41B4-919B-65A0AF54EF09</string>
-				<key>WFControlFlowMode</key>
-				<integer>1</integer>
-				<key>WFMenuItemTitle</key>
-				<string>Type</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>WFWorkflowActionIdentifier</key>
-			<string>is.workflow.actions.ask</string>
-			<key>WFWorkflowActionParameters</key>
-			<dict>
-				<key>UUID</key>
-				<string>A51BF9D8-D282-43D4-B771-12F579637403</string>
-				<key>WFAskActionPrompt</key>
-				<string>What needs doing?</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>WFWorkflowActionIdentifier</key>
-			<string>is.workflow.actions.choosefrommenu</string>
-			<key>WFWorkflowActionParameters</key>
-			<dict>
-				<key>CustomOutputName</key>
-				<string>Task text</string>
-				<key>GroupingIdentifier</key>
-				<string>C11CD631-BB44-41B4-919B-65A0AF54EF09</string>
-				<key>UUID</key>
-				<string>97362E70-60E7-46FC-9652-68E3A7E83F81</string>
-				<key>WFControlFlowMode</key>
-				<integer>2</integer>
-			</dict>
-		</dict>
-		<dict>
-			<key>WFWorkflowActionIdentifier</key>
 			<string>is.workflow.actions.downloadurl</string>
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>CustomOutputName</key>
 				<string>Capture request</string>
 				<key>UUID</key>
-				<string>2B4B054F-73F0-47D0-A353-CB29F90C276F</string>
+				<string>A9DC640A-7E55-503D-A36F-602A65790342</string>
 				<key>WFHTTPHeaders</key>
 				<dict>
 					<key>Value</key>
@@ -204,7 +378,7 @@
 												<key>OutputName</key>
 												<string>Site connection</string>
 												<key>OutputUUID</key>
-												<string>FC798C14-F907-4476-A5CE-30028EAA6EAF</string>
+												<string>D5BD2A83-1F10-5314-9A0E-79790985DCF4</string>
 												<key>Type</key>
 												<string>ActionOutput</string>
 											</dict>
@@ -242,7 +416,7 @@
 												<key>OutputName</key>
 												<string>Capture connection</string>
 												<key>OutputUUID</key>
-												<string>57827318-B074-4F1A-BDAB-CD021AEEA709</string>
+												<string>DAC1E160-2E8A-54DE-9922-CA7C4EE49EE3</string>
 												<key>Type</key>
 												<string>ActionOutput</string>
 											</dict>
@@ -273,7 +447,7 @@
 				<key>CustomOutputName</key>
 				<string>Request ID</string>
 				<key>UUID</key>
-				<string>C8CDD75E-1629-4EA5-98CC-B2D36DEAFCE7</string>
+				<string>C84EEB2F-9FF4-57BA-9791-E9048A9C3409</string>
 				<key>WFDictionaryKey</key>
 				<string>requestId</string>
 				<key>WFInput</key>
@@ -283,7 +457,7 @@
 						<key>OutputName</key>
 						<string>Capture request</string>
 						<key>OutputUUID</key>
-						<string>2B4B054F-73F0-47D0-A353-CB29F90C276F</string>
+						<string>A9DC640A-7E55-503D-A36F-602A65790342</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -294,13 +468,287 @@
 		</dict>
 		<dict>
 			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>2E579CD8-211A-5144-9C78-B6B5375CE773</string>
+				<key>WFCondition</key>
+				<integer>101</integer>
+				<key>WFControlFlowMode</key>
+				<integer>0</integer>
+				<key>WFInput</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>OutputName</key>
+						<string>Request ID</string>
+						<key>OutputUUID</key>
+						<string>C84EEB2F-9FF4-57BA-9791-E9048A9C3409</string>
+						<key>Type</key>
+						<string>ActionOutput</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenAttachment</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.showresult</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>Text</key>
+				<string>Could not connect to Followthrough. Copy your current connection code from Settings and use Open shortcut to connect. No task was saved.</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.exit</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict/>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Connection failed</string>
+				<key>GroupingIdentifier</key>
+				<string>2E579CD8-211A-5144-9C78-B6B5375CE773</string>
+				<key>UUID</key>
+				<string>2E579CD8-211A-5144-9C78-B6B5375CE773</string>
+				<key>WFControlFlowMode</key>
+				<integer>2</integer>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>B2376B09-905C-5A5D-A901-1E0B585B3D36</string>
+				<key>WFCondition</key>
+				<integer>101</integer>
+				<key>WFControlFlowMode</key>
+				<integer>0</integer>
+				<key>WFInput</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>OutputName</key>
+						<string>Connection to use</string>
+						<key>OutputUUID</key>
+						<string>93B526E9-4334-5B5A-97C6-A85154BFC3D5</string>
+						<key>Type</key>
+						<string>ActionOutput</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenAttachment</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.documentpicker.save</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Remembered connection file</string>
+				<key>UUID</key>
+				<string>E61E0619-4F38-5098-BD27-F348E2E29424</string>
+				<key>WFAskWhereToSave</key>
+				<false/>
+				<key>WFFileDestinationPath</key>
+				<string>/Followthrough-connection.json</string>
+				<key>WFInput</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>OutputName</key>
+						<string>Private connection</string>
+						<key>OutputUUID</key>
+						<string>6BC26FF7-E65A-5592-8D76-00C20F8BDF56</string>
+						<key>Type</key>
+						<string>ActionOutput</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenAttachment</string>
+				</dict>
+				<key>WFSaveFileOverwrite</key>
+				<true/>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Remember connection</string>
+				<key>GroupingIdentifier</key>
+				<string>B2376B09-905C-5A5D-A901-1E0B585B3D36</string>
+				<key>UUID</key>
+				<string>B2376B09-905C-5A5D-A901-1E0B585B3D36</string>
+				<key>WFControlFlowMode</key>
+				<integer>2</integer>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>64F1DEBB-C4D5-5428-846B-6B8B0FDC7591</string>
+				<key>WFCondition</key>
+				<integer>4</integer>
+				<key>WFConditionalActionString</key>
+				<string>connect</string>
+				<key>WFControlFlowMode</key>
+				<integer>0</integer>
+				<key>WFInput</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>Type</key>
+						<string>ExtensionInput</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenAttachment</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.showresult</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>Text</key>
+				<string>Followthrough is connected. Your Action button can now save tasks with Talk or Type.</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.exit</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict/>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Connecting only</string>
+				<key>GroupingIdentifier</key>
+				<string>64F1DEBB-C4D5-5428-846B-6B8B0FDC7591</string>
+				<key>UUID</key>
+				<string>64F1DEBB-C4D5-5428-846B-6B8B0FDC7591</string>
+				<key>WFControlFlowMode</key>
+				<integer>2</integer>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.choosefrommenu</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>3FEC4612-EF3A-58EC-9D68-6A63DB49CA2A</string>
+				<key>WFControlFlowMode</key>
+				<integer>0</integer>
+				<key>WFMenuItems</key>
+				<array>
+					<string>Talk</string>
+					<string>Type</string>
+				</array>
+				<key>WFMenuPrompt</key>
+				<string></string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.choosefrommenu</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>3FEC4612-EF3A-58EC-9D68-6A63DB49CA2A</string>
+				<key>WFControlFlowMode</key>
+				<integer>1</integer>
+				<key>WFMenuItemTitle</key>
+				<string>Talk</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.dictatetext</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Dictated task</string>
+				<key>UUID</key>
+				<string>CDB40D93-1038-543A-82DC-C132A260F407</string>
+				<key>WFDictateTextStopListening</key>
+				<string>On Tap</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.choosefrommenu</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>3FEC4612-EF3A-58EC-9D68-6A63DB49CA2A</string>
+				<key>WFControlFlowMode</key>
+				<integer>1</integer>
+				<key>WFMenuItemTitle</key>
+				<string>Type</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.ask</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Typed task</string>
+				<key>UUID</key>
+				<string>18A46510-BEDD-57E9-AC91-5B818043CA3F</string>
+				<key>WFAskActionAllowsMultilineText</key>
+				<true/>
+				<key>WFAskActionPrompt</key>
+				<string>What needs doing?</string>
+				<key>WFInputType</key>
+				<string>Text</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.choosefrommenu</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Task text</string>
+				<key>GroupingIdentifier</key>
+				<string>3FEC4612-EF3A-58EC-9D68-6A63DB49CA2A</string>
+				<key>UUID</key>
+				<string>A0141CC3-F0CA-51BC-895B-BF7B9716142F</string>
+				<key>WFControlFlowMode</key>
+				<integer>2</integer>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
 			<string>is.workflow.actions.downloadurl</string>
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>CustomOutputName</key>
 				<string>Save response</string>
 				<key>UUID</key>
-				<string>FA38FD3D-7C49-40E7-88E9-9A19A4FD95FB</string>
+				<string>F080B45B-5E3E-5630-9792-5F9DCCB2DABF</string>
 				<key>WFHTTPBodyType</key>
 				<string>JSON</string>
 				<key>WFHTTPHeaders</key>
@@ -335,7 +783,7 @@
 												<key>OutputName</key>
 												<string>Site connection</string>
 												<key>OutputUUID</key>
-												<string>FC798C14-F907-4476-A5CE-30028EAA6EAF</string>
+												<string>D5BD2A83-1F10-5314-9A0E-79790985DCF4</string>
 												<key>Type</key>
 												<string>ActionOutput</string>
 											</dict>
@@ -373,7 +821,7 @@
 												<key>OutputName</key>
 												<string>Capture connection</string>
 												<key>OutputUUID</key>
-												<string>57827318-B074-4F1A-BDAB-CD021AEEA709</string>
+												<string>DAC1E160-2E8A-54DE-9922-CA7C4EE49EE3</string>
 												<key>Type</key>
 												<string>ActionOutput</string>
 											</dict>
@@ -426,7 +874,7 @@
 												<key>OutputName</key>
 												<string>Task text</string>
 												<key>OutputUUID</key>
-												<string>97362E70-60E7-46FC-9652-68E3A7E83F81</string>
+												<string>A0141CC3-F0CA-51BC-895B-BF7B9716142F</string>
 												<key>Type</key>
 												<string>ActionOutput</string>
 											</dict>
@@ -464,7 +912,7 @@
 												<key>OutputName</key>
 												<string>Request ID</string>
 												<key>OutputUUID</key>
-												<string>C8CDD75E-1629-4EA5-98CC-B2D36DEAFCE7</string>
+												<string>C84EEB2F-9FF4-57BA-9791-E9048A9C3409</string>
 												<key>Type</key>
 												<string>ActionOutput</string>
 											</dict>
@@ -491,7 +939,7 @@
 				<key>CustomOutputName</key>
 				<string>Save confirmation</string>
 				<key>UUID</key>
-				<string>A5343DE8-B8BA-466B-BF08-B3FF3AAB01C7</string>
+				<string>46790293-6899-5FC6-BEEE-5ECF893209E5</string>
 				<key>WFDictionaryKey</key>
 				<string>message</string>
 				<key>WFInput</key>
@@ -501,7 +949,7 @@
 						<key>OutputName</key>
 						<string>Save response</string>
 						<key>OutputUUID</key>
-						<string>FA38FD3D-7C49-40E7-88E9-9A19A4FD95FB</string>
+						<string>F080B45B-5E3E-5630-9792-5F9DCCB2DABF</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -526,7 +974,7 @@
 								<key>OutputName</key>
 								<string>Save confirmation</string>
 								<key>OutputUUID</key>
-								<string>A5343DE8-B8BA-466B-BF08-B3FF3AAB01C7</string>
+								<string>46790293-6899-5FC6-BEEE-5ECF893209E5</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -545,7 +993,7 @@
 	<key>WFWorkflowHasOutputFallback</key>
 	<false/>
 	<key>WFWorkflowHasShortcutInputVariables</key>
-	<false/>
+	<true/>
 	<key>WFWorkflowIcon</key>
 	<dict>
 		<key>WFWorkflowIconGlyphNumber</key>
@@ -554,41 +1002,10 @@
 		<integer>-43634177</integer>
 	</dict>
 	<key>WFWorkflowImportQuestions</key>
-	<array>
-		<dict>
-			<key>ActionIndex</key>
-			<integer>0</integer>
-			<key>Category</key>
-			<string>Parameter</string>
-			<key>DefaultValue</key>
-			<string></string>
-			<key>ParameterKey</key>
-			<string>WFTextActionText</string>
-			<key>Text</key>
-			<string>Paste your private connection code from Followthrough Settings → iPhone Action button.</string>
-		</dict>
-	</array>
+	<array/>
 	<key>WFWorkflowInputContentItemClasses</key>
 	<array>
-		<string>WFAppContentItem</string>
-		<string>WFAppStoreAppContentItem</string>
-		<string>WFArticleContentItem</string>
-		<string>WFContactContentItem</string>
-		<string>WFDateContentItem</string>
-		<string>WFEmailAddressContentItem</string>
-		<string>WFFolderContentItem</string>
-		<string>WFGenericFileContentItem</string>
-		<string>WFImageContentItem</string>
-		<string>WFiTunesProductContentItem</string>
-		<string>WFLocationContentItem</string>
-		<string>WFDCMapsLinkContentItem</string>
-		<string>WFAVAssetContentItem</string>
-		<string>WFPDFContentItem</string>
-		<string>WFPhoneNumberContentItem</string>
-		<string>WFRichTextContentItem</string>
-		<string>WFSafariWebPageContentItem</string>
 		<string>WFStringContentItem</string>
-		<string>WFURLContentItem</string>
 	</array>
 	<key>WFWorkflowMinimumClientVersion</key>
 	<integer>900</integer>

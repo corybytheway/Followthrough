@@ -73,16 +73,25 @@ export default function ShortcutSettings() {
         it is saved.
       </p>
       <p>Until AI capture is connected, requests go into Inbox for planning.</p>
+      <h3>Connect your shortcut</h3>
       <ol>
-        <li>Create a private connection code below and copy it.</li>
         <li>
-          <a href="/shortcuts/Followthrough%20Task.shortcut" download>
+          <a href="/shortcuts/Followthrough%20Task.shortcut?v=4" download>
             Install Followthrough Task
           </a>{' '}
-          and paste the code when asked. Replace the older shortcut.
+          and tap Add Shortcut. This version has no setup questions during
+          installation. Replace the older shortcut if asked.
         </li>
         <li>
-          On your iPhone, choose Settings → Action Button → Shortcut → New
+          Copy your connection code below. Then{' '}
+          <a href="shortcuts://run-shortcut?name=Followthrough%20Task&input=text&text=connect">
+            open the shortcut to connect
+          </a>{' '}
+          and paste it when the shortcut runs. It remembers the code for future
+          tasks.
+        </li>
+        <li>
+          On your iPhone, choose Settings → Action Button → Shortcut →
           Followthrough Task.
         </li>
       </ol>
@@ -117,7 +126,7 @@ export default function ShortcutSettings() {
                 .writeText(connection)
                 .then(() =>
                   setMessage(
-                    'Copied. Paste this into the shortcut’s setup question.',
+                    'Copied. Open the shortcut to connect, then paste when it asks.',
                   ),
                 )
                 .catch(() => setMessage('Select and copy the code above.'))
