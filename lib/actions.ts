@@ -19,6 +19,25 @@ export function applyAction(
     now = new Date().toISOString();
   let result: Record<string, unknown> = {};
   switch (v.action) {
+    case 'capture_task': {
+      const id = text(v.captureId, 'Capture ID', 72, true);
+      if (!/^capture_[a-f0-9]{64}$/.test(id))
+        throw new InputError('Provide a valid capture ID.');
+      const existing = w.tasks.find((task) => task.id === id);
+      if (existing) {
+        result = { task: existing, duplicate: true };
+        break;
+      }
+      if (w.tasks.length >= 1000)
+        throw new InputError(
+          'Your workspace is full. Free space before capturing more tasks.',
+        );
+      const task = taskInput(v.task, w);
+      task.id = id;
+      w.tasks.push(task);
+      result = { task };
+      break;
+    }
     case 'create_task': {
       if (w.tasks.length >= 1000)
         throw new InputError(

@@ -29,7 +29,6 @@ import {
   Download,
   Search,
   MessageSquare,
-  Smartphone,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -61,6 +60,7 @@ import {
 } from '@/lib/model';
 import { localDay } from '@/lib/scheduler';
 import { TOOL_DEFINITIONS, toolAction } from '@/lib/tools';
+import ShortcutSettings from '@/components/shortcut-settings';
 
 type Draft = Partial<Task> & {
   rationale?: string;
@@ -211,12 +211,25 @@ export default function FollowthroughApp() {
   }, [loaded]);
   useEffect(() => {
     if (!loaded) return;
-    const timer = setInterval(() => {
-      if (!document.hidden && !busyRef.current && stateRef.current.tasks.length)
-        void commit({ action: 'replan' }).catch(() => {});
-    }, 60_000);
-    return () => clearInterval(timer);
-  }, [loaded, commit]);
+    const update = () => {
+      if (document.hidden || busyRef.current) return;
+      void refresh()
+        .then((next) => {
+          if (
+            !busyRef.current &&
+            next.tasks.some((task) => task.status === 'ready')
+          )
+            return commit({ action: 'replan' });
+        })
+        .catch(() => {});
+    };
+    const timer = setInterval(update, 60_000);
+    window.addEventListener('focus', update);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', update);
+    };
+  }, [loaded, commit, refresh]);
   useEffect(() => {
     const context = (
       document as Document & {
@@ -299,13 +312,13 @@ export default function FollowthroughApp() {
       busyRef.current = false;
     }
   }
-  const active = state.tasks.filter(
-    (t) => t.status === 'ready' || t.status === 'waiting',
+  const active = state.tasks.filter((t) =>
+    ['inbox', 'ready', 'waiting'].includes(t.status),
   );
   const visible = state.tasks.filter(
     (t) =>
       (statusFilter === 'active'
-        ? ['ready', 'waiting'].includes(t.status)
+        ? ['inbox', 'ready', 'waiting'].includes(t.status)
         : t.status === statusFilter) &&
       (projectFilter === 'all' || t.projectId === projectFilter) &&
       (t.title + ' ' + t.notes + ' ' + t.steps.map((s) => s.title).join(' '))
@@ -377,7 +390,11 @@ export default function FollowthroughApp() {
             {project && (
               <span style={{ color: project.color }}>{project.name}</span>
             )}
-            <span>{minutesLabel(task.remainingMinutes)}</span>
+            <span>
+              {task.status === 'inbox'
+                ? 'Needs planning'
+                : minutesLabel(task.remainingMinutes)}
+            </span>
             {task.steps.length > 0 && (
               <span>
                 {task.steps.filter((s) => s.done).length}/{task.steps.length}{' '}
@@ -392,6 +409,7 @@ export default function FollowthroughApp() {
               </span>
             )}
             {task.status === 'waiting' && <span className="pill">On hold</span>}
+            {task.status === 'inbox' && <span className="pill">Inbox</span>}
             {task.priority === 'high' && (
               <span className="urgent">High priority</span>
             )}
@@ -735,6 +753,7 @@ export default function FollowthroughApp() {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="active">Active</option>
+                <option value="inbox">Inbox</option>
                 <option value="done">Completed</option>
                 <option value="archived">Archived</option>
               </NativeSelect>
@@ -1027,6 +1046,7 @@ function TaskEditor({
             value={status}
             onChange={(e) => setStatus(e.target.value as Task['status'])}
           >
+            <option value="inbox">Inbox — needs planning</option>
             <option value="ready">Ready</option>
             <option value="waiting">On hold</option>
             <option value="done">Complete</option>
@@ -1496,36 +1516,7 @@ function SettingsPanel({
             configured.
           </p>
         </div>
-        <div className="settings-card">
-          <Smartphone />
-          <h2>iPhone Action button</h2>
-          <p>
-            Choose Talk or Type, then open Followthrough with your text ready to
-            review and save.
-          </p>
-          <details>
-            <summary>Shortcut setup</summary>
-            <ol>
-              <li>
-                Open <strong>New Followthrough Task</strong> in Shortcuts. Its
-                menu lets you talk or type.
-              </li>
-              <li>On your iPhone, sign in to this site in Safari first.</li>
-              <li>
-                Go to <strong>Settings → Action Button → Shortcut</strong> and
-                choose <strong>New Followthrough Task</strong>.
-              </li>
-              <li>
-                Hold the Action button, choose Talk or Type, and describe what
-                needs doing. When talking, tap Done to finish.
-              </li>
-            </ol>
-            <p>
-              In Followthrough, tap Review task and then Save task. Opening the
-              captured text does not save a task automatically.
-            </p>
-          </details>
-        </div>
+        <ShortcutSettings />
         <div className="settings-card">
           <Clock3 />
           <h2>Automatic replanning</h2>

@@ -8,6 +8,13 @@
       "when": 1788909566404,
       "tag": "0000_fancy_the_captain",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788916770417,
+      "tag": "0001_aberrant_boomerang",
+      "breakpoints": true
     }
   ]
 }

@@ -17,7 +17,7 @@ export type Task = {
   estimateMinutes: number;
   remainingMinutes: number;
   priority: 'high' | 'medium' | 'low';
-  status: 'ready' | 'waiting' | 'done' | 'archived';
+  status: 'inbox' | 'ready' | 'waiting' | 'done' | 'archived';
   dueDate: string | null;
   notBefore: string | null;
   blockers: string[];

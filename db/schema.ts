@@ -8,3 +8,12 @@ export const workspaces = sqliteTable('workspaces', {
   document: text('document').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
+
+// One revocable, create-only Shortcut connection per signed-in owner.
+export const shortcutConnections = sqliteTable('shortcut_connections', {
+  ownerId: text('owner_id').primaryKey(),
+  tokenHash: text('token_hash').notNull().unique(),
+  createdAt: text('created_at').notNull(),
+  windowStart: integer('window_start').notNull().default(0),
+  windowCount: integer('window_count').notNull().default(0),
+});

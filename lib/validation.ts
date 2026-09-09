@@ -128,7 +128,11 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
     t.priority = v.priority as Task['priority'];
   }
   if (v.status !== undefined) {
-    if (!['ready', 'waiting', 'done', 'archived'].includes(v.status as string))
+    if (
+      !['inbox', 'ready', 'waiting', 'done', 'archived'].includes(
+        v.status as string,
+      )
+    )
       throw new InputError('Choose a valid task status.');
     t.status = v.status as Task['status'];
     t.completedAt = t.status === 'done' ? existing?.completedAt || now : null;
