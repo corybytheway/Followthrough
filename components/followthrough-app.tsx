@@ -365,9 +365,10 @@ export default function FollowthroughApp() {
       (statusFilter === 'trash'
         ? !!t.deletedAt
         : !t.deletedAt &&
-          (statusFilter === 'active'
-            ? ['ready', 'waiting'].includes(t.status)
-            : t.status === statusFilter)) &&
+          (statusFilter === 'all' ||
+            (statusFilter === 'active'
+              ? ['ready', 'waiting'].includes(t.status)
+              : t.status === statusFilter))) &&
       (projectFilter === 'all' || t.projectId === projectFilter) &&
       (t.title + ' ' + t.notes + ' ' + t.steps.map((s) => s.title).join(' '))
         .toLowerCase()
@@ -816,6 +817,7 @@ export default function FollowthroughApp() {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="active">Active</option>
+                <option value="all">All tasks</option>
                 <option value="done">Completed</option>
                 <option value="archived">Archived</option>
                 <option value="trash">Trash</option>
