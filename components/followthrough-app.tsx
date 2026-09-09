@@ -236,16 +236,19 @@ export default function FollowthroughApp() {
         body: JSON.stringify({ action: 'sync' }),
       })
         .then(async (response) => {
-          if (!response.ok && response.status !== 409) {
+          if (response.status === 409) return null;
+          if (!response.ok) {
             const data = (await response.json()) as { error?: string };
             setError(
               data.error || 'Calendar sync needs attention in Settings.',
             );
+            return null;
           }
           return refresh();
         })
         .then((next) => {
           if (
+            next &&
             !busyRef.current &&
             next.tasks.some((task) => task.status === 'ready')
           )
