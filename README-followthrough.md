@@ -15,7 +15,7 @@ A private personal planner built with React, vinext, shadcn, and Cloudflare D1 o
 - Four WebMCP tools using the same actions as the visible app: list, create task, update task, create project.
 - Authenticated stateless Streamable HTTP MCP endpoint at /mcp.
 - Authenticated JSON backup and calendar snapshot downloads.
-- Dictated-text capture through a URL fragment, with Shortcut setup instructions in Settings.
+- Talk or Type capture through a signed Apple Shortcut and a URL fragment. Initial capture and later hash changes are received while the app is open. Review and Save remain explicit actions.
 
 ## Remaining before replacing Motion
 

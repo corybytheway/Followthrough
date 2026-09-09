@@ -175,12 +175,6 @@ export default function FollowthroughApp() {
     refresh()
       .then(async (next) => {
         if (!live) return;
-        const fragment = new URLSearchParams(window.location.hash.slice(1)),
-          capture = fragment.get('capture');
-        if (capture) {
-          setSource(capture.slice(0, 8000));
-          history.replaceState(null, '', window.location.pathname);
-        }
         setDay(localDay(Date.now(), next.settings.timeZone));
         setLoaded(true);
         if (next.tasks.length) await commit({ action: 'replan' });
@@ -192,6 +186,29 @@ export default function FollowthroughApp() {
       live = false;
     };
   }, [refresh, commit]);
+  useEffect(() => {
+    if (!loaded) return;
+    const receiveCapture = () => {
+      const fragment = new URLSearchParams(window.location.hash.slice(1));
+      const incoming = fragment.get('capture');
+      if (!incoming?.trim()) return;
+      setSource(incoming.slice(0, 8000));
+      setTab('today');
+      setNotice('Text received from Shortcuts. Review the task, then save it.');
+      fragment.delete('capture');
+      const remaining = fragment.toString();
+      history.replaceState(
+        null,
+        '',
+        window.location.pathname +
+          window.location.search +
+          (remaining ? `#${remaining}` : ''),
+      );
+    };
+    receiveCapture();
+    window.addEventListener('hashchange', receiveCapture);
+    return () => window.removeEventListener('hashchange', receiveCapture);
+  }, [loaded]);
   useEffect(() => {
     if (!loaded) return;
     const timer = setInterval(() => {
@@ -1483,30 +1500,29 @@ function SettingsPanel({
           <Smartphone />
           <h2>iPhone Action button</h2>
           <p>
-            A shortcut can dictate your request and open Followthrough with the
-            text ready to review.
+            Choose Talk or Type, then open Followthrough with your text ready to
+            review and save.
           </p>
           <details>
             <summary>Shortcut setup</summary>
             <ol>
               <li>
-                Add <strong>Dictate Text</strong> in Shortcuts.
+                Open <strong>New Followthrough Task</strong> in Shortcuts. Its
+                menu lets you talk or type.
+              </li>
+              <li>On your iPhone, sign in to this site in Safari first.</li>
+              <li>
+                Go to <strong>Settings → Action Button → Shortcut</strong> and
+                choose <strong>New Followthrough Task</strong>.
               </li>
               <li>
-                Add <strong>URL Encode</strong> for the dictated text.
-              </li>
-              <li>
-                Add a URL: this site’s address followed by{' '}
-                <code>/#capture=</code> and the encoded text.
-              </li>
-              <li>
-                Add <strong>Open URLs</strong>, then assign the shortcut to your
-                Action button.
+                Hold the Action button, choose Talk or Type, and describe what
+                needs doing. When talking, tap Done to finish.
               </li>
             </ol>
             <p>
-              Sign in on your iPhone first. Review and save the captured task in
-              Followthrough.
+              In Followthrough, tap Review task and then Save task. Opening the
+              captured text does not save a task automatically.
             </p>
           </details>
         </div>
