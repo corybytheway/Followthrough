@@ -14,6 +14,8 @@ export default function CalendarSettings() {
     [notice, setNotice] = useState('');
   const [email, setEmail] = useState(''),
     [password, setPassword] = useState('');
+  const [googleClientId, setGoogleClientId] = useState(''),
+    [googleClientSecret, setGoogleClientSecret] = useState('');
   const [selectedGoogle, setGoogle] = useState<string[]>([]),
     [selectedIcloud, setIcloud] = useState<string[]>([]);
   const accept = (next: CalendarStatus) => {
@@ -202,6 +204,74 @@ export default function CalendarSettings() {
                           }, 'Google app configured. You can now connect Google.');
                       }}
                     />
+                    <details className="calendar-setup">
+                      <summary>Enter client details instead</summary>
+                      <p>
+                        Use the client ID and client secret shown by Google.
+                      </p>
+                      <form
+                        className="editor-form"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void run(async () => {
+                            try {
+                              await action({
+                                action: 'configure_google',
+                                client: {
+                                  web: {
+                                    client_id: googleClientId.trim(),
+                                    client_secret: googleClientSecret.trim(),
+                                    redirect_uris: [status.callbackUrl],
+                                  },
+                                },
+                              });
+                              setGoogleClientId('');
+                            } finally {
+                              setGoogleClientSecret('');
+                            }
+                          }, 'Google app configured. You can now connect Google.');
+                        }}
+                      >
+                        <label className="field" htmlFor="google-client-id">
+                          <span>Google client ID</span>
+                          <Input
+                            id="google-client-id"
+                            value={googleClientId}
+                            onChange={(e) => setGoogleClientId(e.target.value)}
+                            required
+                            maxLength={300}
+                            autoComplete="off"
+                            disabled={working || !status.available}
+                          />
+                        </label>
+                        <label className="field" htmlFor="google-client-secret">
+                          <span>Google client secret</span>
+                          <Input
+                            id="google-client-secret"
+                            type="password"
+                            value={googleClientSecret}
+                            onChange={(e) =>
+                              setGoogleClientSecret(e.target.value)
+                            }
+                            required
+                            maxLength={1000}
+                            autoComplete="off"
+                            disabled={working || !status.available}
+                          />
+                        </label>
+                        <Button
+                          type="submit"
+                          disabled={
+                            working ||
+                            !status.available ||
+                            !googleClientId.trim() ||
+                            !googleClientSecret.trim()
+                          }
+                        >
+                          Save Google configuration
+                        </Button>
+                      </form>
+                    </details>
                     <small>
                       Google’s external Testing mode expires this calendar
                       access after seven days. For ongoing personal use, finish
