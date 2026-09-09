@@ -188,3 +188,67 @@ await test('tool names distinguish reading, creating, and updating', () => {
     { action: 'create_task', task: { title: 'One outcome' } },
   );
 });
+
+// Trash retains task content and dependencies while removing calendar eligibility.
+void test('trash removes scheduled blocks without silently satisfying prerequisites', () => {
+  const w = example(30);
+  const parent = w.tasks[0];
+  w.tasks.push(
+    taskInput(
+      {
+        title: 'Publish the result',
+        blockers: [parent.id],
+        estimateMinutes: 15,
+      },
+      w,
+    ),
+  );
+  w.blocks = plan(w, NOW).blocks;
+  assert.ok(w.blocks.some((b) => b.taskId === parent.id));
+  const deleted = applyAction(w, {
+    action: 'delete_task',
+    id: parent.id,
+  }).workspace;
+  assert.equal(deleted.blocks.length, 0);
+  const schedule = plan(deleted, NOW);
+  assert.equal(schedule.blocks.length, 0);
+  assert.ok(schedule.warnings.some((warning) => warning.reason === 'blocked'));
+  assert.deepEqual(deleted.tasks[1].blockers, [parent.id]);
+});
+void test('deleting and restoring a task preserves its content and original status', () => {
+  const w = applyAction(initialWorkspace(), {
+    action: 'create_task',
+    task: {
+      title: 'Review a captured request',
+      status: 'inbox',
+      source: 'Original words',
+      notes: 'Keep this note',
+      steps: ['First step'],
+    },
+  }).workspace;
+  const original = w.tasks[0];
+  const removed = applyAction(w, {
+    action: 'delete_task',
+    id: original.id,
+  }).workspace;
+  assert.equal(removed.tasks[0].status, 'archived');
+  assert.ok(removed.tasks[0].deletedAt);
+  assert.equal(plan(removed).blocks.length, 0);
+  assert.throws(
+    () => applyAction(removed, { action: 'complete_task', id: original.id }),
+    /Restore/,
+  );
+  const twice = applyAction(removed, {
+    action: 'delete_task',
+    id: original.id,
+  }).workspace;
+  const restored = applyAction(twice, {
+    action: 'restore_task',
+    id: original.id,
+  }).workspace.tasks[0];
+  assert.equal(restored.status, 'inbox');
+  assert.equal(restored.deletedAt, undefined);
+  assert.equal(restored.notes, original.notes);
+  assert.equal(restored.source, original.source);
+  assert.deepEqual(restored.steps, original.steps);
+});

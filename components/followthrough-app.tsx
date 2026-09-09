@@ -362,9 +362,12 @@ export default function FollowthroughApp() {
   );
   const visible = state.tasks.filter(
     (t) =>
-      (statusFilter === 'active'
-        ? ['inbox', 'ready', 'waiting'].includes(t.status)
-        : t.status === statusFilter) &&
+      (statusFilter === 'trash'
+        ? !!t.deletedAt
+        : !t.deletedAt &&
+          (statusFilter === 'active'
+            ? ['inbox', 'ready', 'waiting'].includes(t.status)
+            : t.status === statusFilter)) &&
       (projectFilter === 'all' || t.projectId === projectFilter) &&
       (t.title + ' ' + t.notes + ' ' + t.steps.map((s) => s.title).join(' '))
         .toLowerCase()
@@ -413,22 +416,26 @@ export default function FollowthroughApp() {
         className={'task-row ' + (task.status === 'done' ? 'completed' : '')}
         key={task.id}
       >
-        <Checkbox
-          aria-label={
-            task.status === 'done'
-              ? 'Reopen ' + task.title
-              : 'Complete ' + task.title
-          }
-          checked={task.status === 'done'}
-          disabled={saving}
-          onCheckedChange={(checked) =>
-            void commit({
-              action: 'update_task',
-              id: task.id,
-              task: { status: checked ? 'done' : 'ready' },
-            }).catch(() => {})
-          }
-        />
+        {!task.deletedAt && (
+          <Checkbox
+            className="task-completion"
+            title={task.status === 'done' ? 'Reopen task' : 'Mark complete'}
+            aria-label={
+              task.status === 'done'
+                ? 'Reopen ' + task.title
+                : 'Complete ' + task.title
+            }
+            checked={task.status === 'done'}
+            disabled={saving}
+            onCheckedChange={(checked) =>
+              void commit({
+                action: 'update_task',
+                id: task.id,
+                task: { status: checked ? 'done' : 'ready' },
+              }).catch(() => {})
+            }
+          />
+        )}
         <button className="task-body" onClick={() => setEditing(task.id)}>
           <strong>{task.title}</strong>
           <span className="task-meta">
@@ -802,6 +809,7 @@ export default function FollowthroughApp() {
                 <option value="inbox">Inbox</option>
                 <option value="done">Completed</option>
                 <option value="archived">Archived</option>
+                <option value="trash">Trash</option>
               </NativeSelect>
             </div>
             {visible.length ? (
@@ -922,6 +930,20 @@ export default function FollowthroughApp() {
               initial={selected || draft!}
               state={state}
               saving={saving}
+              onDelete={async () => {
+                if (!selected) return;
+                await commit({ action: 'delete_task', id: selected.id });
+                setEditing(null);
+                setNotice(
+                  'Task moved to Trash. Restore it from the Trash filter.',
+                );
+              }}
+              onRestore={async () => {
+                if (!selected) return;
+                await commit({ action: 'restore_task', id: selected.id });
+                setEditing(null);
+                setNotice('Task restored.');
+              }}
               onSave={async (task, requestId) => {
                 await commit(
                   selected
@@ -1012,11 +1034,15 @@ function TaskEditor({
   state,
   saving,
   onSave,
+  onDelete,
+  onRestore,
 }: {
   initial: Draft;
   state: Snapshot;
   saving: boolean;
   onSave: (task: Action, requestId: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+  onRestore: () => Promise<void>;
 }) {
   const [saveId] = useState(() => crypto.randomUUID());
   const [title, setTitle] = useState(initial.title || ''),
@@ -1034,7 +1060,10 @@ function TaskEditor({
     [splittable, setSplittable] = useState(initial.splittable !== false),
     [blockers, setBlockers] = useState(initial.blockers || []),
     [localError, setLocalError] = useState('');
-  async function submit(e: { preventDefault: () => void }) {
+  async function submit(
+    e: { preventDefault: () => void },
+    nextStatus = status,
+  ) {
     e.preventDefault();
     setLocalError('');
     try {
@@ -1049,7 +1078,7 @@ function TaskEditor({
           estimateMinutes: estimate,
           remainingMinutes: remaining,
           priority,
-          status,
+          status: nextStatus,
           dueDate: due || null,
           notBefore: start || null,
           splittable,
@@ -1062,8 +1091,40 @@ function TaskEditor({
       setLocalError(e instanceof Error ? e.message : 'Could not save.');
     }
   }
+  if (initial.deletedAt)
+    return (
+      <div className="editor-form">
+        <h2>{initial.title}</h2>
+        <p>
+          This task is in Trash. Restore it to return it to its previous status.
+        </p>
+        <Button
+          disabled={saving}
+          onClick={() =>
+            void onRestore().catch((e) => setLocalError(e.message))
+          }
+        >
+          Restore task
+        </Button>
+        {localError && (
+          <p className="form-error" role="alert">
+            {localError}
+          </p>
+        )}
+      </div>
+    );
   return (
     <form className="editor-form" onSubmit={(e) => void submit(e)}>
+      {initial.id && (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving || !title.trim()}
+          onClick={(e) => void submit(e, status === 'done' ? 'ready' : 'done')}
+        >
+          <Check /> {status === 'done' ? 'Reopen task' : 'Mark complete'}
+        </Button>
+      )}
       {((initial.captureMode === 'basic' && status === 'inbox') ||
         initial.rationale) && (
         <div className="draft-note">
@@ -1299,6 +1360,19 @@ function TaskEditor({
           {saving ? <Loader2 className="spin" /> : <Check />}
           {initial.id ? 'Save changes' : 'Create task'}
         </Button>
+        {initial.id && (
+          <Button
+            type="button"
+            variant="outline"
+            className="delete-task-button full-width"
+            disabled={saving}
+            onClick={() =>
+              void onDelete().catch((e) => setLocalError(e.message))
+            }
+          >
+            Delete task
+          </Button>
+        )}
       </div>
     </form>
   );

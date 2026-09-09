@@ -8,6 +8,8 @@ export type Project = {
   color: string;
 };
 export type Task = {
+  deletedAt?: string;
+  statusBeforeDelete?: Task['status'];
   captureMode?: 'basic' | 'ai';
   id: string;
   title: string;

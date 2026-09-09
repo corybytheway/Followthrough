@@ -59,6 +59,8 @@ function date(value: unknown, label: string): string | null {
   return value;
 }
 export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
+  if (existing?.deletedAt)
+    throw new InputError('Restore this task from Trash before editing it.');
   const v = object(input),
     now = new Date().toISOString();
   const t: Task = existing

@@ -19,6 +19,31 @@ export function applyAction(
     now = new Date().toISOString();
   let result: Record<string, unknown> = {};
   switch (v.action) {
+    case 'delete_task': {
+      const task = w.tasks.find((t) => t.id === v.id);
+      if (!task) throw new InputError('Task not found.');
+      if (!task.deletedAt) {
+        task.statusBeforeDelete = task.status;
+        task.status = 'archived';
+        task.deletedAt = now;
+        task.updatedAt = now;
+        w.blocks = w.blocks.filter((block) => block.taskId !== task.id);
+      }
+      result = { task };
+      break;
+    }
+    case 'restore_task': {
+      const task = w.tasks.find((t) => t.id === v.id);
+      if (!task) throw new InputError('Task not found.');
+      if (task.deletedAt) {
+        task.status = task.statusBeforeDelete || 'inbox';
+        delete task.deletedAt;
+        delete task.statusBeforeDelete;
+        task.updatedAt = now;
+      }
+      result = { task };
+      break;
+    }
     case 'capture_task': {
       const id = text(v.captureId, 'Capture ID', 72, true);
       if (!/^capture_[a-f0-9]{64}$/.test(id))
