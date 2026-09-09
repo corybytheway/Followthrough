@@ -29,6 +29,7 @@ import {
   Download,
   Search,
   MessageSquare,
+  Pencil,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -52,6 +53,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   initialWorkspace,
+  COLORS,
   minutesLabel,
   type Project,
   type Settings,
@@ -114,6 +116,7 @@ export default function FollowthroughApp() {
     [draft, setDraft] = useState<Draft | null>(null),
     [editing, setEditing] = useState<string | null>(null);
   const [projectDialog, setProjectDialog] = useState(false),
+    [editingProject, setEditingProject] = useState<Project | null>(null),
     [busyDialog, setBusyDialog] = useState(false),
     [query, setQuery] = useState(''),
     [projectFilter, setProjectFilter] = useState('all'),
@@ -821,36 +824,59 @@ export default function FollowthroughApp() {
                 <p className="eyebrow">Apps, clients, and meaningful work</p>
                 <h1>Your projects.</h1>
               </div>
-              <Button onClick={() => setProjectDialog(true)}>
+              <Button
+                onClick={() => {
+                  setEditingProject(null);
+                  setProjectDialog(true);
+                }}
+              >
                 <Plus />
                 New project
               </Button>
             </div>
             <div className="project-grid">
               {state.projects.map((p) => (
-                <button
-                  className="project-card"
-                  key={p.id}
-                  onClick={() => {
-                    setProjectFilter(p.id);
-                    setStatusFilter('active');
-                    setQuery('');
-                    setTab('tasks');
-                  }}
-                >
-                  <span
-                    className="project-icon"
-                    style={{ color: p.color, background: p.color + '14' }}
-                  >
-                    <FolderOpen />
-                  </span>
-                  <h2>{p.name}</h2>
-                  <p>{p.description || 'A home for related work.'}</p>
-                  <div className="project-count">
-                    {active.filter((t) => t.projectId === p.id).length} active
-                    tasks <ArrowRight size={16} />
+                <article className="project-card" key={p.id}>
+                  <div className="project-card-heading">
+                    <span
+                      className="project-icon"
+                      style={{ color: p.color, background: p.color + '14' }}
+                    >
+                      <FolderOpen />
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="project-edit"
+                      aria-label={`Edit ${p.name}`}
+                      onClick={() => {
+                        setEditingProject(p);
+                        setProjectDialog(true);
+                      }}
+                    >
+                      <Pencil size={16} />
+                      Edit
+                    </Button>
                   </div>
-                </button>
+                  <button
+                    type="button"
+                    className="project-open"
+                    aria-label={`View tasks in ${p.name}`}
+                    onClick={() => {
+                      setProjectFilter(p.id);
+                      setStatusFilter('active');
+                      setQuery('');
+                      setTab('tasks');
+                    }}
+                  >
+                    <h2>{p.name}</h2>
+                    <p>{p.description || 'A home for related work.'}</p>
+                    <div className="project-count">
+                      {active.filter((t) => t.projectId === p.id).length} active
+                      tasks <ArrowRight size={16} />
+                    </div>
+                  </button>
+                </article>
               ))}
             </div>
           </TabsContent>
@@ -922,20 +948,40 @@ export default function FollowthroughApp() {
           )}
         </SheetContent>
       </Sheet>
-      <Dialog open={projectDialog} onOpenChange={setProjectDialog}>
+      <Dialog
+        open={projectDialog}
+        onOpenChange={(open) => {
+          if (!saving) setProjectDialog(open);
+        }}
+      >
         <DialogContent className="form-dialog">
           <DialogHeader>
-            <DialogTitle>New project</DialogTitle>
+            <DialogTitle>
+              {editingProject ? 'Edit project' : 'New project'}
+            </DialogTitle>
             <DialogDescription>
               A home for related tasks and independent deliverables.
             </DialogDescription>
           </DialogHeader>
           <ProjectForm
+            key={editingProject?.id || 'new'}
+            initial={
+              editingProject || {
+                color: COLORS[state.projects.length % COLORS.length],
+              }
+            }
             saving={saving}
+            onCancel={() => setProjectDialog(false)}
             onSave={async (project) => {
-              await commit({ action: 'create_project', project });
+              await commit(
+                editingProject
+                  ? { action: 'update_project', id: editingProject.id, project }
+                  : { action: 'create_project', project },
+              );
               setProjectDialog(false);
-              setNotice('Project created.');
+              setNotice(
+                editingProject ? 'Project updated.' : 'Project created.',
+              );
             }}
           />
         </DialogContent>
@@ -1254,23 +1300,30 @@ function TaskEditor({
   );
 }
 function ProjectForm({
+  initial,
   saving,
+  onCancel,
   onSave,
 }: {
+  initial: Partial<Project>;
   saving: boolean;
+  onCancel: () => void;
   onSave: (project: Partial<Project>) => Promise<void>;
 }) {
-  const [name, setName] = useState(''),
-    [description, setDescription] = useState(''),
-    [aliases, setAliases] = useState(''),
+  const [name, setName] = useState(initial.name || ''),
+    [color, setColor] = useState(initial.color || COLORS[0]),
+    [description, setDescription] = useState(initial.description || ''),
+    [aliases, setAliases] = useState(initial.aliases?.join(', ') || ''),
     [error, setError] = useState('');
   return (
     <form
       className="editor-form"
       onSubmit={(e) => {
         e.preventDefault();
+        setError('');
         void onSave({
           name,
+          color,
           description,
           aliases: aliases
             .split(',')
@@ -1286,6 +1339,17 @@ function ProjectForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
+      </Field>
+      <Field label="Project color">
+        <span className="project-color-field">
+          <Input
+            type="color"
+            className="project-color-input"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+          />
+          <span>{color.toUpperCase()}</span>
+        </span>
       </Field>
       <Field label="What belongs here?">
         <Textarea
@@ -1305,9 +1369,20 @@ function ProjectForm({
           {error}
         </p>
       )}
-      <Button type="submit" disabled={saving || !name.trim()}>
-        Create project
-      </Button>
+      <div className="project-form-actions">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving || !name.trim()}>
+          {saving && <Loader2 className="spin" />}
+          {initial.id ? 'Save changes' : 'Create project'}
+        </Button>
+      </div>
     </form>
   );
 }

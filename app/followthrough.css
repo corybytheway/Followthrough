@@ -261,10 +261,44 @@ p {
 }
 .project-card {
   text-align: left;
-  cursor: pointer;
   transition:
     border-color 0.16s,
     transform 0.16s;
+}
+.project-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.project-open {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.project-card .project-edit svg {
+  margin: 0;
+  color: inherit;
+}
+.project-color-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+.project-color-field .project-color-input {
+  width: 64px;
+  height: 44px;
+  padding: 4px;
+  cursor: pointer;
+}
+.project-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 .project-card:hover {
   border-color: #a5b8de;

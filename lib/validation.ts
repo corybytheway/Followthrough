@@ -189,7 +189,10 @@ export function projectInput(
   existing?: Project,
 ): Project {
   const v = object(input),
-    name = text(v.name, 'Project name', 100, true);
+    name =
+      v.name === undefined && existing
+        ? existing.name
+        : text(v.name, 'Project name', 100, true);
   if (
     w.projects.some(
       (p) =>
@@ -200,6 +203,12 @@ export function projectInput(
   const aliases = v.aliases === undefined ? existing?.aliases || [] : v.aliases;
   if (!Array.isArray(aliases) || aliases.length > 20)
     throw new InputError('Use up to 20 project aliases.');
+  const color =
+    v.color === undefined
+      ? existing?.color || COLORS[w.projects.length % COLORS.length]
+      : text(v.color, 'Project color', 7, true).toLowerCase();
+  if (!/^#[0-9a-f]{6}$/.test(color))
+    throw new InputError('Choose a project color in the format #4266d5.');
   return {
     id: existing?.id || crypto.randomUUID(),
     name,
@@ -208,7 +217,7 @@ export function projectInput(
         ? existing?.description || ''
         : text(v.description, 'Project description', 2000),
     aliases: aliases.map((a) => text(a, 'Alias', 100, true)),
-    color: existing?.color || COLORS[w.projects.length % COLORS.length],
+    color,
   };
 }
 export function settingsInput(input: unknown, existing: Settings): Settings {
