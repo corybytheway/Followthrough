@@ -490,7 +490,9 @@ export default function FollowthroughApp() {
           Followthrough
         </Link>
         <span className="private-label">
-          {saving ? 'Saving…' : 'Your personal planner'}
+          {saving
+            ? 'Saving…'
+            : 'The project manager that makes you follow through'}
         </span>
       </header>
       {error && (
@@ -896,7 +898,6 @@ export default function FollowthroughApp() {
           <TabsContent value="settings">
             <div className="page-heading">
               <div>
-                <p className="eyebrow">A plan that fits your life</p>
                 <h1>Make room for your work.</h1>
               </div>
             </div>

@@ -181,6 +181,13 @@ body {
   color: var(--subtle);
   font-size: 14px;
 }
+.private-label {
+  margin-left: 24px;
+  text-align: right;
+}
+.calendar-account {
+  overflow-wrap: anywhere;
+}
 .workspace-tabs {
   gap: 0;
 }

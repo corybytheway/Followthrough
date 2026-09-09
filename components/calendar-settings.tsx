@@ -86,6 +86,9 @@ export default function CalendarSettings() {
     !!status &&
     (JSON.stringify(selectedGoogle) !== JSON.stringify(status.selectedGoogle) ||
       JSON.stringify(selectedIcloud) !== JSON.stringify(status.selectedIcloud));
+  const googleAccount = status?.googleConnected
+    ? status.googleCalendars.find((calendar) => calendar.primary)?.id
+    : undefined;
   return (
     <section
       className="settings-card calendar-connections"
@@ -395,6 +398,12 @@ export default function CalendarSettings() {
                     <fieldset key={provider}>
                       <legend>
                         {provider === 'google' ? 'Google' : 'iCloud'}
+                        {provider === 'google' && googleAccount && (
+                          <span className="calendar-account">
+                            {' '}
+                            ({googleAccount})
+                          </span>
+                        )}
                       </legend>
                       {choices.map((calendar) => (
                         <label className="calendar-option" key={calendar.id}>
