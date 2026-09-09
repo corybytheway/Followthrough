@@ -374,6 +374,10 @@ export default function FollowthroughApp() {
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
+  if (statusFilter === 'all') {
+    const statusOrder = { ready: 0, waiting: 0, done: 1, archived: 2 };
+    visible.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
+  }
   const taskById = new Map(state.tasks.map((t) => [t.id, t]));
   const selected = editing
     ? state.tasks.find((t) => t.id === editing)
