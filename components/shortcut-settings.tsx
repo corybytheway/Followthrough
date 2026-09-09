@@ -72,7 +72,11 @@ export default function ShortcutSettings() {
         Talk or type a request. The shortcut saves it directly and confirms when
         it is saved.
       </p>
-      <p>Until AI capture is connected, requests go into Inbox for planning.</p>
+      <p>
+        Requests become Ready and are planned automatically, even without a
+        deadline. Until AI capture is connected, the planner uses a temporary
+        30-minute estimate.
+      </p>
       <h3>Connect your shortcut</h3>
       <ol>
         <li>
@@ -104,8 +108,8 @@ export default function ShortcutSettings() {
       </Button>
       {connected && !connection && (
         <p>
-          Already saving tasks? Keep your installed shortcut. Replacing this code
-          disconnects it until you update its first Text action.
+          Already saving tasks? Keep your installed shortcut. Replacing this
+          code disconnects it until you update its first Text action.
         </p>
       )}
       {connection && (

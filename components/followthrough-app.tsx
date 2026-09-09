@@ -358,7 +358,7 @@ export default function FollowthroughApp() {
     }
   }
   const active = state.tasks.filter((t) =>
-    ['inbox', 'ready', 'waiting'].includes(t.status),
+    ['ready', 'waiting'].includes(t.status),
   );
   const visible = state.tasks.filter(
     (t) =>
@@ -366,7 +366,7 @@ export default function FollowthroughApp() {
         ? !!t.deletedAt
         : !t.deletedAt &&
           (statusFilter === 'active'
-            ? ['inbox', 'ready', 'waiting'].includes(t.status)
+            ? ['ready', 'waiting'].includes(t.status)
             : t.status === statusFilter)) &&
       (projectFilter === 'all' || t.projectId === projectFilter) &&
       (t.title + ' ' + t.notes + ' ' + t.steps.map((s) => s.title).join(' '))
@@ -411,6 +411,7 @@ export default function FollowthroughApp() {
         (w) =>
           w.taskId === task.id && ['deadline', 'capacity'].includes(w.reason),
       );
+    const planned = state.blocks.find((block) => block.taskId === task.id);
     return (
       <div
         className={'task-row ' + (task.status === 'done' ? 'completed' : '')}
@@ -443,9 +444,9 @@ export default function FollowthroughApp() {
               <span style={{ color: project.color }}>{project.name}</span>
             )}
             <span>
-              {task.status === 'inbox'
-                ? 'Needs planning'
-                : minutesLabel(task.remainingMinutes)}
+              {task.estimateProvisional ? '~' : ''}
+              {minutesLabel(task.remainingMinutes)}
+              {task.estimateProvisional ? ' · temporary estimate' : ''}
             </span>
             {task.steps.length > 0 && (
               <span>
@@ -454,6 +455,13 @@ export default function FollowthroughApp() {
               </span>
             )}
             {task.dueDate && <span>Due {dayLabel(task.dueDate)}</span>}
+            {planned && (
+              <span>
+                Planned{' '}
+                {dayLabel(localDay(planned.start, state.settings.timeZone))} ·{' '}
+                {time(planned.start)}
+              </span>
+            )}
             {blocked && (
               <span className="pill">
                 <Link2 size={11} />
@@ -461,7 +469,7 @@ export default function FollowthroughApp() {
               </span>
             )}
             {task.status === 'waiting' && <span className="pill">On hold</span>}
-            {task.status === 'inbox' && <span className="pill">Inbox</span>}
+
             {task.priority === 'high' && (
               <span className="urgent">High priority</span>
             )}
@@ -806,7 +814,6 @@ export default function FollowthroughApp() {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="active">Active</option>
-                <option value="inbox">Inbox</option>
                 <option value="done">Completed</option>
                 <option value="archived">Archived</option>
                 <option value="trash">Trash</option>
@@ -1125,7 +1132,7 @@ function TaskEditor({
           <Check /> {status === 'done' ? 'Reopen task' : 'Mark complete'}
         </Button>
       )}
-      {((initial.captureMode === 'basic' && status === 'inbox') ||
+      {((initial.captureMode === 'basic' && initial.estimateProvisional) ||
         initial.rationale) && (
         <div className="draft-note">
           <strong>
@@ -1152,7 +1159,7 @@ function TaskEditor({
           value={projectId}
           onChange={(e) => setProjectId(e.target.value)}
         >
-          <option value="">Inbox · no project</option>
+          <option value="">No project</option>
           {state.projects.map((p) => (
             <option value={p.id} key={p.id}>
               {p.name}
@@ -1161,7 +1168,14 @@ function TaskEditor({
         </NativeSelect>
       </Field>
       <div className="field-row">
-        <Field label="Estimated minutes">
+        <Field
+          label="Estimated minutes"
+          hint={
+            initial.estimateProvisional
+              ? 'Temporary estimate. Saving confirms this duration.'
+              : undefined
+          }
+        >
           <Input
             type="number"
             min={1}
@@ -1201,7 +1215,6 @@ function TaskEditor({
             value={status}
             onChange={(e) => setStatus(e.target.value as Task['status'])}
           >
-            <option value="inbox">Inbox — needs planning</option>
             <option value="ready">Ready</option>
             <option value="waiting">On hold</option>
             <option value="done">Complete</option>
@@ -1210,7 +1223,10 @@ function TaskEditor({
         </Field>
       </div>
       <div className="field-row">
-        <Field label="Deadline (optional)">
+        <Field
+          label="Deadline (optional)"
+          hint="Leave empty for automatic planning. Planned times can move; a deadline is a commitment."
+        >
           <Input
             type="date"
             value={due}
@@ -1689,9 +1705,10 @@ function SettingsPanel({
           <h2>Automatic replanning</h2>
           <span className="status-label">Active while the app is open</span>
           <p>
-            Unfinished tasks move into future work hours. Background calendar
-            updates while the app is closed still need a connected calendar
-            service.
+            Ready tasks get available time around your calendars, deadlines,
+            priorities, and prerequisites. No deadline is required. Unfinished
+            tasks move into future work hours. Background calendar updates while
+            the app is closed still need a connected calendar service.
           </p>
           <Link
             download

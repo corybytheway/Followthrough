@@ -3,11 +3,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   captureRequest,
-  inboxCapture,
+  fallbackCapture,
   prepareShortcutCapture,
   tokenHash,
 } from '../lib/shortcut-capture';
-import { initialWorkspace } from '../lib/model';
+import { initialWorkspace, type Task } from '../lib/model';
 import { normalizeCaptureStatus } from '../lib/capture-status';
 import { applyAction } from '../lib/actions';
 import { plan } from '../lib/scheduler';
@@ -22,25 +22,66 @@ void test('capture endpoint accepts only text and a retry identifier', () => {
   assert.throws(() => captureRequest({ ...valid, source: ' ' }));
   assert.throws(() => captureRequest({ ...valid, requestId: 'short' }));
 });
-void test('inbox capture retains one outcome and is not scheduled using a placeholder estimate', () => {
+void test('retired Inbox records become Ready without altering holds, deadlines, or original input', () => {
   const w = initialWorkspace();
-  const source =
-    'Fix the HP Studios booking button, check mobile, and publish Friday';
+  const task = applyAction(w, {
+    action: 'create_task',
+    task: { title: 'Fix a task', source: 'Exact input', dueDate: '2026-10-01' },
+  }).workspace.tasks[0];
+  const legacy = { ...task, status: 'inbox' } as unknown as Task;
+  const migrated = normalizeCaptureStatus(legacy);
+  assert.equal(migrated.status, 'ready');
+  assert.equal(migrated.estimateProvisional, true);
+  assert.equal(migrated.source, 'Exact input');
+  assert.equal(migrated.dueDate, '2026-10-01');
+  const held = { ...task, status: 'waiting' as const };
+  assert.deepEqual(normalizeCaptureStatus(held), held);
+  const trashed = {
+    ...task,
+    status: 'archived',
+    deletedAt: '2026-09-01',
+    statusBeforeDelete: 'inbox',
+  } as unknown as Task;
+  const restored = applyAction(
+    { ...w, tasks: [normalizeCaptureStatus(trashed)] },
+    { action: 'restore_task', id: task.id },
+  ).workspace.tasks[0];
+  assert.equal(restored.status, 'ready');
+});
+void test('confirming the duration clears its temporary label', () => {
+  const captured = applyAction(initialWorkspace(), {
+    action: 'create_task',
+    task: fallbackCapture('Fix something', initialWorkspace()),
+  }).workspace;
+  assert.equal(captured.tasks[0].estimateProvisional, true);
+  const edited = applyAction(captured, {
+    action: 'update_task',
+    id: captured.tasks[0].id,
+    task: { estimateMinutes: 45 },
+  }).workspace.tasks[0];
+  assert.equal(edited.estimateProvisional, false);
+  assert.equal(edited.estimateMinutes, 45);
+});
+void test('undated capture becomes Ready and is scheduled without inventing a deadline', () => {
+  const w = initialWorkspace();
+  const source = 'Fix the HP Studios booking button and check mobile';
   const captured = applyAction(w, {
     action: 'capture_task',
     captureId: 'capture_' + 'a'.repeat(64),
-    task: inboxCapture(source, w),
+    task: fallbackCapture(source, w),
   });
   assert.equal(captured.workspace.tasks.length, 1);
   assert.equal(captured.workspace.tasks[0].source, source);
   assert.equal(captured.workspace.tasks[0].projectId, 'project-4');
-  assert.equal(captured.workspace.tasks[0].status, 'inbox');
+  assert.equal(captured.workspace.tasks[0].status, 'ready');
   assert.notEqual(captured.workspace.tasks[0].title, source);
   assert.equal(
     captured.workspace.tasks[0].title,
     'Review captured request for HP Studios',
   );
-  assert.equal(plan(captured.workspace).blocks.length, 0);
+  assert.equal(captured.workspace.tasks[0].dueDate, null);
+  assert.equal(captured.workspace.tasks[0].estimateProvisional, true);
+  assert.ok(plan(captured.workspace).blocks.length > 0);
 });
 
 void test('model title and checklist are saved while original input stays verbatim', async (t) => {
@@ -105,10 +146,10 @@ void test('missing AI connection keeps the request without using it as the title
   assert.equal(fetchMock.mock.callCount(), 0);
   assert.equal(draft.title, 'Review captured request');
   assert.equal(draft.source, source);
-  assert.equal(draft.status, 'inbox');
+  assert.equal(draft.status, 'ready');
   assert.equal(draft.notes, '');
   assert.equal(draft.captureMode, 'basic');
-  assert.match(draft.rationale, /without an AI-generated plan/);
+  assert.match(draft.rationale, /without AI planning/);
 });
 
 void test('legacy capture notices move out of notes without changing user text or task content', () => {
@@ -131,7 +172,7 @@ void test('legacy capture notices move out of notes without changing user text o
   assert.deepEqual(normalizeCaptureStatus(edited), edited);
 });
 
-void test('failed or unusable model responses preserve the request in Inbox', async (t) => {
+void test('failed or unusable model responses preserve the request and keep it schedulable', async (t) => {
   const workspace = initialWorkspace();
   const source = 'Can you remind me to send the revised invoice?';
   for (const response of [
@@ -162,7 +203,7 @@ void test('failed or unusable model responses preserve the request in Inbox', as
     const draft = await prepareShortcutCapture(source, workspace, 'test-key');
     assert.equal(draft.source, source);
     assert.equal(draft.title, 'Review captured request');
-    assert.equal(draft.status, 'inbox');
+    assert.equal(draft.status, 'ready');
     mock.mock.restore();
   }
 });
@@ -172,14 +213,14 @@ void test('a retry cannot duplicate or overwrite a captured task after the reque
   const action = {
     action: 'capture_task',
     captureId,
-    task: inboxCapture('Original request', w),
+    task: fallbackCapture('Original request', w),
   };
   const first = applyAction(w, action).workspace;
   first.recentRequests = [];
   first.tasks[0].title = 'Reviewed title';
   const retry = applyAction(first, {
     ...action,
-    task: inboxCapture('A changed request', w),
+    task: fallbackCapture('A changed request', w),
   });
   assert.equal(retry.workspace.tasks.length, 1);
   assert.equal(retry.workspace.tasks[0].title, 'Reviewed title');

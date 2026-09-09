@@ -62,8 +62,8 @@ export async function POST(request: Request) {
     if (!task) throw new Error('Capture result missing.');
     const message = duplicate
       ? 'Already saved to Followthrough. No duplicate created.'
-      : task.status === 'inbox'
-        ? 'Saved to Followthrough Inbox without AI planning. Review the placeholder title and estimate.'
+      : task.estimateProvisional
+        ? 'Saved to Followthrough as Ready. Automatic planning will use a temporary 30-minute estimate.'
         : `Saved to Followthrough: ${task.title}`;
     return Response.json(
       { ok: true, message, taskId: task.id },

@@ -18,7 +18,7 @@ A private personal planner built with React, vinext, shadcn, and Cloudflare D1 o
 - Authenticated stateless Streamable HTTP MCP endpoint at /mcp.
 - Authenticated JSON backup and calendar snapshot downloads.
 - Direct Talk or Type capture from a signed Apple Shortcut, with a server-confirmed save and no browser opening. One-time pairing in Settings creates a revocable, create-only connection.
-- Uninterpreted captures are saved to Inbox and excluded from the schedule until planned. AI-enabled captures become ready tasks; AI failure preserves the request in Inbox.
+- Captures become Ready and are scheduled automatically without requiring a deadline. Without an AI-generated plan, a labeled temporary 30-minute estimate reserves time. User-entered deadlines remain separate from flexible planned calendar times.
 - Durable capture identifiers prevent duplicate requests even after the ordinary request cache expires. The old URL capture path remains supported.
 
 ## Remaining before replacing Motion
@@ -43,7 +43,7 @@ Configure OPENAI_API_KEY as a Sites runtime secret and optionally OPENAI_MODEL (
 
 ## Validation
 
-- `python3 scripts/verify-shortcut-local.py`: authentication, direct durable saves, no workspace-reading permission for the capture key, Inbox behavior, Unicode, duplicate/concurrent retries, invalid actions, key rotation, rate limiting, and revocation. Test records are removed from local D1.
+- `python3 scripts/verify-shortcut-local.py`: authentication, direct durable saves, no workspace-reading permission for the capture key, automatic planning, Unicode, duplicate/concurrent retries, invalid actions, key rotation, rate limiting, and revocation. Test records are removed from local D1.
 
 - npm test: domain and provider-contract checks covering task granularity, conflicts, deadlines, priority, missed sessions, preserved current sessions, prerequisites, cycles, time zones/DST, breaks, unschedulable work, progress, invalid input, basic capture, and tool semantics.
 - npm exec tsx -- scripts/verify-local.ts: local-only HTTP checks for authentication, durable state, idempotency, stale revisions, stale task edits, origin checks, invalid input, dependency release, checklist completion, MCP listing, and exports.

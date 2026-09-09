@@ -25,10 +25,10 @@ export function captureRequest(raw: unknown) {
     throw new InputError('Provide a unique request ID.');
   return { source, requestId };
 }
-export function inboxCapture(source: string, workspace: Workspace) {
+export function fallbackCapture(source: string, workspace: Workspace) {
   return {
     ...basicDraft(source, workspace),
-    status: 'inbox',
+    status: 'ready',
   };
 }
 
@@ -50,5 +50,5 @@ export async function prepareShortcutCapture(
       // A model outage must not lose a spoken request or masquerade as AI naming.
     }
   }
-  return inboxCapture(source, workspace);
+  return fallbackCapture(source, workspace);
 }

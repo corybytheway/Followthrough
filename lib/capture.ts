@@ -54,6 +54,8 @@ export function basicDraft(source: string, w: Workspace) {
     projectId: project?.id || null,
     steps: [],
     estimateMinutes: 30,
+    estimateProvisional: true,
+    status: 'ready',
     priority: 'medium',
     dueDate: null,
     notBefore: null,

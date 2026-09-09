@@ -33,7 +33,7 @@ try:
     status,result=http('/api/shortcuts/capture',body,key=key)
     assert status==200 and result['ok'] is True,(status,result)
     created_ids.add(result['taskId'])
-    assert result['message'].startswith('Saved to Followthrough Inbox:')
+    assert result['message'].startswith('Saved to Followthrough as Ready.')
     status,retry=http('/api/shortcuts/capture',{**body,'source':'Changed retry text'},key=key)
     assert status==200 and retry['taskId']==result['taskId']
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
@@ -43,15 +43,15 @@ try:
     assert http('/api/shortcuts/capture',{**body,'source':' '},key=key)[0]==400
     state=http('/api/workspace',owner=True)[1]
     tasks=[t for t in state['tasks'] if t['id'] in created_ids]
-    assert len(tasks)==1 and tasks[0]['source']==source and tasks[0]['status']=='inbox'
-    assert not any(b['taskId'] in created_ids for b in state['blocks'])
+    assert len(tasks)==1 and tasks[0]['source']==source and tasks[0]['status']=='ready'
+    assert any(b['taskId'] in created_ids for b in state['blocks'])
     new=json.loads(http('/api/shortcuts/connection',{'action':'connect'},owner=True)[1]['connection'])['capture']
     assert http('/api/shortcuts/capture',key=key)[0]==401
     for _ in range(20): assert http('/api/shortcuts/capture',key=new)[0]==200
     assert http('/api/shortcuts/capture',key=new)[0]==429
     assert http('/api/shortcuts/connection',{'action':'disconnect'},owner=True)[0]==200
     assert http('/api/shortcuts/capture',key=new)[0]==401
-    print('PASS: authenticated save/readback, Inbox, unicode, no workspace access, duplicate and parallel retries, rejected actions, rotation, rate limiting, and revocation.')
+    print('PASS: authenticated save/readback, automatic planning, unicode, no workspace access, duplicate and parallel retries, rejected actions, rotation, rate limiting, and revocation.')
 finally:
     http('/api/shortcuts/connection',{'action':'disconnect'},owner=True)
     state=http('/api/workspace',owner=True)[1]

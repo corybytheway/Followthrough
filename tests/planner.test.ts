@@ -246,7 +246,7 @@ void test('deleting and restoring a task preserves its content and original stat
     action: 'restore_task',
     id: original.id,
   }).workspace.tasks[0];
-  assert.equal(restored.status, 'inbox');
+  assert.equal(restored.status, 'ready');
   assert.equal(restored.deletedAt, undefined);
   assert.equal(restored.notes, original.notes);
   assert.equal(restored.source, original.source);

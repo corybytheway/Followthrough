@@ -18,9 +18,10 @@ export type Task = {
   source: string;
   steps: Step[];
   estimateMinutes: number;
+  estimateProvisional?: boolean;
   remainingMinutes: number;
   priority: 'high' | 'medium' | 'low';
-  status: 'inbox' | 'ready' | 'waiting' | 'done' | 'archived';
+  status: 'ready' | 'waiting' | 'done' | 'archived';
   dueDate: string | null;
   notBefore: string | null;
   blockers: string[];

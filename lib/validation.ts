@@ -125,6 +125,12 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
       60000,
     );
     if (!existing) t.remainingMinutes = t.estimateMinutes;
+    t.estimateProvisional = false;
+  }
+  if (v.estimateProvisional !== undefined) {
+    if (typeof v.estimateProvisional !== 'boolean')
+      throw new InputError('Temporary estimate must be true or false.');
+    t.estimateProvisional = v.estimateProvisional;
   }
   if (v.remainingMinutes !== undefined)
     t.remainingMinutes = integer(
@@ -145,7 +151,8 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
       )
     )
       throw new InputError('Choose a valid task status.');
-    t.status = v.status as Task['status'];
+    // Older clients can still submit the retired Inbox value.
+    t.status = v.status === 'inbox' ? 'ready' : (v.status as Task['status']);
     t.completedAt = t.status === 'done' ? existing?.completedAt || now : null;
   }
   if (v.dueDate !== undefined) t.dueDate = date(v.dueDate, 'Due date');

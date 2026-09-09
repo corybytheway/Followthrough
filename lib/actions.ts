@@ -36,7 +36,7 @@ export function applyAction(
       const task = w.tasks.find((t) => t.id === v.id);
       if (!task) throw new InputError('Task not found.');
       if (task.deletedAt) {
-        task.status = task.statusBeforeDelete || 'inbox';
+        task.status = task.statusBeforeDelete || 'ready';
         delete task.deletedAt;
         delete task.statusBeforeDelete;
         task.updatedAt = now;
