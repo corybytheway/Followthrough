@@ -7,6 +7,7 @@ import {
   type BusyEvent,
 } from './model';
 import { calendarFlags } from './calendar-store';
+import { normalizeCaptureStatus } from './capture-status';
 import { plan, localDay } from './scheduler';
 import { applyAction } from './actions';
 import { InputError, object, text } from './validation';
@@ -25,9 +26,10 @@ export async function readWorkspace(
   )
     .bind(ownerId)
     .first<Row>();
-  return row
-    ? { workspace: JSON.parse(row.document), revision: row.revision }
-    : { workspace: initialWorkspace(), revision: 0 };
+  if (!row) return { workspace: initialWorkspace(), revision: 0 };
+  const workspace: Workspace = JSON.parse(row.document);
+  workspace.tasks = workspace.tasks.map(normalizeCaptureStatus);
+  return { workspace, revision: row.revision };
 }
 export async function snapshot(ownerId: string): Promise<Snapshot> {
   const { workspace, revision } = await readWorkspace(ownerId),

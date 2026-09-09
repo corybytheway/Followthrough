@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     const message = duplicate
       ? 'Already saved to Followthrough. No duplicate created.'
       : task.status === 'inbox'
-        ? 'Saved your original input to Followthrough Inbox. AI naming is unavailable; review the captured request.'
+        ? 'Saved to Followthrough Inbox without AI planning. Review the placeholder title and estimate.'
         : `Saved to Followthrough: ${task.title}`;
     return Response.json(
       { ok: true, message, taskId: task.id },

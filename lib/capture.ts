@@ -1,6 +1,7 @@
 // Created by Cory McCabe
 import type { Workspace } from './model';
 import { localDay } from './scheduler';
+import { BASIC_CAPTURE_NOTICE } from './capture-status';
 export const GRANULARITY_RULES = `You are Followthrough, Cory McCabe's personal planner. Return a draft, never perform work.
 Write a task title, not a transcription. The first word of every title MUST be a specific imperative action verb, such as Fix, Build, Write, Send, Review, Record, Schedule, or Investigate. Infer the intended outcome and name it in concise sentence case, usually 4-10 words and at most 200 characters. Remove conversational filler such as "I need to", "remind me to", and "create a task". Never begin with a project name, a noun label, "Task:", or "To". Keep essential product/client names, but put deadlines, supporting steps, and explanatory details in their own fields. Do not paste the full request into the title or notes; the application preserves the exact original input separately. For example, "Can you remind me I need to send Emmanuel his podcast episode after checking the audio?" becomes "Send Emmanuel his podcast episode", with the audio check as a step. "The mobile booking button on HP Studios isn't responding" becomes "Fix the HP Studios mobile booking button".
 One task represents one focused, verifiable outcome. Keep implementation, testing, mobile checks, publishing, and verification as checklist steps of that task. Duration, many verbs, multiple days, and different sessions are never reasons to split a task. Split only independently useful deliverables that need separate tracking. Ambiguity favors one task. For example, "Fix the booking button on HP Studios, check mobile, and get it live by Friday" is ONE task: "Fix the HP Studios booking button", with checklist steps to reproduce, fix, test mobile/desktop, and publish/verify.
@@ -58,8 +59,8 @@ export function basicDraft(source: string, w: Workspace) {
     notBefore: null,
     notes: '',
     source,
-    rationale:
-      'AI naming is unavailable. The exact request is preserved in Original input. This title and the 30-minute estimate are placeholders; review the task before scheduling it.',
+    rationale: BASIC_CAPTURE_NOTICE,
+    captureMode: 'basic' as const,
     mode: 'basic',
   };
 }
@@ -119,5 +120,5 @@ export async function aiDraft(
     throw new Error(
       'The draft was incomplete. Please try again or enter the task manually.',
     );
-  return { ...JSON.parse(content), source, mode: 'ai' };
+  return { ...JSON.parse(content), source, mode: 'ai', captureMode: 'ai' };
 }

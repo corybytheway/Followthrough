@@ -29,9 +29,9 @@ import {
   Download,
   Search,
   MessageSquare,
-  Pencil,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { BASIC_CAPTURE_NOTICE } from '@/lib/capture-status';
 import {
   Sheet,
   SheetContent,
@@ -529,13 +529,13 @@ export default function FollowthroughApp() {
               <CalendarDays />
               Today
             </TabsTrigger>
-            <TabsTrigger value="tasks">
-              <ListTodo />
-              Tasks
-            </TabsTrigger>
             <TabsTrigger value="projects">
               <FolderOpen />
               Projects
+            </TabsTrigger>
+            <TabsTrigger value="tasks">
+              <ListTodo />
+              Tasks
             </TabsTrigger>
             <TabsTrigger value="settings">
               <Settings2 />
@@ -754,7 +754,6 @@ export default function FollowthroughApp() {
           <TabsContent value="tasks">
             <div className="page-heading">
               <div>
-                <p className="eyebrow">Every outcome, in one place</p>
                 <h1>Your tasks.</h1>
               </div>
               <Button
@@ -854,7 +853,6 @@ export default function FollowthroughApp() {
                         setProjectDialog(true);
                       }}
                     >
-                      <Pencil size={16} />
                       Edit
                     </Button>
                   </div>
@@ -1046,6 +1044,7 @@ function TaskEditor({
           projectId: projectId || null,
           notes,
           source: initial.source || '',
+          captureMode: initial.captureMode,
           steps,
           estimateMinutes: estimate,
           remainingMinutes: remaining,
@@ -1065,12 +1064,17 @@ function TaskEditor({
   }
   return (
     <form className="editor-form" onSubmit={(e) => void submit(e)}>
-      {initial.rationale && (
+      {((initial.captureMode === 'basic' && status === 'inbox') ||
+        initial.rationale) && (
         <div className="draft-note">
           <strong>
-            {initial.mode === 'ai' ? 'Suggested plan' : 'Basic draft'}
+            {initial.captureMode === 'ai' ? 'Suggested plan' : 'Basic capture'}
           </strong>
-          <p>{initial.rationale}</p>
+          <p>
+            {initial.captureMode === 'basic'
+              ? BASIC_CAPTURE_NOTICE
+              : initial.rationale}
+          </p>
         </div>
       )}
       <Field label="Task name">
@@ -1312,7 +1316,6 @@ function ProjectForm({
 }) {
   const [name, setName] = useState(initial.name || ''),
     [color, setColor] = useState(initial.color || COLORS[0]),
-    [description, setDescription] = useState(initial.description || ''),
     [aliases, setAliases] = useState(initial.aliases?.join(', ') || ''),
     [error, setError] = useState('');
   return (
@@ -1324,7 +1327,6 @@ function ProjectForm({
         void onSave({
           name,
           color,
-          description,
           aliases: aliases
             .split(',')
             .map((s) => s.trim())
@@ -1350,13 +1352,6 @@ function ProjectForm({
           />
           <span>{color.toUpperCase()}</span>
         </span>
-      </Field>
-      <Field label="What belongs here?">
-        <Textarea
-          value={description}
-          maxLength={2000}
-          onChange={(e) => setDescription(e.target.value)}
-        />
       </Field>
       <Field
         label="Other names"

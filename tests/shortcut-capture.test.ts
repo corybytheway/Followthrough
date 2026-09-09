@@ -8,6 +8,7 @@ import {
   tokenHash,
 } from '../lib/shortcut-capture';
 import { initialWorkspace } from '../lib/model';
+import { normalizeCaptureStatus } from '../lib/capture-status';
 import { applyAction } from '../lib/actions';
 import { plan } from '../lib/scheduler';
 
@@ -92,6 +93,7 @@ void test('model title and checklist are saved while original input stays verbat
   assert.equal(saved[0].source, source);
   assert.equal(saved[0].steps.length, 2);
   assert.equal(saved[0].status, 'ready');
+  assert.equal(saved[0].captureMode, 'ai');
 });
 
 void test('missing AI connection keeps the request without using it as the title', async (t) => {
@@ -104,7 +106,29 @@ void test('missing AI connection keeps the request without using it as the title
   assert.equal(draft.title, 'Review captured request');
   assert.equal(draft.source, source);
   assert.equal(draft.status, 'inbox');
-  assert.match(draft.notes, /AI naming is unavailable/);
+  assert.equal(draft.notes, '');
+  assert.equal(draft.captureMode, 'basic');
+  assert.match(draft.rationale, /without an AI-generated plan/);
+});
+
+void test('legacy capture notices move out of notes without changing user text or task content', () => {
+  const task = applyAction(initialWorkspace(), {
+    action: 'create_task',
+    task: {
+      title: 'Review captured request',
+      source: 'My exact request',
+      status: 'inbox',
+      notes:
+        'AI naming is unavailable. Your exact words are preserved in Original input. Review the title, estimate, deadline, and checklist before setting this task to Ready. The 30-minute estimate is only a placeholder.',
+    },
+  }).workspace.tasks[0];
+  const normalized = normalizeCaptureStatus(task);
+  assert.equal(normalized.notes, '');
+  assert.equal(normalized.captureMode, 'basic');
+  assert.equal(normalized.source, task.source);
+  assert.equal(normalized.title, task.title);
+  const edited = { ...task, notes: task.notes + '\nMy own details.' };
+  assert.deepEqual(normalizeCaptureStatus(edited), edited);
 });
 
 void test('failed or unusable model responses preserve the request in Inbox', async (t) => {

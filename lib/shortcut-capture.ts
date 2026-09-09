@@ -29,8 +29,6 @@ export function inboxCapture(source: string, workspace: Workspace) {
   return {
     ...basicDraft(source, workspace),
     status: 'inbox',
-    notes:
-      'AI naming is unavailable. Your exact words are preserved in Original input. Review the title, estimate, deadline, and checklist before setting this task to Ready. The 30-minute estimate is only a placeholder.',
   };
 }
 

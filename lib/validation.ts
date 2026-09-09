@@ -90,6 +90,11 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
     t.projectId = v.projectId as string | null;
   }
   if (v.notes !== undefined) t.notes = text(v.notes, 'notes', 10000);
+  if (v.captureMode !== undefined) {
+    if (v.captureMode !== 'basic' && v.captureMode !== 'ai')
+      throw new InputError('Choose a valid capture mode.');
+    t.captureMode = v.captureMode;
+  }
   if (v.source !== undefined) {
     text(v.source, 'Original input', 10000);
     // Validate without changing the user's exact transcription or formatting.

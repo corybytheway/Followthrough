@@ -8,6 +8,7 @@ export type Project = {
   color: string;
 };
 export type Task = {
+  captureMode?: 'basic' | 'ai';
   id: string;
   title: string;
   projectId: string | null;
