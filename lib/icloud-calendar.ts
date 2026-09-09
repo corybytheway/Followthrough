@@ -57,6 +57,7 @@ export async function icloudCalendars(
 }
 // Floating times and all-day events use the configured calendar/workspace zone,
 // never the timezone of the Worker host. Absolute/embedded VTIMEZONE values use ICAL.
+// IANA TZIDs without an embedded definition are resolved by the runtime's Intl data.
 export function calendarInstant(value: ICAL.Time, timeZone: string): number {
   if (!value.isDate && value.zone.tzid !== 'floating')
     return value.toUnixTime() * 1000;
@@ -69,16 +70,23 @@ export function calendarInstant(value: ICAL.Time, timeZone: string): number {
     value.second,
   );
   let result = target;
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  });
+  let formatter: Intl.DateTimeFormat;
+  try {
+    formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    });
+  } catch {
+    throw new InputError(
+      'An iCloud event uses an unrecognized time zone. Sync stopped.',
+    );
+  }
   for (let i = 0; i < 4; i++) {
     const p = formatter.formatToParts(result),
       get = (key: string) => Number(p.find((v) => v.type === key)!.value);
@@ -124,16 +132,19 @@ export async function expandedIcloudBusy(
     const event = new ICAL.Event(component);
     if (!component.hasProperty('dtstart'))
       throw new InputError('An iCloud event has no start time. Sync stopped.');
-    for (const name of ['dtstart', 'dtend']) {
-      const property = component.getFirstProperty(name);
-      const value = property?.getFirstValue() as ICAL.Time | undefined;
-      if (property?.getParameter('tzid') && value?.zone.tzid === 'floating')
-        throw new InputError(
-          'An iCloud event uses an unrecognized time zone. Sync stopped.',
-        );
-    }
-    const from = calendarInstant(event.startDate, timeZone),
-      to = calendarInstant(event.endDate, timeZone);
+    const instant = (value: ICAL.Time, property: ICAL.Property | null) => {
+      const tzid = property?.getParameter('tzid');
+      return calendarInstant(
+        value,
+        !value.isDate && typeof tzid === 'string' ? tzid : timeZone,
+      );
+    };
+    const startProperty = component.getFirstProperty('dtstart');
+    const from = instant(event.startDate, startProperty),
+      to = instant(
+        event.endDate,
+        component.getFirstProperty('dtend') || startProperty,
+      );
     if (!Number.isFinite(from) || !Number.isFinite(to) || to < from)
       throw new InputError('iCloud returned an invalid event time.');
     if (to <= from || from >= Date.parse(end) || to <= Date.parse(start))

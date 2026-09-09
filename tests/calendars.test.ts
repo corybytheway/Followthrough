@@ -109,6 +109,58 @@ void test('expanded iCloud recurrence instances, all-day DST, transparent and ca
     /did not expand/,
   );
 });
+void test('iCloud resolves IANA time zones without embedded definitions across DST', async () => {
+  const data = calendar(
+    [
+      event(
+        'DTSTART;TZID=America/New_York:20261030T090000\r\nDTEND;TZID=America/New_York:20261030T100000',
+      ),
+      event(
+        'DTSTART;TZID=America/New_York:20261102T090000\r\nDTEND;TZID=America/New_York:20261102T100000',
+      ),
+      event(
+        'DTSTART;TZID=America/Los_Angeles:20261103T090000\r\nDURATION:PT45M',
+      ),
+    ].join('\r\n'),
+  );
+  const busy = await expandedIcloudBusy(
+    data,
+    'calendar',
+    '2026-10-30T00:00:00Z',
+    '2026-11-04T00:00:00Z',
+    'America/Chicago',
+  );
+  assert.deepEqual(
+    busy.map(({ start, end }) => [start, end]),
+    [
+      ['2026-10-30T13:00:00.000Z', '2026-10-30T14:00:00.000Z'],
+      ['2026-11-02T14:00:00.000Z', '2026-11-02T15:00:00.000Z'],
+      ['2026-11-03T17:00:00.000Z', '2026-11-03T17:45:00.000Z'],
+    ],
+  );
+});
+void test('iCloud honors an embedded custom timezone and rejects unresolved zones', async () => {
+  const zone =
+    'BEGIN:VTIMEZONE\r\nTZID:Custom/Studio\r\nBEGIN:STANDARD\r\nDTSTART:19700101T000000\r\nTZOFFSETFROM:-0600\r\nTZOFFSETTO:-0600\r\nEND:STANDARD\r\nEND:VTIMEZONE';
+  const properties =
+    'DTSTART;TZID=Custom/Studio:20260909T090000\r\nDTEND;TZID=Custom/Studio:20260909T100000';
+  const args = [
+    'calendar',
+    '2026-09-09T00:00:00Z',
+    '2026-09-10T00:00:00Z',
+    'America/New_York',
+  ] as const;
+  const busy = await expandedIcloudBusy(
+    calendar(zone + '\r\n' + event(properties)),
+    ...args,
+  );
+  assert.equal(busy[0].start, '2026-09-09T15:00:00.000Z');
+  assert.equal(busy[0].end, '2026-09-09T16:00:00.000Z');
+  await assert.rejects(
+    expandedIcloudBusy(calendar(event(properties)), ...args),
+    /unrecognized time zone/,
+  );
+});
 void test('Google availability fails closed if even one selected calendar fails', async (t) => {
   t.mock.method(globalThis, 'fetch', async () =>
     Response.json({
