@@ -4,10 +4,14 @@
 These are artifact checks, not a substitute for an actual iPhone import/run.
 """
 from pathlib import Path
+import argparse
 import plistlib
 import re
 
-source = Path(__file__).resolve().parents[1] / 'shortcuts/Followthrough Task.plist'
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('source', nargs='?', type=Path,
+                    default=Path(__file__).resolve().parents[1] / 'shortcuts/Followthrough Task.plist')
+source = parser.parse_args().source
 workflow = plistlib.loads(source.read_bytes())
 actions = workflow['WFWorkflowActions']
 assert workflow['WFWorkflowImportQuestions'] == [], 'Import must not ask for a connection code'
@@ -33,6 +37,19 @@ for index, action in enumerate(actions):
     assert identifier not in {'is.workflow.actions.openurl', 'is.workflow.actions.openin',
                               'is.workflow.actions.runjavascriptonwebpage'}
     p = action['WFWorkflowActionParameters']
+    if identifier == 'is.workflow.actions.conditional' and p.get('WFControlFlowMode') == 0:
+        condition_input = p.get('WFInput', {})
+        assert condition_input.get('Type') == 'Variable', f'Empty If input at action {index}: missing WFInputVariable wrapper'
+        attachment = condition_input.get('Variable', {})
+        assert attachment.get('WFSerializationType') == 'WFTextTokenAttachment'
+        assert attachment.get('Value', {}).get('Type') in {'ActionOutput', 'Variable', 'ExtensionInput'}
+        condition = p.get('WFCondition')
+        if condition in {4, 5, 8, 9, 99, 999}:
+            assert isinstance(p.get('WFConditionalActionString'), str), 'Missing comparison text'
+        elif condition in {100, 101}:
+            assert 'WFConditionalActionString' not in p and 'WFNumberValue' not in p
+        else:
+            raise AssertionError(f'Unverified condition code: {condition}')
     references(p)
     if 'UUID' in p:
         assert p['UUID'] not in seen, 'Duplicate action identity'
@@ -61,5 +78,8 @@ assert by_name['Save response'][1]['WFHTTPBodyType'] == 'JSON'
 assert by_name['Save response'][1]['WFHTTPMethod'] == 'POST'
 assert by_name['Capture request'][1]['WFHTTPMethod'] == 'GET'
 for name in ['Capture request', 'Save response']:
-    assert by_name[name][1]['WFInput'] == 'https://followthrough.corybytheway.chatgpt.site/api/shortcuts/capture'
-print('PASS: no import questions or browser actions; variables and branches resolve; connection is checked before storage; direct save remains intact.')
+    request = by_name[name][1]
+    assert 'WFInput' not in request, 'HTTP actions require WFURL, not WFInput'
+    assert request['WFURL']['WFSerializationType'] == 'WFTextTokenString'
+    assert request['WFURL']['Value']['string'] == 'https://followthrough.corybytheway.chatgpt.site/api/shortcuts/capture'
+print('PASS: all If inputs have the native variable wrapper and required parameters; no import questions or browser actions; variables and branches resolve; connection is checked before storage; direct save remains intact.')

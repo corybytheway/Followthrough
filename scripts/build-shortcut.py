@@ -51,6 +51,10 @@ def add(identifier, name=None, **parameters):
 
 
 def branch(name, mode, **parameters):
+    if mode == 0:
+        # If uses WFInputVariable, unlike actions that accept a bare token
+        # attachment. A bare attachment imports as an empty Condition chip.
+        parameters['WFInput'] = {'Type': 'Variable', 'Variable': parameters['WFInput']}
     add('conditional', name if mode == 2 else None,
         GroupingIdentifier=uid(name), WFControlFlowMode=mode, **parameters)
 
@@ -61,13 +65,13 @@ add('comment', WFCommentActionText=(
     'The code is checked before it is remembered in iCloud Drive/Shortcuts/Followthrough-connection.json. '
     'Keep that file private. Talk or Type then saves directly and shows the server confirmation. '
     'To reconnect, use Open shortcut to connect in Followthrough Settings. No browser-opening action.'))
+add('gettext', 'Launch mode', WFTextActionText=text({'Type': 'ExtensionInput'}))
 add('documentpicker.open', 'Saved connection file',
     WFGetFilePath=CACHE, WFFileErrorIfNotFound=False)
 add('gettext', 'Saved connection', WFTextActionText=text(output('Saved connection file')))
 # A non-secret input sent by the settings page requests reconnection. The Action
 # button supplies no input, so normal runs reuse the existing connection.
-branch('Connection to use', 0, WFInput={
-    'Value': {'Type': 'ExtensionInput'}, 'WFSerializationType': 'WFTextTokenAttachment'},
+branch('Connection to use', 0, WFInput=variable('Launch mode'),
     WFCondition=4, WFConditionalActionString='connect')
 add('nothing')
 branch('Connection to use', 1)
@@ -76,7 +80,7 @@ branch('Connection to use', 2)
 branch('Private connection', 0, WFInput=variable('Connection to use'), WFCondition=101)
 add('ask', 'Pasted connection', WFInputType='Text',
     WFAskActionPrompt='Connect Followthrough: paste the connection code you copied from Followthrough Settings. This is saved for future runs.',
-    WFAskActionDefaultAnswer='', WFAskActionAllowsMultilineText=True)
+    WFAskActionAllowsMultilineText=True)
 branch('Private connection', 1)
 add('gettext', 'Remembered connection', WFTextActionText=text(output('Connection to use')))
 branch('Private connection', 2)
@@ -87,7 +91,7 @@ headers = dictionary([
     ('OAI-Sites-Authorization', ['Bearer ', output('Site connection')]),
     ('X-Followthrough-Capture-Key', [output('Capture connection')]),
 ])
-add('downloadurl', 'Capture request', WFInput=BASE, WFHTTPMethod='GET', WFHTTPHeaders=headers)
+add('downloadurl', 'Capture request', WFURL=text(BASE), WFHTTPMethod='GET', WFHTTPHeaders=headers)
 add('getvalueforkey', 'Request ID', WFDictionaryKey='requestId', WFInput=variable('Capture request'))
 branch('Connection failed', 0, WFInput=variable('Request ID'), WFCondition=101)
 add('showresult', Text='Could not connect to Followthrough. Copy your current connection code from Settings and use Open shortcut to connect. No task was saved.')
@@ -99,20 +103,19 @@ branch('Remember connection', 0, WFInput=variable('Connection to use'), WFCondit
 add('documentpicker.save', 'Remembered connection file', WFInput=variable('Private connection'),
     WFAskWhereToSave=False, WFSaveFileOverwrite=True, WFFileDestinationPath=CACHE)
 branch('Remember connection', 2)
-branch('Connecting only', 0, WFInput={
-    'Value': {'Type': 'ExtensionInput'}, 'WFSerializationType': 'WFTextTokenAttachment'},
+branch('Connecting only', 0, WFInput=variable('Launch mode'),
     WFCondition=4, WFConditionalActionString='connect')
 add('showresult', Text='Followthrough is connected. Your Action button can now save tasks with Talk or Type.')
 add('exit')
 branch('Connecting only', 2)
-add('choosefrommenu', WFMenuPrompt='', WFControlFlowMode=0,
+add('choosefrommenu', WFMenuPrompt='Followthrough', WFControlFlowMode=0,
     WFMenuItems=['Talk', 'Type'], GroupingIdentifier=uid('Talk or Type'))
 add('choosefrommenu', WFControlFlowMode=1, WFMenuItemTitle='Talk', GroupingIdentifier=uid('Talk or Type'))
 add('dictatetext', 'Dictated task', WFDictateTextStopListening='On Tap')
 add('choosefrommenu', WFControlFlowMode=1, WFMenuItemTitle='Type', GroupingIdentifier=uid('Talk or Type'))
 add('ask', 'Typed task', WFInputType='Text', WFAskActionPrompt='What needs doing?', WFAskActionAllowsMultilineText=True)
 add('choosefrommenu', 'Task text', WFControlFlowMode=2, GroupingIdentifier=uid('Talk or Type'))
-add('downloadurl', 'Save response', WFInput=BASE, WFHTTPMethod='POST', WFHTTPHeaders=headers,
+add('downloadurl', 'Save response', WFURL=text(BASE), WFHTTPMethod='POST', WFHTTPHeaders=headers,
     WFHTTPBodyType='JSON', WFJSONValues=dictionary([
         ('source', [output('Task text')]), ('requestId', [output('Request ID')])]))
 add('getvalueforkey', 'Save confirmation', WFDictionaryKey='message', WFInput=variable('Save response'))

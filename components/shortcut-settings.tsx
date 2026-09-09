@@ -76,7 +76,7 @@ export default function ShortcutSettings() {
       <h3>Connect your shortcut</h3>
       <ol>
         <li>
-          <a href="/shortcuts/Followthrough%20Task.shortcut?v=4" download>
+          <a href="/shortcuts/Followthrough%20Task.shortcut?v=5" download>
             Install Followthrough Task
           </a>{' '}
           and tap Add Shortcut. This version has no setup questions during

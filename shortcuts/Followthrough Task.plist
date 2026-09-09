@@ -17,6 +17,35 @@
 		</dict>
 		<dict>
 			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.gettext</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>CustomOutputName</key>
+				<string>Launch mode</string>
+				<key>UUID</key>
+				<string>98A1414E-67E0-51E9-AFBD-E30689443EAB</string>
+				<key>WFTextActionText</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>attachmentsByRange</key>
+						<dict>
+							<key>{0, 1}</key>
+							<dict>
+								<key>Type</key>
+								<string>ExtensionInput</string>
+							</dict>
+						</dict>
+						<key>string</key>
+						<string>￼</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenString</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
 			<string>is.workflow.actions.documentpicker.open</string>
 			<key>WFWorkflowActionParameters</key>
 			<dict>
@@ -78,13 +107,22 @@
 				<integer>0</integer>
 				<key>WFInput</key>
 				<dict>
-					<key>Value</key>
+					<key>Type</key>
+					<string>Variable</string>
+					<key>Variable</key>
 					<dict>
-						<key>Type</key>
-						<string>ExtensionInput</string>
+						<key>Value</key>
+						<dict>
+							<key>OutputName</key>
+							<string>Launch mode</string>
+							<key>OutputUUID</key>
+							<string>98A1414E-67E0-51E9-AFBD-E30689443EAB</string>
+							<key>Type</key>
+							<string>ActionOutput</string>
+						</dict>
+						<key>WFSerializationType</key>
+						<string>WFTextTokenAttachment</string>
 					</dict>
-					<key>WFSerializationType</key>
-					<string>WFTextTokenAttachment</string>
 				</dict>
 			</dict>
 		</dict>
@@ -166,17 +204,22 @@
 				<integer>0</integer>
 				<key>WFInput</key>
 				<dict>
-					<key>Value</key>
+					<key>Type</key>
+					<string>Variable</string>
+					<key>Variable</key>
 					<dict>
-						<key>OutputName</key>
-						<string>Connection to use</string>
-						<key>OutputUUID</key>
-						<string>93B526E9-4334-5B5A-97C6-A85154BFC3D5</string>
-						<key>Type</key>
-						<string>ActionOutput</string>
+						<key>Value</key>
+						<dict>
+							<key>OutputName</key>
+							<string>Connection to use</string>
+							<key>OutputUUID</key>
+							<string>93B526E9-4334-5B5A-97C6-A85154BFC3D5</string>
+							<key>Type</key>
+							<string>ActionOutput</string>
+						</dict>
+						<key>WFSerializationType</key>
+						<string>WFTextTokenAttachment</string>
 					</dict>
-					<key>WFSerializationType</key>
-					<string>WFTextTokenAttachment</string>
 				</dict>
 			</dict>
 		</dict>
@@ -191,8 +234,6 @@
 				<string>58F3849C-C5A9-543B-9879-E5DBE31404C5</string>
 				<key>WFAskActionAllowsMultilineText</key>
 				<true/>
-				<key>WFAskActionDefaultAnswer</key>
-				<string></string>
 				<key>WFAskActionPrompt</key>
 				<string>Connect Followthrough: paste the connection code you copied from Followthrough Settings. This is saved for future runs.</string>
 				<key>WFInputType</key>
@@ -435,8 +476,18 @@
 				</dict>
 				<key>WFHTTPMethod</key>
 				<string>GET</string>
-				<key>WFInput</key>
-				<string>https://followthrough.corybytheway.chatgpt.site/api/shortcuts/capture</string>
+				<key>WFURL</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>attachmentsByRange</key>
+						<dict/>
+						<key>string</key>
+						<string>https://followthrough.corybytheway.chatgpt.site/api/shortcuts/capture</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenString</string>
+				</dict>
 			</dict>
 		</dict>
 		<dict>
@@ -479,17 +530,22 @@
 				<integer>0</integer>
 				<key>WFInput</key>
 				<dict>
-					<key>Value</key>
+					<key>Type</key>
+					<string>Variable</string>
+					<key>Variable</key>
 					<dict>
-						<key>OutputName</key>
-						<string>Request ID</string>
-						<key>OutputUUID</key>
-						<string>C84EEB2F-9FF4-57BA-9791-E9048A9C3409</string>
-						<key>Type</key>
-						<string>ActionOutput</string>
+						<key>Value</key>
+						<dict>
+							<key>OutputName</key>
+							<string>Request ID</string>
+							<key>OutputUUID</key>
+							<string>C84EEB2F-9FF4-57BA-9791-E9048A9C3409</string>
+							<key>Type</key>
+							<string>ActionOutput</string>
+						</dict>
+						<key>WFSerializationType</key>
+						<string>WFTextTokenAttachment</string>
 					</dict>
-					<key>WFSerializationType</key>
-					<string>WFTextTokenAttachment</string>
 				</dict>
 			</dict>
 		</dict>
@@ -536,17 +592,22 @@
 				<integer>0</integer>
 				<key>WFInput</key>
 				<dict>
-					<key>Value</key>
+					<key>Type</key>
+					<string>Variable</string>
+					<key>Variable</key>
 					<dict>
-						<key>OutputName</key>
-						<string>Connection to use</string>
-						<key>OutputUUID</key>
-						<string>93B526E9-4334-5B5A-97C6-A85154BFC3D5</string>
-						<key>Type</key>
-						<string>ActionOutput</string>
+						<key>Value</key>
+						<dict>
+							<key>OutputName</key>
+							<string>Connection to use</string>
+							<key>OutputUUID</key>
+							<string>93B526E9-4334-5B5A-97C6-A85154BFC3D5</string>
+							<key>Type</key>
+							<string>ActionOutput</string>
+						</dict>
+						<key>WFSerializationType</key>
+						<string>WFTextTokenAttachment</string>
 					</dict>
-					<key>WFSerializationType</key>
-					<string>WFTextTokenAttachment</string>
 				</dict>
 			</dict>
 		</dict>
@@ -611,13 +672,22 @@
 				<integer>0</integer>
 				<key>WFInput</key>
 				<dict>
-					<key>Value</key>
+					<key>Type</key>
+					<string>Variable</string>
+					<key>Variable</key>
 					<dict>
-						<key>Type</key>
-						<string>ExtensionInput</string>
+						<key>Value</key>
+						<dict>
+							<key>OutputName</key>
+							<string>Launch mode</string>
+							<key>OutputUUID</key>
+							<string>98A1414E-67E0-51E9-AFBD-E30689443EAB</string>
+							<key>Type</key>
+							<string>ActionOutput</string>
+						</dict>
+						<key>WFSerializationType</key>
+						<string>WFTextTokenAttachment</string>
 					</dict>
-					<key>WFSerializationType</key>
-					<string>WFTextTokenAttachment</string>
 				</dict>
 			</dict>
 		</dict>
@@ -666,7 +736,7 @@
 					<string>Type</string>
 				</array>
 				<key>WFMenuPrompt</key>
-				<string></string>
+				<string>Followthrough</string>
 			</dict>
 		</dict>
 		<dict>
@@ -840,8 +910,6 @@
 				</dict>
 				<key>WFHTTPMethod</key>
 				<string>POST</string>
-				<key>WFInput</key>
-				<string>https://followthrough.corybytheway.chatgpt.site/api/shortcuts/capture</string>
 				<key>WFJSONValues</key>
 				<dict>
 					<key>Value</key>
@@ -928,6 +996,18 @@
 					</dict>
 					<key>WFSerializationType</key>
 					<string>WFDictionaryFieldValue</string>
+				</dict>
+				<key>WFURL</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>attachmentsByRange</key>
+						<dict/>
+						<key>string</key>
+						<string>https://followthrough.corybytheway.chatgpt.site/api/shortcuts/capture</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenString</string>
 				</dict>
 			</dict>
 		</dict>
