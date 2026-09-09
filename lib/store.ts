@@ -1,13 +1,19 @@
 // Created by Cory McCabe
 import { env } from 'cloudflare:workers';
-import { initialWorkspace, type Snapshot, type Workspace } from './model';
+import {
+  initialWorkspace,
+  type Snapshot,
+  type Workspace,
+  type BusyEvent,
+} from './model';
+import { calendarFlags } from './calendar-store';
 import { plan, localDay } from './scheduler';
 import { applyAction } from './actions';
 import { InputError, object, text } from './validation';
 type Row = { document: string; revision: number };
-const flags = () => ({
+const flags = async (ownerId: string) => ({
   ai: !!(env as unknown as Record<string, string>).OPENAI_API_KEY,
-  google: false,
+  ...(await calendarFlags(ownerId)),
   background: false,
 });
 
@@ -32,7 +38,7 @@ export async function snapshot(ownerId: string): Promise<Snapshot> {
     warnings: schedule.warnings,
     revision,
     currentDate: localDay(Date.now(), workspace.settings.timeZone),
-    integrations: flags(),
+    integrations: await flags(ownerId),
   };
 }
 export async function mutate(
@@ -89,8 +95,48 @@ export async function mutate(
       revision: current.revision + 1,
       warnings: schedule.warnings,
       currentDate: localDay(Date.now(), workspace.settings.timeZone),
-      integrations: flags(),
+      integrations: await flags(ownerId),
     },
     result,
   };
+}
+
+// Calendar imports are server-only and preserve concurrent task/manual-busy edits.
+export async function saveCalendarAvailability(
+  ownerId: string,
+  busy: BusyEvent[],
+) {
+  if (busy.length > 4000)
+    throw new InputError(
+      'The connected calendars have too many busy periods for this workspace. Select fewer calendars.',
+    );
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const current = await readWorkspace(ownerId),
+      w = current.workspace;
+    w.busy = [...w.busy.filter((e) => e.source === 'manual'), ...busy];
+    w.blocks = plan(w).blocks;
+    w.plannedAt = new Date().toISOString();
+    const document = JSON.stringify(w);
+    if (new TextEncoder().encode(document).length > 1_800_000)
+      throw new InputError(
+        'The workspace is too large to import more calendar events.',
+      );
+    const saved =
+      current.revision === 0
+        ? await env.DB.prepare(
+            'INSERT INTO workspaces (owner_id, revision, document, updated_at) VALUES (?, 1, ?, ?) ON CONFLICT(owner_id) DO NOTHING',
+          )
+            .bind(ownerId, document, w.plannedAt)
+            .run()
+        : await env.DB.prepare(
+            'UPDATE workspaces SET document = ?, revision = revision + 1, updated_at = ? WHERE owner_id = ? AND revision = ?',
+          )
+            .bind(document, w.plannedAt, ownerId, current.revision)
+            .run();
+    if (saved.meta.changes)
+      return { workspace: w, revision: current.revision + 1 };
+  }
+  throw new InputError(
+    'Your tasks changed during calendar import. Sync again.',
+  );
 }

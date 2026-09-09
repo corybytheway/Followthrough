@@ -31,7 +31,7 @@ export type BusyEvent = {
   title: string;
   start: string;
   end: string;
-  source: 'manual' | 'google';
+  source: 'manual' | 'google' | 'icloud';
 };
 export type Block = {
   id: string;
@@ -68,7 +68,12 @@ export type Snapshot = Workspace & {
   currentDate: string;
   revision: number;
   warnings: PlanWarning[];
-  integrations: { ai: boolean; google: boolean; background: boolean };
+  integrations: {
+    ai: boolean;
+    google: boolean;
+    icloud: boolean;
+    background: boolean;
+  };
 };
 export const COLORS = [
   '#4266d5',

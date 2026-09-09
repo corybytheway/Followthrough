@@ -1,0 +1,84 @@
+// Created by Cory McCabe
+import { googleAccess, googleBusy, reconcileGoogle } from './google-calendar';
+import { icloudBusy } from './icloud-calendar';
+import { readCalendar, saveCalendar, withCalendarLock } from './calendar-store';
+import { readWorkspace, saveCalendarAvailability } from './store';
+import { InputError } from './validation';
+export async function syncCalendars(owner: string) {
+  return withCalendarLock(owner, async () => {
+    const { connection, credentials } = await readCalendar(owner);
+    if (!connection.syncEnabled) return { skipped: true };
+    const started = Date.now();
+    try {
+      const initial = await readWorkspace(owner);
+      const start = new Date(started - 86400000).toISOString(),
+        end = new Date(started + 43 * 86400000).toISOString();
+      const access = credentials.google?.refreshToken
+        ? await googleAccess(credentials.google)
+        : null;
+      if (connection.selectedGoogle.length && !access)
+        throw new InputError(
+          'Reconnect Google before syncing selected calendars.',
+        );
+      if (connection.selectedIcloud.length && !credentials.icloud)
+        throw new InputError(
+          'Reconnect iCloud before syncing selected calendars.',
+        );
+      // Both providers must succeed before availability is replaced or task events move.
+      const google = access
+        ? await googleBusy(
+            access,
+            connection.selectedGoogle.filter(
+              (id) => id !== connection.outputCalendarId,
+            ),
+            start,
+            end,
+          )
+        : [];
+      const icloud = credentials.icloud
+        ? await icloudBusy(
+            credentials.icloud,
+            connection.selectedIcloud,
+            start,
+            end,
+            initial.workspace.settings.timeZone,
+          )
+        : [];
+      const saved = await saveCalendarAvailability(owner, [
+        ...google,
+        ...icloud,
+      ]);
+      let written = 0;
+      if (access && connection.outputCalendarId) {
+        written = await reconcileGoogle(
+          access,
+          connection.outputCalendarId,
+          connection.marker,
+          saved.workspace.blocks,
+          saved.workspace.tasks,
+          async () => {
+            if (Date.now() - started > 240_000)
+              throw new InputError(
+                'Calendar sync needs another pass to finish. Sync again.',
+              );
+            if ((await readWorkspace(owner)).revision !== saved.revision)
+              throw new InputError(
+                'Your plan changed during sync. Sync again to publish the latest schedule.',
+              );
+          },
+        );
+      }
+      connection.lastSync = new Date().toISOString();
+      connection.lastError = null;
+      await saveCalendar(owner, connection, credentials);
+      return { written, busyPeriods: google.length + icloud.length };
+    } catch (error) {
+      connection.lastError =
+        error instanceof InputError
+          ? error.message
+          : 'Calendar sync could not finish. Your tasks are saved. Try again.';
+      await saveCalendar(owner, connection, credentials);
+      throw new InputError(connection.lastError);
+    }
+  });
+}

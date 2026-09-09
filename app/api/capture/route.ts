@@ -8,8 +8,9 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
     const owner = await requireOwner(request, true),
-      v = object(await jsonBody(request)),
-      source = text(v.source, 'Your request', 8000, true);
+      v = object(await jsonBody(request));
+    text(v.source, 'Your request', 8000, true);
+    const source = v.source as string;
     const { workspace } = await readWorkspace(owner),
       config = env as unknown as Record<string, string>;
     if (!config.OPENAI_API_KEY)

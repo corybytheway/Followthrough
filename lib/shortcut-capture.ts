@@ -1,7 +1,7 @@
 // Created by Cory McCabe
 import type { Workspace } from './model';
-import { basicDraft } from './capture';
-import { InputError, object, text } from './validation';
+import { aiDraft, basicDraft } from './capture';
+import { InputError, object, taskInput, text } from './validation';
 
 export async function tokenHash(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -18,7 +18,8 @@ export function captureRequest(raw: unknown) {
     throw new InputError(
       'This connection only accepts task text and a request ID.',
     );
-  const source = text(v.source, 'Task text', 8000, true);
+  text(v.source, 'Task text', 8000, true);
+  const source = v.source as string;
   const requestId = text(v.requestId, 'Request ID', 100, true);
   if (!/^[a-zA-Z0-9_-]{16,100}$/.test(requestId))
     throw new InputError('Provide a unique request ID.');
@@ -29,6 +30,27 @@ export function inboxCapture(source: string, workspace: Workspace) {
     ...basicDraft(source, workspace),
     status: 'inbox',
     notes:
-      'Captured with Shortcuts. Review the request, estimate, deadline, and checklist before setting it to Ready. The 30-minute estimate is only a placeholder.',
+      'AI naming is unavailable. Your exact words are preserved in Original input. Review the title, estimate, deadline, and checklist before setting this task to Ready. The 30-minute estimate is only a placeholder.',
   };
+}
+
+export async function prepareShortcutCapture(
+  source: string,
+  workspace: Workspace,
+  key?: string,
+  model = 'gpt-5-mini',
+) {
+  if (key) {
+    try {
+      const draft = {
+        ...(await aiDraft(source, workspace, key, model)),
+        status: 'ready',
+      };
+      taskInput(draft, workspace);
+      return draft;
+    } catch {
+      // A model outage must not lose a spoken request or masquerade as AI naming.
+    }
+  }
+  return inboxCapture(source, workspace);
 }

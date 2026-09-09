@@ -3,14 +3,19 @@ import { object, text, InputError } from './validation';
 const taskFields = {
   title: {
     type: 'string',
-    description: 'Concise name of one focused outcome.',
+    description:
+      'Concise name of one focused outcome. The first word must be an imperative action verb, such as Fix, Build, Send, or Review. Summarize the outcome rather than transcribing the request.',
   },
   projectId: {
     type: ['string', 'null'],
     description: 'Existing project ID from the workspace.',
   },
   notes: { type: 'string' },
-  source: { type: 'string' },
+  source: {
+    type: 'string',
+    description:
+      'The exact original input, preserved verbatim. Put the synthesized task name in title.',
+  },
   steps: {
     type: 'array',
     items: {

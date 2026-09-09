@@ -61,6 +61,7 @@ import {
 import { localDay } from '@/lib/scheduler';
 import { TOOL_DEFINITIONS, toolAction } from '@/lib/tools';
 import ShortcutSettings from '@/components/shortcut-settings';
+import CalendarSettings from '@/components/calendar-settings';
 
 type Draft = Partial<Task> & {
   rationale?: string;
@@ -74,7 +75,7 @@ const empty: Snapshot = {
   revision: 0,
   currentDate: '',
   warnings: [],
-  integrations: { ai: false, google: false, background: false },
+  integrations: { ai: false, google: false, icloud: false, background: false },
 };
 function Field({
   label,
@@ -175,6 +176,22 @@ export default function FollowthroughApp() {
     refresh()
       .then(async (next) => {
         if (!live) return;
+        const calendarResult = new URLSearchParams(window.location.search).get(
+          'calendar',
+        );
+        if (calendarResult) {
+          setTab('settings');
+          if (calendarResult === 'connected')
+            setNotice(
+              'Google connected. Select the calendars that should block task time.',
+            );
+          else
+            setError(
+              'Google connection was not completed. Try connecting again in Settings.',
+            );
+          history.replaceState(null, '', window.location.pathname);
+        }
+
         setDay(localDay(Date.now(), next.settings.timeZone));
         setLoaded(true);
         if (next.tasks.length) await commit({ action: 'replan' });
@@ -213,7 +230,20 @@ export default function FollowthroughApp() {
     if (!loaded) return;
     const update = () => {
       if (document.hidden || busyRef.current) return;
-      void refresh()
+      void fetch('/api/calendars', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sync' }),
+      })
+        .then(async (response) => {
+          if (!response.ok && response.status !== 409) {
+            const data = (await response.json()) as { error?: string };
+            setError(
+              data.error || 'Calendar sync needs attention in Settings.',
+            );
+          }
+          return refresh();
+        })
         .then((next) => {
           if (
             !busyRef.current &&
@@ -223,11 +253,20 @@ export default function FollowthroughApp() {
         })
         .catch(() => {});
     };
+    const afterCalendarChange = () => {
+      void refresh().catch(() => {});
+    };
+    window.addEventListener('followthrough-calendar-sync', afterCalendarChange);
+    update();
     const timer = setInterval(update, 60_000);
     window.addEventListener('focus', update);
     return () => {
       clearInterval(timer);
       window.removeEventListener('focus', update);
+      window.removeEventListener(
+        'followthrough-calendar-sync',
+        afterCalendarChange,
+      );
     };
   }, [loaded, commit, refresh]);
   useEffect(() => {
@@ -693,7 +732,9 @@ export default function FollowthroughApp() {
                   Block busy time
                 </Button>
                 <p className="calendar-note">
-                  External calendars are not connected yet.
+                  {state.integrations.google || state.integrations.icloud
+                    ? 'Manage selected calendars and sync status in Settings.'
+                    : 'Connect calendars to avoid appointments automatically.'}
                 </p>
                 <button
                   className="text-button"
@@ -1187,7 +1228,7 @@ function TaskEditor({
       </Field>
       {initial.source && (
         <details className="original-request">
-          <summary>Original request</summary>
+          <summary>Original input</summary>
           <p>{initial.source}</p>
         </details>
       )}
@@ -1476,28 +1517,7 @@ function SettingsPanel({
         </Button>
       </form>
       <div className="connections">
-        <div className="settings-card">
-          <CalendarDays />
-          <h2>Calendar connections</h2>
-          <span className="status-label">Not connected</span>
-          <p>
-            Busy times you add here affect your schedule. Live Google and iCloud
-            sync still need to be connected.
-          </p>
-          <Link
-            download
-            prefetch={false}
-            className="download-link"
-            href="/api/export?format=ics"
-          >
-            <Download size={16} />
-            Download current schedule
-          </Link>
-          <small>
-            This is a snapshot. Imported calendar events will not move
-            automatically.
-          </small>
-        </div>
+        <CalendarSettings />
         <div className="settings-card">
           <MessageSquare />
           <h2>Chat capture</h2>

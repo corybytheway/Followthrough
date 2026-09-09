@@ -640,3 +640,16 @@ summary {
     margin-top: 18px;
   }
 }
+
+/* Calendar setup extends the existing settings cards. Created by Cory McCabe. */
+.calendar-provider, .calendar-selection, .calendar-sync-status { border-top: 1px solid var(--border); margin-top: 1.25rem; padding-top: 1.25rem; }
+.calendar-provider-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: .75rem; }
+.calendar-connections h3 { font-size: 1rem; font-weight: 600; margin: 0 0 .5rem; }
+.calendar-connections a { text-decoration: underline; text-underline-offset: 3px; }
+.calendar-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; }
+.calendar-selection fieldset { margin: 1rem 0; }
+.calendar-selection legend { font-weight: 600; font-size: .875rem; margin-bottom: .5rem; }
+.calendar-option { display: flex; align-items: center; gap: .65rem; padding: .45rem 0; font-size: .9375rem; overflow-wrap: anywhere; }
+.calendar-callback { display: block; overflow-wrap: anywhere; padding: .75rem; margin: .75rem 0; background: var(--muted); border-radius: .5rem; font-size: .875rem; }
+.calendar-setup summary { cursor: pointer; font-size: .9375rem; font-weight: 500; }
+.calendar-success { color: #146c43; }

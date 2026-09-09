@@ -10,7 +10,9 @@ A private personal planner built with React, vinext, shadcn, and Cloudflare D1 o
 - One outcome per task; calendar sessions are separate from checklist steps and task identity.
 - Task prerequisites, completion, reopening, holding, archiving, search, and project filtering.
 - Scheduling within configurable local work hours, work days, breaks, and session lengths.
-- Meeting avoidance using manually entered busy times; deadline and capacity warnings.
+- Meeting avoidance using manual busy times and selected Google/iCloud calendars; deadline and capacity warnings.
+- Google OAuth with offline access, encrypted account credentials, calendar selection, and a dedicated Followthrough Google calendar. iCloud uses an app-specific password and CalDAV.
+- Explicit start/pause/sync controls. Sync reads both providers before publishing, updates only marked Followthrough events, and stops on incomplete availability or concurrent plan changes.
 - Replanning on changes, on opening the app, and every minute while its tab is visible. Time passing never completes work.
 - Four WebMCP tools using the same actions as the visible app: list, create task, update task, create project.
 - Authenticated stateless Streamable HTTP MCP endpoint at /mcp.
@@ -22,9 +24,9 @@ A private personal planner built with React, vinext, shadcn, and Cloudflare D1 o
 ## Remaining before replacing Motion
 
 - Connect an OpenAI API key to activate semantic interpretation inside the app. The structured-output endpoint and task-granularity instructions are implemented. Without a key, capture is explicitly a basic draft with project alias matching and a placeholder estimate. No model call has been verified yet.
-- Implement and authorize Google Calendar and iCloud adapters for reading live availability and reconciling only Followthrough-owned events. Existing connector access in a Codex conversation does not give this hosted app calendar credentials.
+- Complete Google application registration and account consent, connect iCloud, select busy calendars, and run a real-account sync check. Adapters and setup screens are implemented; mocked/provider-contract checks do not prove live authorization. Codex connector access does not supply hosted-app credentials.
 - Connect an always-running scheduler that invokes reconciliation while browsers and the Mac are asleep. This version has no autonomous background worker or cron trigger.
-- Pair the direct Followthrough Task shortcut on the iPhone and verify its Action button and dictation. The capture API is tested with local D1; physical-phone execution remains unverified.
+- The user confirmed Action Button → Followthrough Task capture is working. Phone setup is complete.
 - Confirm MCP OAuth connection in Codex/ChatGPT after publication. WebMCP works in a supported open browser tab; that is different from installing a remote MCP server.
 
 Motion data, calendars, subscriptions, booking links, and meeting notes have not been modified or migrated.
@@ -43,7 +45,7 @@ Configure OPENAI_API_KEY as a Sites runtime secret and optionally OPENAI_MODEL (
 
 - `python3 scripts/verify-shortcut-local.py`: authentication, direct durable saves, no workspace-reading permission for the capture key, Inbox behavior, Unicode, duplicate/concurrent retries, invalid actions, key rotation, rate limiting, and revocation. Test records are removed from local D1.
 
-- npm test: 18 domain checks covering task granularity, conflicts, deadlines, priority, missed sessions, preserved current sessions, prerequisites, cycles, time zones/DST, breaks, unschedulable work, progress, invalid input, basic capture, and tool semantics.
+- npm test: domain and provider-contract checks covering task granularity, conflicts, deadlines, priority, missed sessions, preserved current sessions, prerequisites, cycles, time zones/DST, breaks, unschedulable work, progress, invalid input, basic capture, and tool semantics.
 - npm exec tsx -- scripts/verify-local.ts: local-only HTTP checks for authentication, durable state, idempotency, stale revisions, stale task edits, origin checks, invalid input, dependency release, checklist completion, MCP listing, and exports.
 - npm run lint: app and domain code. Unmodified generated shadcn components and its mobile hook are excluded because their scaffold contains lint violations; no vendor components were rewritten.
 - All four WebMCP actions were exercised in a supported browser context with valid and invalid inputs and saved-state readback. No broad visual browser QA or iPhone verification was performed.
@@ -60,3 +62,19 @@ Configure OPENAI_API_KEY as a Sites runtime secret and optionally OPENAI_MODEL (
 `SHORTCUT_GATEWAY_TOKEN` is the existing Sites identity-less API gateway token, kept as a server secret. A signed-in owner creates a separate random create-only key in Settings; D1 stores only its SHA-256 hash. The private setup code combines the two credentials for Shortcuts. The distributed shortcut contains neither credential. Replacing or disconnecting the connection invalidates the old capture key. The gateway token alone cannot read or change the workspace through app endpoints.
 
 The `/api/shortcuts/capture` GET issues only a request ID; POST accepts only source text and that ID, then returns the save confirmation. It cannot update, delete, list, or complete tasks. Requests are limited to twenty per minute per connection.
+
+## Calendar setup
+
+The approved output is a dedicated Google calendar. Read availability from selected Google and iCloud calendars; never select Motion/flexible task calendars as fixed busy time. This release supports one Google account and one iCloud account per owner.
+
+- `CALENDAR_ENCRYPTION_KEY`: 32 random bytes as 64 lowercase hexadecimal characters, stored as a Sites secret. Do not replace after pairing without a credential migration. AES-GCM ciphertext is bound to the workspace owner. Credentials are excluded from task exports, snapshots, and MCP.
+- `CALENDAR_APP_ORIGIN`: the canonical live HTTPS origin. The Google web-client redirect URI must be `<origin>/api/calendars/google/callback`.
+- Settings accepts the downloaded Google **web** OAuth client JSON and encrypts it before storage. Google scopes: `calendar.calendarlist.readonly`, `calendar.events.freebusy`, and `calendar.app.created`. No editing scope for existing appointment calendars is requested.
+- OAuth state is random, hashed, owner-bound, expires after ten minutes, and is consumed once. PKCE protects the authorization code. External Testing grants expire after seven days; for this personal Workspace deployment prefer an Internal audience when suitable, or finish External production consent setup.
+- iCloud: enter the Apple Account email and a Followthrough app-specific password directly in Settings. Discovery and redirects are restricted to Apple CalDAV HTTPS hosts. Recurrences are expanded on the provider; incomplete expansion stops sync. Busy imports preserve all-day/DST semantics and ignore transparent/cancelled instances.
+- Start sync creates/reuses an app-marked Google calendar and schedules only ready tasks. Google event IDs are deterministic. Provider event markers and ETags protect unrelated or concurrently edited events. Failed availability reads leave prior busy data and task events untouched. Later publishing failures report partial completion and are safe to retry.
+- Sync runs on app focus and every minute while visible, or through Sync now. It **does not run with the app closed**. A production background runner remains a separate required deployment.
+- Pausing/disconnecting leaves Google task blocks in place. The UI explains this; disconnect removes that account's imported availability and pauses publication. Completing or modifying tasks should happen in Followthrough; dragging/deleting its Google blocks does not change task state.
+- Apply append-only migration `0002_nifty_luke_cage.sql` for calendar credential storage and operation locks.
+
+Provider references: [Google scopes](https://developers.google.com/workspace/calendar/api/auth), [Google offline OAuth](https://developers.google.com/identity/protocols/oauth2/web-server), [Apple app-specific passwords](https://support.apple.com/102654), [tsdav expanded events](https://tsdav.vercel.app/docs/caldav/fetchCalendarObjects).

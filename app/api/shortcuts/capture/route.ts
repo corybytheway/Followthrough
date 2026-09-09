@@ -2,14 +2,13 @@
 import { env } from 'cloudflare:workers';
 import { jsonBody, fail } from '@/lib/http';
 import { readWorkspace, mutate } from '@/lib/store';
-import { aiDraft } from '@/lib/capture';
 import { authenticateShortcut } from '@/lib/shortcut-connection';
 import {
   captureRequest,
-  inboxCapture,
+  prepareShortcutCapture,
   tokenHash,
 } from '@/lib/shortcut-capture';
-import { InputError, taskInput } from '@/lib/validation';
+import { InputError } from '@/lib/validation';
 import type { Task } from '@/lib/model';
 export const dynamic = 'force-dynamic';
 // A request identifier lets Shortcuts retry a POST without creating a duplicate.
@@ -35,23 +34,12 @@ export async function POST(request: Request) {
     let task = initial.workspace.tasks.find((t) => t.id === captureId);
     let duplicate = !!task;
     if (!task) {
-      let draft = inboxCapture(source, initial.workspace);
-      if (config.OPENAI_API_KEY) {
-        try {
-          draft = {
-            ...(await aiDraft(
-              source,
-              initial.workspace,
-              config.OPENAI_API_KEY,
-              config.OPENAI_MODEL || 'gpt-5-mini',
-            )),
-            status: 'ready',
-          };
-          taskInput(draft, initial.workspace);
-        } catch {
-          draft = inboxCapture(source, initial.workspace);
-        }
-      }
+      const draft = await prepareShortcutCapture(
+        source,
+        initial.workspace,
+        config.OPENAI_API_KEY,
+        config.OPENAI_MODEL || 'gpt-5-mini',
+      );
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
           const saved = await mutate(ownerId, {
@@ -75,7 +63,7 @@ export async function POST(request: Request) {
     const message = duplicate
       ? 'Already saved to Followthrough. No duplicate created.'
       : task.status === 'inbox'
-        ? `Saved to Followthrough Inbox: ${task.title}`
+        ? 'Saved your original input to Followthrough Inbox. AI naming is unavailable; review the captured request.'
         : `Saved to Followthrough: ${task.title}`;
     return Response.json(
       { ok: true, message, taskId: task.id },

@@ -89,8 +89,12 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
       throw new InputError('Choose an existing project.');
     t.projectId = v.projectId as string | null;
   }
-  for (const key of ['notes', 'source'] as const)
-    if (v[key] !== undefined) t[key] = text(v[key], key, 10000);
+  if (v.notes !== undefined) t.notes = text(v.notes, 'notes', 10000);
+  if (v.source !== undefined) {
+    text(v.source, 'Original input', 10000);
+    // Validate without changing the user's exact transcription or formatting.
+    t.source = v.source as string;
+  }
   if (v.steps !== undefined) {
     if (!Array.isArray(v.steps) || v.steps.length > 50)
       throw new InputError('Use up to 50 checklist steps.');

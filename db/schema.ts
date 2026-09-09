@@ -17,3 +17,16 @@ export const shortcutConnections = sqliteTable('shortcut_connections', {
   windowStart: integer('window_start').notNull().default(0),
   windowCount: integer('window_count').notNull().default(0),
 });
+
+// Credentials are encrypted separately from the exportable planning document.
+export const calendarConnections = sqliteTable('calendar_connections', {
+  ownerId: text('owner_id').primaryKey(),
+  credentials: text('credentials').notNull(),
+  document: text('document').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+export const calendarLocks = sqliteTable('calendar_locks', {
+  ownerId: text('owner_id').primaryKey(),
+  token: text('token').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+});
