@@ -11,7 +11,6 @@ import { flushSync } from 'react-dom';
 import Link from 'next/link';
 import {
   ArrowUpRight,
-  CheckCheck,
   CalendarDays,
   ListTodo,
   FolderOpen,
@@ -500,7 +499,7 @@ export default function FollowthroughApp() {
       <header className="app-header">
         <Link href="/" className="brand">
           <span className="brand-mark">
-            <CheckCheck size={23} />
+            <svg width="27" height="27" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><path d="M37 7 13 36h16l-3 21 25-31H35z" /></svg>
           </span>
           Followthrough
         </Link>
