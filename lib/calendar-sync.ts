@@ -142,6 +142,7 @@ export async function syncCalendars(
               .filter((warning) => warning.reason === 'deadline')
               .map((warning) => warning.taskId),
           ),
+          saved.workspace.projects,
         );
       }
       connection.lastSync = new Date().toISOString();

@@ -1,5 +1,5 @@
 // Created by Cory McCabe
-import type { BusyEvent, Block, Task } from './model';
+import type { BusyEvent, Block, Task, Project } from './model';
 import { taskLabel } from './model';
 import type {
   CalendarChoice,
@@ -240,6 +240,7 @@ export async function reconcileGoogle(
   tasks: Task[],
   stillCurrent: () => Promise<void> = async () => {},
   deadlineRiskIds: ReadonlySet<string> = new Set(),
+  projects: Project[] = [],
 ) {
   if (blocks.length > 500)
     throw new InputError(
@@ -259,7 +260,10 @@ export async function reconcileGoogle(
     desired.add(id);
     const body = {
       id,
-      summary: taskLabel(task.title),
+      summary: taskLabel(
+        task.title,
+        projects.find((p) => p.id === task.projectId)?.name,
+      ),
       colorId: '8',
       description:
         'Managed by Followthrough. Complete or reschedule this task in Followthrough.',

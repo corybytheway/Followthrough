@@ -386,7 +386,11 @@ export default function FollowthroughApp() {
   const agenda = [
     ...state.blocks.map((b) => ({
       ...b,
-      title: taskLabel(taskById.get(b.taskId)?.title || 'Task'),
+      title: taskLabel(
+        taskById.get(b.taskId)?.title || 'Task',
+        state.projects.find((p) => p.id === taskById.get(b.taskId)?.projectId)
+          ?.name,
+      ),
       source: 'task',
     })),
     ...state.busy.map((e) => ({ ...e, taskId: '', source: e.source })),
@@ -444,7 +448,12 @@ export default function FollowthroughApp() {
           />
         )}
         <button className="task-body" onClick={() => setEditing(task.id)}>
-          <strong>{taskLabel(task.title)}</strong>
+          <strong>
+            {taskLabel(
+              task.title,
+              state.projects.find((p) => p.id === task.projectId)?.name,
+            )}
+          </strong>
           <span className="task-meta">
             {project && (
               <span style={{ color: project.color }}>{project.name}</span>
@@ -1111,7 +1120,12 @@ function TaskEditor({
   if (initial.deletedAt)
     return (
       <div className="editor-form">
-        <h2>{taskLabel(initial.title || '')}</h2>
+        <h2>
+          {taskLabel(
+            initial.title || '',
+            state.projects.find((p) => p.id === projectId)?.name,
+          )}
+        </h2>
         <p>
           This task is in Trash. Restore it to return it to its previous status.
         </p>
@@ -1347,7 +1361,10 @@ function TaskEditor({
                   }
                 />
                 <label htmlFor={'dep-' + t.id}>
-                  {taskLabel(t.title)}
+                  {taskLabel(
+                    t.title,
+                    state.projects.find((p) => p.id === t.projectId)?.name,
+                  )}
                   {t.status === 'done' ? ' · complete' : ''}
                 </label>
               </div>
