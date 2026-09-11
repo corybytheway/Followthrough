@@ -1,4 +1,6 @@
 // Created by Cory McCabe
+import { env } from 'cloudflare:workers';
+import { aiDraft } from './capture';
 import {
   googleAccess,
   googleBusy,
@@ -9,7 +11,7 @@ import {
 } from './google-calendar';
 import { icloudBusy } from './icloud-calendar';
 import { readCalendar, saveCalendar, withCalendarLock } from './calendar-store';
-import { readWorkspace, saveCalendarAvailability } from './store';
+import { readWorkspace, saveCalendarAvailability, mutate } from './store';
 import { InputError } from './validation';
 export async function syncCalendars(
   owner: string,
@@ -114,6 +116,39 @@ export async function syncCalendars(
         );
         connection.migrationSourceCalendarId = null;
         await saveCalendar(owner, connection, credentials);
+      }
+      // Fill existing captures once, without replacing user-authored checklists.
+      // A model failure must never stop the calendar from being replanned.
+      const config = env as unknown as Record<string, string>;
+      if (config.OPENAI_API_KEY) {
+        const candidates = initial.workspace.tasks
+          .filter(
+            (task) =>
+              !task.deletedAt &&
+              task.status === 'ready' &&
+              !task.steps.length &&
+              task.source.trim(),
+          )
+          .slice(0, 3);
+        for (const task of candidates) {
+          if (Date.now() - started > 150_000) break;
+          try {
+            const draft = await aiDraft(
+              task.source,
+              initial.workspace,
+              config.OPENAI_API_KEY,
+              config.OPENAI_MODEL || 'gpt-5-mini',
+            );
+            await mutate(owner, {
+              action: 'update_task',
+              id: task.id,
+              requestId: crypto.randomUUID(),
+              task: { steps: draft.steps, expectedUpdatedAt: task.updatedAt },
+            });
+          } catch {
+            /* Retry missing suggestions on a later pass; preserve the task. */
+          }
+        }
       }
       const saved = await saveCalendarAvailability(owner, [
         ...google,

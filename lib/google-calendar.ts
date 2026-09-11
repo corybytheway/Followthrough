@@ -265,8 +265,7 @@ export async function reconcileGoogle(
         projects.find((p) => p.id === task.projectId)?.name,
       ),
       colorId: '8',
-      description:
-        'Managed by Followthrough. Complete or reschedule this task in Followthrough.',
+      description: calendarDescription(task),
       start: { dateTime: block.start },
       end: { dateTime: block.end },
       transparency:
@@ -283,6 +282,7 @@ export async function reconcileGoogle(
     if (
       old?.summary === body.summary &&
       old.colorId === body.colorId &&
+      old.description === body.description &&
       old.reminders?.useDefault === false &&
       !old.reminders?.overrides?.length &&
       old.transparency === body.transparency &&
@@ -339,6 +339,30 @@ export async function reconcileGoogle(
     }
   }
   return written;
+}
+
+export function calendarDescription(
+  task: Pick<Task, 'steps' | 'source'>,
+): string {
+  const escape = (value: string) =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  const steps = task.steps.slice(0, 5);
+  const suggested = steps.length
+    ? '<ul>' +
+      steps.map((step) => '<li>' + escape(step.title) + '</li>').join('') +
+      '</ul>'
+    : '<br>Suggested steps have not been generated yet.<br>';
+  return (
+    '<b>Suggested steps</b>' +
+    suggested +
+    '<br>Original input: ' +
+    escape(task.source || '').replace(/\r?\n/g, '<br>') +
+    '<br><br>Complete, manage, or remove this task at <a href="https://followthrough.corybytheway.chatgpt.site/">Followthrough.corybytheway.chatgpt.site</a>'
+  );
 }
 
 // Read individual busy events on the shared task/meeting calendar. Never subtract

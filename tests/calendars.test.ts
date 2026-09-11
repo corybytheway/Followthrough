@@ -16,6 +16,7 @@ import {
   googleOutputBusy,
   moveOwnedGoogleEvents,
   restoreMovedGoogleMetadata,
+  calendarDescription,
 } from '../lib/google-calendar';
 import { initialWorkspace } from '../lib/model';
 import { applyAction } from '../lib/actions';
@@ -260,6 +261,20 @@ void test('calendar sync creates one stable event, retries without duplication, 
   await reconcileGoogle('test', 'dedicated', marker, blocks, workspace.tasks);
   assert.deepEqual(mutations, ['create', 'delete', 'update']);
   assert.equal(events.get(eventId)?.transparency, 'transparent');
+  workspace.tasks[0].source =
+    'Fix <mobile> & desktop\nKeep the original wording.';
+  workspace.tasks[0].steps = [
+    { id: 'check', title: 'Check mobile', done: false },
+  ];
+  const beforeDescription = mutations.length;
+  await reconcileGoogle('test', 'dedicated', marker, blocks, workspace.tasks);
+  assert.equal(mutations.length, beforeDescription + 1);
+  assert.equal(
+    events.get(eventId)?.description,
+    calendarDescription(workspace.tasks[0]),
+  );
+  await reconcileGoogle('test', 'dedicated', marker, blocks, workspace.tasks);
+  assert.equal(mutations.length, beforeDescription + 1);
   for (const legacy of ['opaque', undefined]) {
     events.get(eventId)!.transparency = legacy;
     const before = mutations.length;
@@ -329,6 +344,36 @@ void test('calendar sync creates one stable event, retries without duplication, 
     assert.equal(event.colorId, '8');
     assert.equal(event.transparency, 'transparent');
   }
+});
+
+void test('calendar descriptions show at most five bullets, original input and the management link, escaping user HTML', () => {
+  const task = {
+    source: '<script>alert(1)</script>\nOriginal & unchanged',
+    steps: Array.from({ length: 6 }, (_, i) => ({
+      id: String(i),
+      title: 'Step <' + i + '>',
+      done: false,
+    })),
+  };
+  const description = calendarDescription(task);
+  assert.equal((description.match(/<li>/g) || []).length, 5);
+  assert.ok(description.includes('Step &lt;0&gt;'));
+  assert.ok(!description.includes('Step &lt;5&gt;'));
+  assert.ok(
+    description.includes(
+      'Original input: &lt;script&gt;alert(1)&lt;/script&gt;<br>Original &amp; unchanged',
+    ),
+  );
+  assert.ok(
+    description.includes(
+      'Complete, manage, or remove this task at <a href="https://followthrough.corybytheway.chatgpt.site/">Followthrough.corybytheway.chatgpt.site</a>',
+    ),
+  );
+  assert.ok(
+    calendarDescription({ source: '', steps: [] }).includes(
+      'have not been generated yet',
+    ),
+  );
 });
 void test('a new meeting reschedules a task without completing it', async (t) => {
   const w = applyAction(initialWorkspace(), {
