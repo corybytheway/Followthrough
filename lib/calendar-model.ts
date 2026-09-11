@@ -1,5 +1,10 @@
 // Created by Cory McCabe
 export type CalendarChoice = { id: string; name: string; primary?: boolean };
+export type PendingCalendarMove = {
+  id: string;
+  iCalUID: string;
+  properties: Record<string, string>;
+};
 export type CalendarCredentials = {
   google?: {
     clientId: string;
@@ -20,6 +25,8 @@ export type CalendarConnection = {
   outputOnPrimary?: boolean;
   outputCalendarName?: string;
   migrationSourceCalendarId?: string | null;
+  pendingCalendarMove?: PendingCalendarMove | null;
+  primaryMetadataRestored?: boolean;
   syncEnabled: boolean;
   lastSync: string | null;
   lastBackgroundSync?: string | null;

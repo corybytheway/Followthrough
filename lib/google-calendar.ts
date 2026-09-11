@@ -1,6 +1,10 @@
 // Created by Cory McCabe
 import type { BusyEvent, Block, Task } from './model';
-import type { CalendarChoice, CalendarCredentials } from './calendar-model';
+import type {
+  CalendarChoice,
+  CalendarCredentials,
+  PendingCalendarMove,
+} from './calendar-model';
 import { InputError } from './validation';
 import { hash } from './calendar-security';
 import ICAL from 'ical.js';
@@ -20,6 +24,7 @@ type ListedCalendar = {
   accessRole?: string;
 };
 type RemoteEvent = {
+  iCalUID?: string;
   id: string;
   etag?: string;
   summary?: string;
@@ -405,21 +410,113 @@ export async function moveOwnedGoogleEvents(
   destination: string,
   marker: string,
   stillCurrent: () => Promise<void> = async () => {},
+  journal?: {
+    pending: PendingCalendarMove | null;
+    save: (pending: PendingCalendarMove | null) => Promise<void>;
+  },
 ) {
   if (source === destination) return;
-  for (const event of await listOwnedEvents(token, source, marker)) {
+  const events = await listOwnedEvents(token, source, marker);
+  const pending = journal?.pending;
+  const moves: PendingCalendarMove[] = pending ? [pending] : [];
+  for (const event of events) {
+    if (event.id === pending?.id) continue;
+    if (!event.iCalUID)
+      throw new InputError('Google did not return the task block identity.');
+    moves.push({
+      id: event.id,
+      iCalUID: event.iCalUID,
+      properties: event.extendedProperties!.private!,
+    });
+  }
+  for (const move of moves) {
     await stillCurrent();
-    const moved = await googleRequest<RemoteEvent>(
-      token,
-      `calendars/${encodeURIComponent(source)}/events/${encodeURIComponent(event.id)}/move?${new URLSearchParams({ destination, sendUpdates: 'none' })}`,
-      { method: 'POST', headers: event.etag ? { 'If-Match': event.etag } : {} },
-    );
-    if (
-      moved.id !== event.id ||
-      moved.extendedProperties?.private?.followthrough !== marker
-    )
+    await journal?.save(move);
+    const target = `calendars/${encodeURIComponent(destination)}/events/${encodeURIComponent(move.id)}`;
+    let moved: RemoteEvent | undefined;
+    if (move.id === pending?.id) {
+      try {
+        moved = await googleRequest<RemoteEvent>(token, target);
+      } catch (error) {
+        if ((error as { providerStatus?: number }).providerStatus !== 404)
+          throw error;
+      }
+    }
+    if (!moved) {
+      const event = events.find((e) => e.id === move.id);
+      moved = await googleRequest<RemoteEvent>(
+        token,
+        `calendars/${encodeURIComponent(source)}/events/${encodeURIComponent(move.id)}/move?${new URLSearchParams({ destination, sendUpdates: 'none' })}`,
+        {
+          method: 'POST',
+          headers: event?.etag ? { 'If-Match': event.etag } : {},
+        },
+      );
+    }
+    if (moved.id !== move.id || moved.iCalUID !== move.iCalUID)
       throw new InputError(
         'A moved task block needs review before sync can continue.',
       );
+    // Private properties and colors belong to a calendar copy; moving does not retain them.
+    await googleRequest(token, target + '?sendUpdates=none', {
+      method: 'PATCH',
+      headers: moved.etag ? { 'If-Match': moved.etag } : {},
+      body: JSON.stringify({
+        colorId: '8',
+        extendedProperties: { private: move.properties },
+      }),
+    });
+    await journal?.save(null);
+  }
+}
+
+// Repair the initial v21 migration once. Adopt only an exact connection-derived
+// event ID and our generated description, never an event bearing another marker.
+export async function restoreMovedGoogleMetadata(
+  token: string,
+  calendarId: string,
+  marker: string,
+  blocks: Block[],
+) {
+  for (const block of blocks) {
+    const id = 'ft' + (await hash(marker + ':' + block.id));
+    const target = `calendars/${encodeURIComponent(calendarId)}/events/${id}`;
+    let event: RemoteEvent;
+    try {
+      event = await googleRequest<RemoteEvent>(token, target);
+    } catch (error) {
+      if (
+        [404, 410].includes(
+          (error as { providerStatus: number }).providerStatus,
+        )
+      )
+        continue;
+      throw error;
+    }
+    if (event.extendedProperties?.private?.followthrough === marker) continue;
+    if (
+      event.id !== id ||
+      event.status === 'cancelled' ||
+      event.extendedProperties?.private?.followthrough ||
+      event.description !==
+        'Managed by Followthrough. Complete or reschedule this task in Followthrough.'
+    )
+      throw new InputError(
+        'A calendar event ID is already in use. No existing event was overwritten.',
+      );
+    await googleRequest(token, target + '?sendUpdates=none', {
+      method: 'PATCH',
+      headers: event.etag ? { 'If-Match': event.etag } : {},
+      body: JSON.stringify({
+        colorId: '8',
+        extendedProperties: {
+          private: {
+            followthrough: marker,
+            blockId: block.id,
+            taskId: block.taskId,
+          },
+        },
+      }),
+    });
   }
 }

@@ -5,6 +5,7 @@ import {
   reconcileGoogle,
   googleOutputBusy,
   moveOwnedGoogleEvents,
+  restoreMovedGoogleMetadata,
 } from './google-calendar';
 import { icloudBusy } from './icloud-calendar';
 import { readCalendar, saveCalendar, withCalendarLock } from './calendar-store';
@@ -36,6 +37,21 @@ export async function syncCalendars(
       const access = credentials.google?.refreshToken
         ? await googleAccess(credentials.google)
         : null;
+      if (
+        access &&
+        connection.outputOnPrimary &&
+        connection.outputCalendarId &&
+        !connection.primaryMetadataRestored
+      ) {
+        await restoreMovedGoogleMetadata(
+          access,
+          connection.outputCalendarId,
+          connection.marker,
+          initial.workspace.blocks,
+        );
+        connection.primaryMetadataRestored = true;
+        await saveCalendar(owner, connection, credentials);
+      }
       if (connection.selectedGoogle.length && !access)
         throw new InputError(
           'Reconnect Google before syncing selected calendars.',
@@ -88,6 +104,13 @@ export async function syncCalendars(
           connection.outputCalendarId,
           connection.marker,
           ensureTime,
+          {
+            pending: connection.pendingCalendarMove || null,
+            save: async (pending) => {
+              connection.pendingCalendarMove = pending;
+              await saveCalendar(owner, connection, credentials);
+            },
+          },
         );
         connection.migrationSourceCalendarId = null;
         await saveCalendar(owner, connection, credentials);

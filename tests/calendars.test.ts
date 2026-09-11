@@ -15,10 +15,13 @@ import {
   googleCalendars,
   googleOutputBusy,
   moveOwnedGoogleEvents,
+  restoreMovedGoogleMetadata,
 } from '../lib/google-calendar';
 import { initialWorkspace } from '../lib/model';
 import { applyAction } from '../lib/actions';
 import { plan } from '../lib/scheduler';
+import type { PendingCalendarMove } from '../lib/calendar-model';
+import type { Block } from '../lib/model';
 
 void test('calendar credentials are authenticated, encrypted, and bound to their owner', async () => {
   const secret = 'a'.repeat(64),
@@ -417,6 +420,7 @@ void test('primary calendar keeps overlapping appointments while excluding own t
 void test('partial calendar migration retries remaining owned events without moving meetings or making copies', async (t) => {
   const event = (id: string) => ({
     id,
+    iCalUID: id + '@google.com',
     extendedProperties: { private: { followthrough: 'ours' } },
   });
   const source = new Map<string, Record<string, unknown>>([
@@ -431,6 +435,12 @@ void test('partial calendar migration retries remaining owned events without mov
     'fetch',
     async (url: string, init: RequestInit = {}) => {
       if (!init.method) return Response.json({ items: [...source.values()] });
+      if (init.method === 'PATCH') {
+        const id = new URL(url).pathname.split('/').at(-1)!;
+        const patch = JSON.parse(init.body as string);
+        destination.set(id, { ...destination.get(id), ...patch });
+        return Response.json(destination.get(id));
+      }
       assert.equal(init.method, 'POST');
       const parsed = new URL(url);
       assert.equal(parsed.searchParams.get('destination'), 'primary-id');
@@ -444,8 +454,10 @@ void test('partial calendar migration retries remaining owned events without mov
       const moved = source.get(id)!;
       assert.ok(moved);
       source.delete(id);
-      destination.set(id, moved);
-      return Response.json(moved);
+      // Google drops properties and event color on the destination calendar.
+      const stripped = { id: moved.id, iCalUID: moved.iCalUID };
+      destination.set(id, stripped);
+      return Response.json(stripped);
     },
   );
   await assert.rejects(
@@ -455,5 +467,103 @@ void test('partial calendar migration retries remaining owned events without mov
   await moveOwnedGoogleEvents('test', 'old-id', 'primary-id', 'ours');
   await moveOwnedGoogleEvents('test', 'old-id', 'primary-id', 'ours');
   assert.equal(destination.size, 2);
+  assert.equal(
+    destination.get('first').extendedProperties.private.followthrough,
+    'ours',
+  );
+  assert.equal(destination.get('second').colorId, '8');
   assert.deepEqual([...source.keys()], ['meeting']);
+});
+
+void test('a durable move journal recovers when metadata restoration fails after Google moves the event', async (t) => {
+  const original = {
+    id: 'first',
+    iCalUID: 'stable@google.com',
+    extendedProperties: { private: { followthrough: 'ours' } },
+  };
+  let moved = false,
+    failPatch = true,
+    moveCount = 0;
+  let pending: PendingCalendarMove | null = null;
+  let destination: Record<string, unknown> = {};
+  t.mock.method(
+    globalThis,
+    'fetch',
+    async (url: string, init: RequestInit = {}) => {
+      if (init.method === 'POST') {
+        assert.ok(pending, 'identity must be persisted before moving');
+        moved = true;
+        moveCount++;
+        destination = { id: original.id, iCalUID: original.iCalUID };
+        return Response.json(destination);
+      }
+      if (init.method === 'PATCH') {
+        if (failPatch) {
+          failPatch = false;
+          return new Response(null, { status: 503 });
+        }
+        destination = { ...destination, ...JSON.parse(init.body as string) };
+        return Response.json(destination);
+      }
+      if (url.includes('/events/first')) return Response.json(destination);
+      return Response.json({ items: moved ? [] : [original] });
+    },
+  );
+  const run = () =>
+    moveOwnedGoogleEvents('test', 'old', 'primary', 'ours', async () => {}, {
+      pending,
+      save: async (value) => {
+        pending = value;
+      },
+    });
+  await assert.rejects(run());
+  assert.ok(pending);
+  await run();
+  assert.equal(moveCount, 1);
+  assert.equal(pending, null);
+  assert.equal(
+    (destination.extendedProperties as { private: { followthrough: string } })
+      .private.followthrough,
+    'ours',
+  );
+});
+
+void test('legacy moved-event recovery requires exact generated ID and description and refuses foreign markers', async (t) => {
+  const block: Block = {
+    kind: 'task',
+    id: 'block',
+    taskId: 'task',
+    start: '2026-09-11T15:00:00Z',
+    end: '2026-09-11T15:30:00Z',
+  };
+  const id = 'ft' + (await hash('ours:block'));
+  let remote: Record<string, unknown> = {
+    id,
+    description:
+      'Managed by Followthrough. Complete or reschedule this task in Followthrough.',
+  };
+  let patches = 0;
+  t.mock.method(
+    globalThis,
+    'fetch',
+    async (_url: string, init: RequestInit = {}) => {
+      if (init.method === 'PATCH') {
+        patches++;
+        remote = { ...remote, ...JSON.parse(init.body as string) };
+      }
+      return Response.json(remote);
+    },
+  );
+  await restoreMovedGoogleMetadata('test', 'primary', 'ours', [block]);
+  await restoreMovedGoogleMetadata('test', 'primary', 'ours', [block]);
+  assert.equal(patches, 1);
+  remote = {
+    ...remote,
+    extendedProperties: { private: { followthrough: 'someone-else' } },
+  };
+  await assert.rejects(
+    restoreMovedGoogleMetadata('test', 'primary', 'ours', [block]),
+    /already in use/,
+  );
+  assert.equal(patches, 1);
 });
