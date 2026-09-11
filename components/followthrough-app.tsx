@@ -640,7 +640,9 @@ export default function FollowthroughApp() {
                   </Button>
                 )}
                 <p className="small-note">
-                  The plan updates every minute while Followthrough is open.
+                  {state.integrations.background
+                    ? 'Unfinished tasks are replanned every five minutes, even when Followthrough is closed.'
+                    : 'The plan updates every minute while Followthrough is open.'}
                   Check off completed work or adjust its remaining time.
                 </p>
               </section>
@@ -1710,12 +1712,16 @@ function SettingsPanel({
         <div className="settings-card">
           <Clock3 />
           <h2>Automatic replanning</h2>
-          <span className="status-label">Active while the app is open</span>
+          <span className="status-label">
+            {state.integrations.background
+              ? 'Active even when the app is closed'
+              : 'Active while the app is open'}
+          </span>
           <p>
             Ready tasks get available time around your calendars, deadlines,
             priorities, and prerequisites. No deadline is required. Unfinished
-            tasks move into future work hours. Background calendar updates while
-            the app is closed still need a connected calendar service.
+            tasks move into future work hours without being marked complete.
+            Calendar connections shows the status of background updates.
           </p>
           <Link
             download

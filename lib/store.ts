@@ -15,7 +15,6 @@ type Row = { document: string; revision: number };
 const flags = async (ownerId: string) => ({
   ai: !!(env as unknown as Record<string, string>).OPENAI_API_KEY,
   ...(await calendarFlags(ownerId)),
-  background: false,
 });
 
 export async function readWorkspace(

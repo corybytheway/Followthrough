@@ -463,13 +463,27 @@ export default function CalendarSettings() {
                     : 'Starting sync creates the Followthrough Google calendar for your task blocks.'}
                 </p>
                 <span className="status-label">
-                  {status.syncEnabled
-                    ? 'Syncs while Followthrough is open'
-                    : 'Sync paused'}
+                  {!status.syncEnabled
+                    ? 'Sync paused'
+                    : status.backgroundHealthy
+                      ? 'Background sync active'
+                      : status.backgroundConfigured
+                        ? 'Background sync needs attention'
+                        : 'Syncs while Followthrough is open'}
                 </span>
                 {status.lastSync && (
                   <p>
                     Last synced: {new Date(status.lastSync).toLocaleString()}
+                  </p>
+                )}
+                {status.backgroundConfigured && status.syncEnabled && (
+                  <p>
+                    {status.lastBackgroundSync
+                      ? `Last background update: ${new Date(status.lastBackgroundSync).toLocaleString()}.`
+                      : 'Waiting for the first background update.'}{' '}
+                    {status.backgroundHealthy
+                      ? 'Checks every five minutes, even when Followthrough is closed.'
+                      : 'No successful background update in the last 15 minutes. Sync now or check the scheduler.'}
                   </p>
                 )}
                 {status.lastError && (
@@ -528,8 +542,9 @@ export default function CalendarSettings() {
                 )}
                 <small>
                   Followthrough updates its own task blocks. Mark tasks complete
-                  in Followthrough. Updates while the app is closed still need a
-                  background scheduler.
+                  in Followthrough. Unfinished tasks move to available work
+                  hours; their remaining time stays unchanged. Task blocks
+                  appear gray in Google Calendar.
                 </small>
               </div>
             </>

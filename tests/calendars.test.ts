@@ -225,6 +225,12 @@ void test('calendar sync creates one stable event, retries without duplication, 
         mutations.push('create');
         return Response.json(body);
       }
+      if (method === 'PUT') {
+        const id = new URL(url).pathname.split('/').pop()!;
+        events.set(id, JSON.parse(init.body as string));
+        mutations.push('update');
+        return Response.json(events.get(id));
+      }
       if (method === 'DELETE') {
         const id = new URL(url).pathname.split('/').pop()!;
         events.delete(id);
@@ -241,6 +247,34 @@ void test('calendar sync creates one stable event, retries without duplication, 
   assert.deepEqual(mutations, ['create', 'delete']);
   await reconcileGoogle('test', 'dedicated', marker, blocks, workspace.tasks);
   assert.deepEqual(mutations, ['create', 'delete']);
+  assert.equal(events.get(eventId)?.colorId, '8');
+  events.get(eventId)!.colorId = '11';
+  await reconcileGoogle('test', 'dedicated', marker, blocks, workspace.tasks);
+  assert.equal(events.get(eventId)?.colorId, '8');
+  assert.deepEqual(mutations, ['create', 'delete', 'update']);
+  await reconcileGoogle('test', 'dedicated', marker, blocks, workspace.tasks);
+  assert.deepEqual(mutations, ['create', 'delete', 'update']);
+  workspace.blocks = blocks;
+  const later = Date.parse('2026-09-11T14:00:00Z');
+  const replanned = plan(workspace, later).blocks;
+  await reconcileGoogle(
+    'test',
+    'dedicated',
+    marker,
+    replanned,
+    workspace.tasks,
+  );
+  assert.ok(replanned.every((block) => Date.parse(block.start) >= later));
+  assert.equal(workspace.tasks[0].remainingMinutes, 30);
+  assert.equal(workspace.tasks[0].status, 'ready');
+  assert.ok(events.has('unrelated'));
+  for (const [id, event] of events) {
+    if (id === 'unrelated') continue;
+    assert.ok(
+      Date.parse((event.start as { dateTime: string }).dateTime) >= later,
+    );
+    assert.equal(event.colorId, '8');
+  }
 });
 void test('a new meeting reschedules a task without completing it', async (t) => {
   const w = applyAction(initialWorkspace(), {

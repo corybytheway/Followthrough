@@ -14,9 +14,12 @@ export type CalendarConnection = {
   outputCalendarId: string | null;
   syncEnabled: boolean;
   lastSync: string | null;
+  lastBackgroundSync?: string | null;
   lastError: string | null;
 };
 export type CalendarStatus = CalendarConnection & {
+  backgroundConfigured: boolean;
+  backgroundHealthy: boolean;
   available: boolean;
   googleConfigured: boolean;
   googleConnected: boolean;

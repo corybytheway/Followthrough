@@ -8,6 +8,7 @@ import {
 } from './calendar-model';
 import { seal, unseal } from './calendar-security';
 import { InputError } from './validation';
+import { backgroundConfigured, backgroundHealthy } from './calendar-background';
 type Row = { credentials: string; document: string };
 export const calendarConfig = () => env as unknown as Record<string, string>;
 const secret = () => calendarConfig().CALENDAR_ENCRYPTION_KEY || '';
@@ -16,9 +17,7 @@ export const calendarOrigin = () =>
   'https://followthrough.corybytheway.chatgpt.site';
 export const callbackUrl = () =>
   `${calendarOrigin()}/api/calendars/google/callback`;
-export async function readCalendar(
-  owner: string,
-): Promise<{
+export async function readCalendar(owner: string): Promise<{
   connection: CalendarConnection;
   credentials: CalendarCredentials;
 }> {
@@ -59,6 +58,11 @@ export async function calendarStatus(owner: string): Promise<CalendarStatus> {
   const { connection, credentials } = await readCalendar(owner);
   return {
     ...connection,
+    backgroundConfigured: backgroundConfigured(calendarConfig(), owner),
+    backgroundHealthy:
+      connection.syncEnabled &&
+      backgroundConfigured(calendarConfig(), owner) &&
+      backgroundHealthy(connection.lastBackgroundSync),
     available: !!secret(),
     googleConfigured: !!credentials.google,
     googleConnected: !!credentials.google?.refreshToken,
@@ -78,6 +82,10 @@ export async function calendarFlags(owner: string) {
   return {
     google: !!connection?.googleCalendars.length,
     icloud: !!connection?.icloudCalendars.length,
+    background:
+      !!connection?.syncEnabled &&
+      backgroundConfigured(calendarConfig(), owner) &&
+      backgroundHealthy(connection.lastBackgroundSync),
   };
 }
 export async function withCalendarLock<T>(

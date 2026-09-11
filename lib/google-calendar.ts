@@ -20,6 +20,7 @@ type RemoteEvent = {
   id: string;
   etag?: string;
   summary?: string;
+  colorId?: string;
   description?: string;
   start?: { dateTime?: string };
   end?: { dateTime?: string };
@@ -244,6 +245,7 @@ export async function reconcileGoogle(
     const body = {
       id,
       summary: task.title,
+      colorId: '8',
       description:
         'Managed by Followthrough. Complete or reschedule this task in Followthrough.',
       start: { dateTime: block.start },
@@ -257,6 +259,7 @@ export async function reconcileGoogle(
     let old = byId.get(id);
     if (
       old?.summary === body.summary &&
+      old.colorId === body.colorId &&
       Date.parse(old.start?.dateTime || '') === Date.parse(block.start) &&
       Date.parse(old.end?.dateTime || '') === Date.parse(block.end)
     )

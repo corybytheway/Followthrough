@@ -4,11 +4,19 @@ import { icloudBusy } from './icloud-calendar';
 import { readCalendar, saveCalendar, withCalendarLock } from './calendar-store';
 import { readWorkspace, saveCalendarAvailability } from './store';
 import { InputError } from './validation';
-export async function syncCalendars(owner: string) {
+export async function syncCalendars(
+  owner: string,
+  trigger: 'manual' | 'background' = 'manual',
+) {
   return withCalendarLock(owner, async () => {
     const { connection, credentials } = await readCalendar(owner);
     if (!connection.syncEnabled) return { skipped: true };
     const started = Date.now();
+    if (
+      trigger === 'background' &&
+      started - Date.parse(connection.lastBackgroundSync || '') < 120_000
+    )
+      return { skipped: true, reason: 'recent_background_sync' };
     try {
       const initial = await readWorkspace(owner);
       const start = new Date(started - 86400000).toISOString(),
@@ -69,6 +77,8 @@ export async function syncCalendars(owner: string) {
         );
       }
       connection.lastSync = new Date().toISOString();
+      if (trigger === 'background')
+        connection.lastBackgroundSync = connection.lastSync;
       connection.lastError = null;
       await saveCalendar(owner, connection, credentials);
       return { written, busyPeriods: google.length + icloud.length };
