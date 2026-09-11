@@ -75,7 +75,7 @@ export async function syncCalendars(
               );
           },
           new Set(
-            saved.workspace.warnings
+            saved.warnings
               .filter((warning) => warning.reason === 'deadline')
               .map((warning) => warning.taskId),
           ),

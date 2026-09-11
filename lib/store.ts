@@ -115,7 +115,8 @@ export async function saveCalendarAvailability(
     const current = await readWorkspace(ownerId),
       w = current.workspace;
     w.busy = [...w.busy.filter((e) => e.source === 'manual'), ...busy];
-    w.blocks = plan(w).blocks;
+    const schedule = plan(w);
+    w.blocks = schedule.blocks;
     w.plannedAt = new Date().toISOString();
     const document = JSON.stringify(w);
     if (new TextEncoder().encode(document).length > 1_800_000)
@@ -135,7 +136,11 @@ export async function saveCalendarAvailability(
             .bind(document, w.plannedAt, ownerId, current.revision)
             .run();
     if (saved.meta.changes)
-      return { workspace: w, revision: current.revision + 1 };
+      return {
+        workspace: w,
+        warnings: schedule.warnings,
+        revision: current.revision + 1,
+      };
   }
   throw new InputError(
     'Your tasks changed during calendar import. Sync again.',

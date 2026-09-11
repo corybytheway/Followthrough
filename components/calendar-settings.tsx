@@ -544,7 +544,10 @@ export default function CalendarSettings() {
                   Followthrough updates its own task blocks. Mark tasks complete
                   in Followthrough. Unfinished tasks move to available work
                   hours; their remaining time stays unchanged. Task blocks
-                  appear gray in Google Calendar.
+                  appear gray in Google Calendar. High-priority tasks and tasks
+                  at risk of missing a deadline show as Busy; other tasks show
+                  as Free. Your booking tool must check the Followthrough
+                  calendar for Busy blocks to protect that time.
                 </small>
               </div>
             </>
