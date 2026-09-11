@@ -21,6 +21,7 @@ type RemoteEvent = {
   etag?: string;
   summary?: string;
   colorId?: string;
+  transparency?: 'opaque' | 'transparent';
   description?: string;
   start?: { dateTime?: string };
   end?: { dateTime?: string };
@@ -250,7 +251,7 @@ export async function reconcileGoogle(
         'Managed by Followthrough. Complete or reschedule this task in Followthrough.',
       start: { dateTime: block.start },
       end: { dateTime: block.end },
-      transparency: 'opaque',
+      transparency: 'transparent',
       reminders: { useDefault: false },
       extendedProperties: {
         private: { followthrough: marker, blockId: block.id, taskId: task.id },
@@ -260,6 +261,7 @@ export async function reconcileGoogle(
     if (
       old?.summary === body.summary &&
       old.colorId === body.colorId &&
+      old.transparency === body.transparency &&
       Date.parse(old.start?.dateTime || '') === Date.parse(block.start) &&
       Date.parse(old.end?.dateTime || '') === Date.parse(block.end)
     )

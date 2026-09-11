@@ -254,6 +254,16 @@ void test('calendar sync creates one stable event, retries without duplication, 
   assert.deepEqual(mutations, ['create', 'delete', 'update']);
   await reconcileGoogle('test', 'dedicated', marker, blocks, workspace.tasks);
   assert.deepEqual(mutations, ['create', 'delete', 'update']);
+  assert.equal(events.get(eventId)?.transparency, 'transparent');
+  for (const legacy of ['opaque', undefined]) {
+    events.get(eventId)!.transparency = legacy;
+    const before = mutations.length;
+    await reconcileGoogle('test', 'dedicated', marker, blocks, workspace.tasks);
+    assert.equal(events.get(eventId)?.transparency, 'transparent');
+    assert.equal(mutations.length, before + 1);
+    await reconcileGoogle('test', 'dedicated', marker, blocks, workspace.tasks);
+    assert.equal(mutations.length, before + 1);
+  }
   workspace.blocks = blocks;
   const later = Date.parse('2026-09-11T14:00:00Z');
   const replanned = plan(workspace, later).blocks;
@@ -274,6 +284,7 @@ void test('calendar sync creates one stable event, retries without duplication, 
       Date.parse((event.start as { dateTime: string }).dateTime) >= later,
     );
     assert.equal(event.colorId, '8');
+    assert.equal(event.transparency, 'transparent');
   }
 });
 void test('a new meeting reschedules a task without completing it', async (t) => {
