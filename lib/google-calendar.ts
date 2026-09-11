@@ -30,6 +30,7 @@ type RemoteEvent = {
   summary?: string;
   colorId?: string;
   transparency?: 'opaque' | 'transparent';
+  reminders?: { useDefault?: boolean; overrides?: unknown[] };
   description?: string;
   status?: string;
   eventType?: string;
@@ -277,6 +278,8 @@ export async function reconcileGoogle(
     if (
       old?.summary === body.summary &&
       old.colorId === body.colorId &&
+      old.reminders?.useDefault === false &&
+      !old.reminders?.overrides?.length &&
       old.transparency === body.transparency &&
       Date.parse(old.start?.dateTime || '') === Date.parse(block.start) &&
       Date.parse(old.end?.dateTime || '') === Date.parse(block.end)
@@ -463,6 +466,7 @@ export async function moveOwnedGoogleEvents(
       headers: moved.etag ? { 'If-Match': moved.etag } : {},
       body: JSON.stringify({
         colorId: '8',
+        reminders: { useDefault: false },
         extendedProperties: { private: move.properties },
       }),
     });
@@ -509,6 +513,7 @@ export async function restoreMovedGoogleMetadata(
       headers: event.etag ? { 'If-Match': event.etag } : {},
       body: JSON.stringify({
         colorId: '8',
+        reminders: { useDefault: false },
         extendedProperties: {
           private: {
             followthrough: marker,
