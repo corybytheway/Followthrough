@@ -66,10 +66,30 @@ export async function GET(request: Request) {
         throw new InputError(
           'This Google account does not contain the existing Followthrough calendar. Reconnect the original account.',
         );
+      const primary = calendars.find(
+        (c) => c.primary && c.accessRole === 'owner',
+      );
+      if (!primary)
+        throw new InputError('Google did not return your primary calendar.');
       credentials.google.refreshToken = tokens.refresh_token;
+      credentials.google.scopes = tokens.scope?.split(' ') || GOOGLE_SCOPES;
+      if (
+        connection.outputCalendarId &&
+        connection.outputCalendarId !== primary.id
+      )
+        connection.migrationSourceCalendarId = connection.outputCalendarId;
+      connection.outputCalendarId = primary.id;
+      connection.outputCalendarName = primary.summary;
+      connection.outputOnPrimary = true;
       connection.googleCalendars = calendarChoices(calendars);
-      connection.selectedGoogle = [];
-      connection.syncEnabled = false;
+      connection.selectedGoogle = [
+        ...new Set([
+          ...connection.selectedGoogle.filter((id) =>
+            calendars.some((c) => c.id === id),
+          ),
+          primary.id,
+        ]),
+      ];
       connection.lastError = null;
       await saveCalendar(owner, connection, credentials);
       success = true;

@@ -13,7 +13,6 @@ import {
   googleCalendars,
   calendarChoices,
   GOOGLE_SCOPES,
-  ensureOutputCalendar,
 } from '@/lib/google-calendar';
 import { icloudCalendars } from '@/lib/icloud-calendar';
 import { randomToken, hash, pkceChallenge } from '@/lib/calendar-security';
@@ -140,8 +139,17 @@ export async function POST(request: Request) {
                 'Choose calendars from your connected account.',
               );
             connection[key] = [...new Set(value as string[])].filter(
-              (id) => id !== connection.outputCalendarId,
+              (id) =>
+                connection.outputOnPrimary ||
+                id !== connection.outputCalendarId,
             );
+            if (
+              key === 'selectedGoogle' &&
+              connection.outputOnPrimary &&
+              connection.outputCalendarId &&
+              !connection[key].includes(connection.outputCalendarId)
+            )
+              connection[key].push(connection.outputCalendarId);
           }
           // A changed selection must receive a full successful availability read.
           connection.lastSync = null;
@@ -150,17 +158,12 @@ export async function POST(request: Request) {
         case 'start_sync': {
           if (!credentials.google?.refreshToken)
             throw new InputError(
-              'Connect Google to create your Followthrough task calendar.',
+              'Connect Google to schedule tasks on your primary calendar.',
             );
-          if (!connection.outputCalendarId)
-            connection.outputCalendarId = await ensureOutputCalendar(
-              await googleAccess(credentials.google),
-              connection.marker,
-              (await readWorkspace(owner)).workspace.settings.timeZone,
+          if (!connection.outputOnPrimary)
+            throw new InputError(
+              'Reconnect Google to put task blocks on your primary calendar.',
             );
-          connection.selectedGoogle = connection.selectedGoogle.filter(
-            (id) => id !== connection.outputCalendarId,
-          );
           connection.syncEnabled = true;
           break;
         }

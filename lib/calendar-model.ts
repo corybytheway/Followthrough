@@ -1,7 +1,12 @@
 // Created by Cory McCabe
 export type CalendarChoice = { id: string; name: string; primary?: boolean };
 export type CalendarCredentials = {
-  google?: { clientId: string; clientSecret: string; refreshToken?: string };
+  google?: {
+    clientId: string;
+    clientSecret: string;
+    refreshToken?: string;
+    scopes?: string[];
+  };
   icloud?: { username: string; password: string };
   oauth?: { stateHash: string; verifier: string; expiresAt: number };
 };
@@ -12,6 +17,9 @@ export type CalendarConnection = {
   selectedGoogle: string[];
   selectedIcloud: string[];
   outputCalendarId: string | null;
+  outputOnPrimary?: boolean;
+  outputCalendarName?: string;
+  migrationSourceCalendarId?: string | null;
   syncEnabled: boolean;
   lastSync: string | null;
   lastBackgroundSync?: string | null;

@@ -13,6 +13,8 @@ import {
   googleBusy,
   reconcileGoogle,
   googleCalendars,
+  googleOutputBusy,
+  moveOwnedGoogleEvents,
 } from '../lib/google-calendar';
 import { initialWorkspace } from '../lib/model';
 import { applyAction } from '../lib/actions';
@@ -352,4 +354,106 @@ void test('a new meeting reschedules a task without completing it', async (t) =>
   assert.equal(plan(w, now).blocks[0].start, '2026-09-09T15:00:00.000Z');
   assert.equal(w.tasks[0].status, 'ready');
   assert.equal(w.tasks[0].remainingMinutes, 60);
+});
+
+void test('primary calendar keeps overlapping appointments while excluding own task blocks, free and declined events', async (t) => {
+  const span = {
+    start: { dateTime: '2026-11-01T15:00:00Z' },
+    end: { dateTime: '2026-11-01T16:00:00Z' },
+  };
+  const calls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls.push(url);
+    return Response.json(
+      calls.length === 1
+        ? {
+            timeZone: 'America/Chicago',
+            nextPageToken: 'next',
+            items: [
+              {
+                id: 'task',
+                ...span,
+                extendedProperties: { private: { followthrough: 'ours' } },
+              },
+              { id: 'meeting', ...span },
+              { id: 'free', ...span, transparency: 'transparent' },
+              {
+                id: 'declined',
+                ...span,
+                attendees: [{ self: true, responseStatus: 'declined' }],
+              },
+              { id: 'cancelled', status: 'cancelled' },
+            ],
+          }
+        : {
+            timeZone: 'America/Chicago',
+            items: [
+              {
+                id: 'all-day',
+                start: { date: '2026-11-01' },
+                end: { date: '2026-11-02' },
+              },
+            ],
+          },
+    );
+  });
+  const busy = await googleOutputBusy(
+    'test',
+    'primary-id',
+    'ours',
+    '2026-11-01T00:00:00Z',
+    '2026-11-03T00:00:00Z',
+    'UTC',
+  );
+  assert.equal(busy.length, 2);
+  assert.equal(busy[0].start, '2026-11-01T15:00:00.000Z');
+  assert.equal(busy[0].end, '2026-11-01T16:00:00.000Z');
+  assert.equal(busy[1].start, '2026-11-01T05:00:00.000Z');
+  assert.equal(busy[1].end, '2026-11-02T06:00:00.000Z');
+  assert.match(calls[0], /singleEvents=true/);
+  assert.match(calls[1], /pageToken=next/);
+});
+
+void test('partial calendar migration retries remaining owned events without moving meetings or making copies', async (t) => {
+  const event = (id: string) => ({
+    id,
+    extendedProperties: { private: { followthrough: 'ours' } },
+  });
+  const source = new Map<string, Record<string, unknown>>([
+    ['first', event('first')],
+    ['second', event('second')],
+    ['meeting', { id: 'meeting' }],
+  ]);
+  const destination = new Map();
+  let failSecond = true;
+  t.mock.method(
+    globalThis,
+    'fetch',
+    async (url: string, init: RequestInit = {}) => {
+      if (!init.method) return Response.json({ items: [...source.values()] });
+      assert.equal(init.method, 'POST');
+      const parsed = new URL(url);
+      assert.equal(parsed.searchParams.get('destination'), 'primary-id');
+      assert.equal(parsed.searchParams.get('sendUpdates'), 'none');
+      const id = parsed.pathname.split('/').at(-2)!;
+      assert.notEqual(id, 'meeting');
+      if (id === 'second' && failSecond) {
+        failSecond = false;
+        return new Response(null, { status: 503 });
+      }
+      const moved = source.get(id)!;
+      assert.ok(moved);
+      source.delete(id);
+      destination.set(id, moved);
+      return Response.json(moved);
+    },
+  );
+  await assert.rejects(
+    moveOwnedGoogleEvents('test', 'old-id', 'primary-id', 'ours'),
+  );
+  assert.equal(destination.size, 1);
+  await moveOwnedGoogleEvents('test', 'old-id', 'primary-id', 'ours');
+  await moveOwnedGoogleEvents('test', 'old-id', 'primary-id', 'ours');
+  assert.equal(destination.size, 2);
+  assert.deepEqual([...source.keys()], ['meeting']);
 });

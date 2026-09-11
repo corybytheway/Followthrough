@@ -3,10 +3,13 @@ import type { BusyEvent, Block, Task } from './model';
 import type { CalendarChoice, CalendarCredentials } from './calendar-model';
 import { InputError } from './validation';
 import { hash } from './calendar-security';
+import ICAL from 'ical.js';
+import { calendarInstant } from './icloud-calendar';
 export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
   'https://www.googleapis.com/auth/calendar.events.freebusy',
   'https://www.googleapis.com/auth/calendar.app.created',
+  'https://www.googleapis.com/auth/calendar.events.owned',
 ];
 type GoogleSecret = NonNullable<CalendarCredentials['google']>;
 type ListedCalendar = {
@@ -23,8 +26,11 @@ type RemoteEvent = {
   colorId?: string;
   transparency?: 'opaque' | 'transparent';
   description?: string;
-  start?: { dateTime?: string };
-  end?: { dateTime?: string };
+  status?: string;
+  eventType?: string;
+  attendees?: { self?: boolean; responseStatus?: string }[];
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
   extendedProperties?: { private?: Record<string, string> };
 };
 export async function googleToken(
@@ -320,4 +326,100 @@ export async function reconcileGoogle(
     }
   }
   return written;
+}
+
+// Read individual busy events on the shared task/meeting calendar. Never subtract
+// task intervals from freeBusy: that would also erase overlapping appointments.
+export async function googleOutputBusy(
+  token: string,
+  calendarId: string,
+  marker: string,
+  start: string,
+  end: string,
+  fallbackTimeZone: string,
+): Promise<BusyEvent[]> {
+  const busy: BusyEvent[] = [];
+  let pageToken = '';
+  for (let page = 0; page < 20; page++) {
+    const params = new URLSearchParams({
+      singleEvents: 'true',
+      showDeleted: 'false',
+      timeMin: start,
+      timeMax: end,
+      maxResults: '250',
+      maxAttendees: '1',
+      fields:
+        'nextPageToken,timeZone,items(id,status,eventType,transparency,start,end,attendees(self,responseStatus),extendedProperties/private)',
+    });
+    if (pageToken) params.set('pageToken', pageToken);
+    const data = await googleRequest<{
+      items?: RemoteEvent[];
+      nextPageToken?: string;
+      timeZone?: string;
+    }>(token, `calendars/${encodeURIComponent(calendarId)}/events?${params}`);
+    for (const event of data.items || []) {
+      if (
+        event.extendedProperties?.private?.followthrough === marker ||
+        event.status === 'cancelled' ||
+        event.transparency === 'transparent' ||
+        event.eventType === 'workingLocation' ||
+        event.attendees?.some((a) => a.self && a.responseStatus === 'declined')
+      )
+        continue;
+      const instant = (value?: { dateTime?: string; date?: string }) => {
+        if (value?.dateTime) return Date.parse(value.dateTime);
+        if (value?.date)
+          return calendarInstant(
+            ICAL.Time.fromDateString(value.date),
+            data.timeZone || fallbackTimeZone,
+          );
+        return NaN;
+      };
+      const from = instant(event.start),
+        to = instant(event.end);
+      if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from)
+        throw new InputError(
+          'Google returned an invalid busy event. No task blocks were changed.',
+        );
+      busy.push({
+        id: 'google-' + (await hash(calendarId + event.id + from)),
+        title: 'Busy · Google',
+        start: new Date(from).toISOString(),
+        end: new Date(to).toISOString(),
+        source: 'google',
+      });
+    }
+    if (!data.nextPageToken) return busy;
+    pageToken = data.nextPageToken;
+  }
+  throw new InputError(
+    'There are too many events in the task calendar to sync safely.',
+  );
+}
+
+// Google moves each event atomically. Retrying a partial migration lists only
+// events still in the old calendar and never recreates already moved blocks.
+export async function moveOwnedGoogleEvents(
+  token: string,
+  source: string,
+  destination: string,
+  marker: string,
+  stillCurrent: () => Promise<void> = async () => {},
+) {
+  if (source === destination) return;
+  for (const event of await listOwnedEvents(token, source, marker)) {
+    await stillCurrent();
+    const moved = await googleRequest<RemoteEvent>(
+      token,
+      `calendars/${encodeURIComponent(source)}/events/${encodeURIComponent(event.id)}/move?${new URLSearchParams({ destination, sendUpdates: 'none' })}`,
+      { method: 'POST', headers: event.etag ? { 'If-Match': event.etag } : {} },
+    );
+    if (
+      moved.id !== event.id ||
+      moved.extendedProperties?.private?.followthrough !== marker
+    )
+      throw new InputError(
+        'A moved task block needs review before sync can continue.',
+      );
+  }
 }

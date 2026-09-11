@@ -97,8 +97,8 @@ export default function CalendarSettings() {
       <CalendarDays />
       <h2 id="calendar-heading">Calendar connections</h2>
       <p>
-        Use Google and iCloud busy times to plan your day. Task blocks go on a
-        dedicated Google calendar named Followthrough.
+        Use Google and iCloud busy times to plan your day. Task blocks go
+        directly on your primary Google calendar alongside your appointments.
       </p>
       {error && (
         <p className="form-error" role="alert">
@@ -284,6 +284,22 @@ export default function CalendarSettings() {
                 )}
               </>
             )}
+            {status.googleConnected && !status.outputOnPrimary && (
+              <div>
+                <p>
+                  Move task blocks to your primary Google calendar. Google needs
+                  permission to manage events there.
+                </p>
+                <Button
+                  disabled={working}
+                  onClick={() =>
+                    void run(() => action({ action: 'connect_google' }), '')
+                  }
+                >
+                  Use primary Google calendar
+                </Button>
+              </div>
+            )}
             {status.googleConnected && (
               <Button
                 variant="outline"
@@ -384,14 +400,20 @@ export default function CalendarSettings() {
                 <h3>Calendars that block task time</h3>
                 <p>
                   Select appointments, bookings, and personal commitments. Leave
-                  calendars containing flexible task blocks unchecked.
+                  calendars containing other flexible task blocks unchecked.
+                  Appointments on your task calendar are always checked;
+                  Followthrough ignores its own blocks.
                 </p>
                 {(['google', 'icloud'] as const).map((provider) => {
                   const choices = (
                     provider === 'google'
                       ? status.googleCalendars
                       : status.icloudCalendars
-                  ).filter((c) => c.id !== status.outputCalendarId);
+                  ).filter(
+                    (c) =>
+                      status.outputOnPrimary ||
+                      c.id !== status.outputCalendarId,
+                  );
                   const selected =
                     provider === 'google' ? selectedGoogle : selectedIcloud;
                   return choices.length ? (
@@ -409,7 +431,12 @@ export default function CalendarSettings() {
                         <label className="calendar-option" key={calendar.id}>
                           <Checkbox
                             checked={selected.includes(calendar.id)}
-                            disabled={working}
+                            disabled={
+                              working ||
+                              (provider === 'google' &&
+                                status.outputOnPrimary &&
+                                calendar.id === status.outputCalendarId)
+                            }
                             onCheckedChange={(value) =>
                               select(provider, calendar.id, !!value)
                             }
@@ -459,8 +486,8 @@ export default function CalendarSettings() {
                 <h3>Task blocks</h3>
                 <p>
                   {status.outputCalendarId
-                    ? 'Your task blocks use the Followthrough Google calendar.'
-                    : 'Starting sync creates the Followthrough Google calendar for your task blocks.'}
+                    ? `Your task blocks use ${status.outputCalendarName || 'the Followthrough calendar'}.`
+                    : 'Connect Google to put task blocks on your primary calendar.'}
                 </p>
                 <span className="status-label">
                   {!status.syncEnabled
@@ -546,8 +573,8 @@ export default function CalendarSettings() {
                   hours; their remaining time stays unchanged. Task blocks
                   appear gray in Google Calendar. High-priority tasks and tasks
                   at risk of missing a deadline show as Busy; other tasks show
-                  as Free. Your booking tool must check the Followthrough
-                  calendar for Busy blocks to protect that time.
+                  as Free. Busy blocks on your primary Google calendar protect
+                  that time in booking tools that check it.
                 </small>
               </div>
             </>

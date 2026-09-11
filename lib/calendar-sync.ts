@@ -1,5 +1,11 @@
 // Created by Cory McCabe
-import { googleAccess, googleBusy, reconcileGoogle } from './google-calendar';
+import {
+  googleAccess,
+  googleBusy,
+  reconcileGoogle,
+  googleOutputBusy,
+  moveOwnedGoogleEvents,
+} from './google-calendar';
 import { icloudBusy } from './icloud-calendar';
 import { readCalendar, saveCalendar, withCalendarLock } from './calendar-store';
 import { readWorkspace, saveCalendarAvailability } from './store';
@@ -19,6 +25,12 @@ export async function syncCalendars(
       return { skipped: true, reason: 'recent_background_sync' };
     try {
       const initial = await readWorkspace(owner);
+      const ensureTime = async () => {
+        if (Date.now() - started > 240_000)
+          throw new InputError(
+            'Calendar migration needs another pass. Sync again.',
+          );
+      };
       const start = new Date(started - 86400000).toISOString(),
         end = new Date(started + 43 * 86400000).toISOString();
       const access = credentials.google?.refreshToken
@@ -37,12 +49,25 @@ export async function syncCalendars(
         ? await googleBusy(
             access,
             connection.selectedGoogle.filter(
-              (id) => id !== connection.outputCalendarId,
+              (id) =>
+                id !== connection.outputCalendarId &&
+                id !== connection.migrationSourceCalendarId,
             ),
             start,
             end,
           )
         : [];
+      if (access && connection.outputOnPrimary && connection.outputCalendarId)
+        google.push(
+          ...(await googleOutputBusy(
+            access,
+            connection.outputCalendarId,
+            connection.marker,
+            start,
+            end,
+            initial.workspace.settings.timeZone,
+          )),
+        );
       const icloud = credentials.icloud
         ? await icloudBusy(
             credentials.icloud,
@@ -52,6 +77,21 @@ export async function syncCalendars(
             initial.workspace.settings.timeZone,
           )
         : [];
+      if (
+        access &&
+        connection.migrationSourceCalendarId &&
+        connection.outputCalendarId
+      ) {
+        await moveOwnedGoogleEvents(
+          access,
+          connection.migrationSourceCalendarId,
+          connection.outputCalendarId,
+          connection.marker,
+          ensureTime,
+        );
+        connection.migrationSourceCalendarId = null;
+        await saveCalendar(owner, connection, credentials);
+      }
       const saved = await saveCalendarAvailability(owner, [
         ...google,
         ...icloud,
