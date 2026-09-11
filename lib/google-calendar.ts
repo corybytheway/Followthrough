@@ -226,6 +226,7 @@ export async function reconcileGoogle(
   blocks: Block[],
   tasks: Task[],
   stillCurrent: () => Promise<void> = async () => {},
+  deadlineRiskIds: ReadonlySet<string> = new Set(),
 ) {
   if (blocks.length > 500)
     throw new InputError(
@@ -251,7 +252,11 @@ export async function reconcileGoogle(
         'Managed by Followthrough. Complete or reschedule this task in Followthrough.',
       start: { dateTime: block.start },
       end: { dateTime: block.end },
-      transparency: 'transparent',
+      transparency:
+        task.priority === 'high' ||
+        (task.dueDate && deadlineRiskIds.has(task.id))
+          ? 'opaque'
+          : 'transparent',
       reminders: { useDefault: false },
       extendedProperties: {
         private: { followthrough: marker, blockId: block.id, taskId: task.id },

@@ -264,6 +264,44 @@ void test('calendar sync creates one stable event, retries without duplication, 
     await reconcileGoogle('test', 'dedicated', marker, blocks, workspace.tasks);
     assert.equal(mutations.length, before + 1);
   }
+  workspace.tasks[0].priority = 'high';
+  await reconcileGoogle('test', 'dedicated', marker, blocks, workspace.tasks);
+  assert.equal(events.get(eventId)?.transparency, 'opaque');
+  workspace.tasks[0].priority = 'medium';
+  workspace.tasks[0].dueDate = '2026-09-08';
+  const risk = new Set(
+    plan(workspace, Date.parse('2026-09-09T14:00:00Z'))
+      .warnings.filter((w) => w.reason === 'deadline')
+      .map((w) => w.taskId),
+  );
+  assert.ok(risk.has(workspace.tasks[0].id));
+  await reconcileGoogle(
+    'test',
+    'dedicated',
+    marker,
+    blocks,
+    workspace.tasks,
+    undefined,
+    risk,
+  );
+  assert.equal(events.get(eventId)?.transparency, 'opaque');
+  workspace.tasks[0].dueDate = '2026-09-10';
+  const recovered = new Set(
+    plan(workspace, Date.parse('2026-09-09T14:00:00Z'))
+      .warnings.filter((w) => w.reason === 'deadline')
+      .map((w) => w.taskId),
+  );
+  await reconcileGoogle(
+    'test',
+    'dedicated',
+    marker,
+    blocks,
+    workspace.tasks,
+    undefined,
+    recovered,
+  );
+  assert.equal(events.get(eventId)?.transparency, 'transparent');
+  workspace.tasks[0].dueDate = null;
   workspace.blocks = blocks;
   const later = Date.parse('2026-09-11T14:00:00Z');
   const replanned = plan(workspace, later).blocks;

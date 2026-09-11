@@ -74,6 +74,11 @@ export async function syncCalendars(
                 'Your plan changed during sync. Sync again to publish the latest schedule.',
               );
           },
+          new Set(
+            saved.workspace.warnings
+              .filter((warning) => warning.reason === 'deadline')
+              .map((warning) => warning.taskId),
+          ),
         );
       }
       connection.lastSync = new Date().toISOString();
