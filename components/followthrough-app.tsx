@@ -1346,7 +1346,7 @@ function TaskEditor({
         </small>
         <div className="dependency-list">
           {state.tasks
-            .filter((t) => t.id !== initial.id && t.status !== 'archived')
+            .filter((t) => t.id !== initial.id && t.status !== 'archived' && t.status !== 'done' && !t.deletedAt)
             .map((t) => (
               <div className="check-field" key={t.id}>
                 <Checkbox
@@ -1365,13 +1365,12 @@ function TaskEditor({
                     t.title,
                     state.projects.find((p) => p.id === t.projectId)?.name,
                   )}
-                  {t.status === 'done' ? ' · complete' : ''}
                 </label>
               </div>
             ))}
           {!state.tasks.some(
-            (t) => t.id !== initial.id && t.status !== 'archived',
-          ) && <p className="secondary-text">No other tasks yet.</p>}
+            (t) => t.id !== initial.id && t.status !== 'archived' && t.status !== 'done' && !t.deletedAt,
+          ) && <p className="secondary-text">No unfinished tasks available.</p>}
         </div>
       </div>
       <Field label="Notes">
