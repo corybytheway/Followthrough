@@ -1,4 +1,7 @@
 // Created by Cory McCabe
+export function taskLabel(title: string): string {
+  return '⚡️ ' + title.replace(/^(?:\s*⚡[\uFE0E\uFE0F]?\s*)+/, '').trimStart();
+}
 export type Step = { id: string; title: string; done: boolean };
 export type Project = {
   id: string;

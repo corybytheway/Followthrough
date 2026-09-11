@@ -53,6 +53,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   initialWorkspace,
+  taskLabel,
   COLORS,
   minutesLabel,
   type Project,
@@ -385,7 +386,7 @@ export default function FollowthroughApp() {
   const agenda = [
     ...state.blocks.map((b) => ({
       ...b,
-      title: taskById.get(b.taskId)?.title || 'Task',
+      title: taskLabel(taskById.get(b.taskId)?.title || 'Task'),
       source: 'task',
     })),
     ...state.busy.map((e) => ({ ...e, taskId: '', source: e.source })),
@@ -443,7 +444,7 @@ export default function FollowthroughApp() {
           />
         )}
         <button className="task-body" onClick={() => setEditing(task.id)}>
-          <strong>{task.title}</strong>
+          <strong>{taskLabel(task.title)}</strong>
           <span className="task-meta">
             {project && (
               <span style={{ color: project.color }}>{project.name}</span>
@@ -1110,7 +1111,7 @@ function TaskEditor({
   if (initial.deletedAt)
     return (
       <div className="editor-form">
-        <h2>{initial.title}</h2>
+        <h2>{taskLabel(initial.title || '')}</h2>
         <p>
           This task is in Trash. Restore it to return it to its previous status.
         </p>
@@ -1346,7 +1347,7 @@ function TaskEditor({
                   }
                 />
                 <label htmlFor={'dep-' + t.id}>
-                  {t.title}
+                  {taskLabel(t.title)}
                   {t.status === 'done' ? ' · complete' : ''}
                 </label>
               </div>

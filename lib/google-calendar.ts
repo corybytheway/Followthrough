@@ -1,5 +1,6 @@
 // Created by Cory McCabe
 import type { BusyEvent, Block, Task } from './model';
+import { taskLabel } from './model';
 import type {
   CalendarChoice,
   CalendarCredentials,
@@ -258,7 +259,7 @@ export async function reconcileGoogle(
     desired.add(id);
     const body = {
       id,
-      summary: task.title,
+      summary: taskLabel(task.title),
       colorId: '8',
       description:
         'Managed by Followthrough. Complete or reschedule this task in Followthrough.',
