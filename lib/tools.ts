@@ -4,7 +4,7 @@ const taskFields = {
   title: {
     type: 'string',
     description:
-      'Concise name of one focused outcome. The first word must be an imperative action verb, such as Fix, Build, Send, or Review. Summarize the outcome rather than transcribing the request.',
+      'The shortest name that still identifies one focused outcome. Begin with an imperative action verb, such as Fix, Build, Send, or Review. Retain essential context, express quantities with numerals, and use & instead of the standalone word and. Summarize the outcome rather than transcribing the request.',
   },
   projectId: {
     type: ['string', 'null'],

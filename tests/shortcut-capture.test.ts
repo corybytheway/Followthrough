@@ -7,6 +7,7 @@ import {
   prepareShortcutCapture,
   tokenHash,
 } from '../lib/shortcut-capture';
+import { normalizeGeneratedTitle } from '../lib/capture';
 import { initialWorkspace, type Task } from '../lib/model';
 import { normalizeCaptureStatus } from '../lib/capture-status';
 import { applyAction } from '../lib/actions';
@@ -21,6 +22,12 @@ void test('capture endpoint accepts only text and a retry identifier', () => {
   assert.throws(() => captureRequest({ ...valid, action: 'complete_task' }));
   assert.throws(() => captureRequest({ ...valid, source: ' ' }));
   assert.throws(() => captureRequest({ ...valid, requestId: 'short' }));
+});
+void test('generated task titles use numerals and ampersands', () => {
+  assert.equal(
+    normalizeGeneratedTitle('Record two intros and eight outros'),
+    'Record 2 intros & 8 outros',
+  );
 });
 void test('retired Inbox records become Ready without altering holds, deadlines, or original input', () => {
   const w = initialWorkspace();
