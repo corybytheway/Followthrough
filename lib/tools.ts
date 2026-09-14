@@ -4,7 +4,7 @@ const taskFields = {
   title: {
     type: 'string',
     description:
-      'The shortest name that still identifies one focused outcome. Begin with an imperative action verb, such as Fix, Build, Send, or Review. Retain essential context, express quantities with numerals, and use & instead of the standalone word and. Summarize the outcome rather than transcribing the request.',
+      'The shortest name that still identifies one focused outcome within its project. Begin with an imperative action verb, such as Fix, Build, Send, or Review. When projectId is assigned, omit that project name, its aliases, obvious expansions, and spelling variants because the UI already displays Project: before the task name. Retain only context not supplied by the project, express quantities with numerals, and use & instead of the standalone word and. Summarize the outcome rather than transcribing the request.',
   },
   projectId: {
     type: ['string', 'null'],

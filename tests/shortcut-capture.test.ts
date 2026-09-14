@@ -29,6 +29,26 @@ void test('generated task titles use numerals and ampersands', () => {
     'Record 2 intros & 8 outros',
   );
 });
+void test('generated task titles omit context already supplied by the project', () => {
+  const orbit = { name: 'Orbit', aliases: ['orbit'] },
+    btf = { name: 'BTF', aliases: ['Behind The Film'] },
+    tgs = { name: 'TGS', aliases: ['Triple Glazed Studios'] };
+  assert.equal(
+    normalizeGeneratedTitle('Submit Orbit timesheet PR', orbit),
+    'Submit timesheet PR',
+  );
+  assert.equal(
+    normalizeGeneratedTitle('Build Behind The Film outreach automation', btf),
+    'Build outreach automation',
+  );
+  assert.equal(
+    normalizeGeneratedTitle(
+      'Confirm eight-hour workday approval with Triple Glazed Studios',
+      tgs,
+    ),
+    'Confirm 8-hour workday approval',
+  );
+});
 void test('retired Inbox records become Ready without altering holds, deadlines, or original input', () => {
   const w = initialWorkspace();
   const task = applyAction(w, {
@@ -95,7 +115,7 @@ void test('model title and checklist are saved while original input stays verbat
   const workspace = initialWorkspace();
   const source =
     '  I need to fix the booking button on HP Studios.\nCheck mobile, then publish Friday. 🎬  ';
-  const title = 'Fix the HP Studios booking button';
+  const title = 'Fix the booking button';
   t.mock.method(globalThis, 'fetch', async () =>
     Response.json({
       status: 'completed',
@@ -105,7 +125,7 @@ void test('model title and checklist are saved while original input stays verbat
             {
               type: 'output_text',
               text: JSON.stringify({
-                title,
+                title: 'Fix the HP Studios booking button',
                 projectId: 'project-4',
                 steps: [
                   'Check the button on mobile',
