@@ -1,5 +1,5 @@
 // Created by Cory McCabe
-import { env } from 'cloudflare:workers';
+import { openAIConnection } from '@/lib/openai-connection';
 import { requireOwner, jsonBody, fail } from '@/lib/http';
 import { readWorkspace } from '@/lib/store';
 import { aiDraft, basicDraft } from '@/lib/capture';
@@ -12,17 +12,11 @@ export async function POST(request: Request) {
     text(v.source, 'Your request', 8000, true);
     const source = v.source as string;
     const { workspace } = await readWorkspace(owner),
-      config = env as unknown as Record<string, string>;
-    if (!config.OPENAI_API_KEY)
-      return Response.json(basicDraft(source, workspace));
+      config = await openAIConnection(owner);
+    if (!config.key) return Response.json(basicDraft(source, workspace));
     let draft;
     try {
-      draft = await aiDraft(
-        source,
-        workspace,
-        config.OPENAI_API_KEY,
-        config.OPENAI_MODEL || 'gpt-5-mini',
-      );
+      draft = await aiDraft(source, workspace, config.key, config.model);
     } catch (e) {
       throw new InputError(
         e instanceof Error ? e.message : 'Could not prepare the draft.',

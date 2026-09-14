@@ -111,10 +111,17 @@ export async function aiDraft(
       max_output_tokens: 3000,
     }),
   });
-  if (!response.ok)
-    throw new Error(
-      'AI capture is unavailable. You can still create a task manually.',
-    );
+  if (!response.ok) {
+    const explanation =
+      response.status === 401 || response.status === 403
+        ? 'OpenAI rejected the connection. Check the API key and Responses API permissions.'
+        : response.status === 404
+          ? 'The configured OpenAI model is unavailable to this account.'
+          : response.status === 429
+            ? 'OpenAI usage or rate limits prevented task naming. Check API billing and try again.'
+            : 'OpenAI task naming is temporarily unavailable. Try again.';
+    throw new Error(explanation);
+  }
   const data = (await response.json()) as {
     status?: string;
     output?: { content?: { type: string; text?: string }[] }[];

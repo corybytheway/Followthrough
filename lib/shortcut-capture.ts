@@ -36,7 +36,7 @@ export async function prepareShortcutCapture(
   source: string,
   workspace: Workspace,
   key?: string,
-  model = 'gpt-5-mini',
+  model = 'gpt-5.6-luna',
 ) {
   if (key) {
     try {

@@ -64,6 +64,7 @@ import { localDay } from '@/lib/scheduler';
 import { TOOL_DEFINITIONS, toolAction } from '@/lib/tools';
 import ShortcutSettings from '@/components/shortcut-settings';
 import CalendarSettings from '@/components/calendar-settings';
+import OpenAISettings from '@/components/openai-settings';
 
 type Draft = Partial<Task> & {
   rationale?: string;
@@ -499,7 +500,15 @@ export default function FollowthroughApp() {
       <header className="app-header">
         <Link href="/" className="brand">
           <span className="brand-mark">
-            <svg width="27" height="27" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><path d="M37 7 13 36h16l-3 21 25-31H35z" /></svg>
+            <svg
+              width="27"
+              height="27"
+              viewBox="0 0 64 64"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M37 7 13 36h16l-3 21 25-31H35z" />
+            </svg>
           </span>
           Followthrough
         </Link>
@@ -1345,7 +1354,13 @@ function TaskEditor({
         </small>
         <div className="dependency-list">
           {state.tasks
-            .filter((t) => t.id !== initial.id && t.status !== 'archived' && t.status !== 'done' && !t.deletedAt)
+            .filter(
+              (t) =>
+                t.id !== initial.id &&
+                t.status !== 'archived' &&
+                t.status !== 'done' &&
+                !t.deletedAt,
+            )
             .map((t) => (
               <div className="check-field" key={t.id}>
                 <Checkbox
@@ -1368,7 +1383,11 @@ function TaskEditor({
               </div>
             ))}
           {!state.tasks.some(
-            (t) => t.id !== initial.id && t.status !== 'archived' && t.status !== 'done' && !t.deletedAt,
+            (t) =>
+              t.id !== initial.id &&
+              t.status !== 'archived' &&
+              t.status !== 'done' &&
+              !t.deletedAt,
           ) && <p className="secondary-text">No unfinished tasks available.</p>}
         </div>
       </div>
@@ -1706,6 +1725,7 @@ function SettingsPanel({
       </form>
       <div className="connections">
         <CalendarSettings />
+        <OpenAISettings />
         <div className="settings-card">
           <MessageSquare />
           <h2>Chat capture</h2>

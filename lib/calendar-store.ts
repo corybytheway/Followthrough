@@ -80,6 +80,7 @@ export async function calendarFlags(owner: string) {
     ? (JSON.parse(row.document) as CalendarConnection)
     : null;
   return {
+    ai: !!calendarConfig().OPENAI_API_KEY || !!connection?.openaiConfigured,
     google: !!connection?.googleCalendars.length,
     icloud: !!connection?.icloudCalendars.length,
     background:

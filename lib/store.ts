@@ -13,7 +13,6 @@ import { applyAction } from './actions';
 import { InputError, object, text } from './validation';
 type Row = { document: string; revision: number };
 const flags = async (ownerId: string) => ({
-  ai: !!(env as unknown as Record<string, string>).OPENAI_API_KEY,
   ...(await calendarFlags(ownerId)),
 });
 

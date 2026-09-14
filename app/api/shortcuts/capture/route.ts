@@ -1,5 +1,5 @@
 // Created by Cory McCabe
-import { env } from 'cloudflare:workers';
+import { openAIConnection } from '@/lib/openai-connection';
 import { jsonBody, fail } from '@/lib/http';
 import { readWorkspace, mutate } from '@/lib/store';
 import { authenticateShortcut } from '@/lib/shortcut-connection';
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     const { ownerId, hash } = await authenticateShortcut(request);
     const { source, requestId } = captureRequest(await jsonBody(request));
     const captureId = 'capture_' + (await tokenHash(hash + ':' + requestId));
-    const config = env as unknown as Record<string, string>;
+    const config = await openAIConnection(ownerId);
     const initial = await readWorkspace(ownerId);
     let task = initial.workspace.tasks.find((t) => t.id === captureId);
     let duplicate = !!task;
@@ -37,8 +37,8 @@ export async function POST(request: Request) {
       const draft = await prepareShortcutCapture(
         source,
         initial.workspace,
-        config.OPENAI_API_KEY,
-        config.OPENAI_MODEL || 'gpt-5-mini',
+        config.key,
+        config.model,
       );
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     const message = duplicate
       ? 'Already saved to Followthrough. No duplicate created.'
       : task.estimateProvisional
-        ? 'Saved to Followthrough as Ready. Automatic planning will use a temporary 30-minute estimate.'
+        ? 'Saved to Followthrough, but AI naming was unavailable. Your original input is preserved; the title and 30-minute estimate are temporary.'
         : `Saved to Followthrough: ${task.title}`;
     return Response.json(
       { ok: true, message, taskId: task.id },

@@ -1,5 +1,5 @@
 // Created by Cory McCabe
-import { env } from 'cloudflare:workers';
+import { resolveOpenAI } from './openai-connection';
 import { aiDraft } from './capture';
 import {
   googleAccess,
@@ -119,8 +119,8 @@ export async function syncCalendars(
       }
       // Fill existing captures once, without replacing user-authored checklists.
       // A model failure must never stop the calendar from being replanned.
-      const config = env as unknown as Record<string, string>;
-      if (config.OPENAI_API_KEY) {
+      const config = resolveOpenAI(credentials);
+      if (config.key) {
         const candidates = initial.workspace.tasks
           .filter(
             (task) =>
@@ -136,8 +136,8 @@ export async function syncCalendars(
             const draft = await aiDraft(
               task.source,
               initial.workspace,
-              config.OPENAI_API_KEY,
-              config.OPENAI_MODEL || 'gpt-5-mini',
+              config.key,
+              config.model,
             );
             await mutate(owner, {
               action: 'update_task',
