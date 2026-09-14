@@ -1094,6 +1094,40 @@ function TaskEditor({
     [splittable, setSplittable] = useState(initial.splittable !== false),
     [blockers, setBlockers] = useState(initial.blockers || []),
     [localError, setLocalError] = useState('');
+  const [regeneratingTitle, setRegeneratingTitle] = useState(false),
+    [titleNotice, setTitleNotice] = useState('');
+
+  async function regenerateTitle() {
+    if (!initial.id || !initial.source?.trim()) return;
+    setLocalError('');
+    setTitleNotice('');
+    setRegeneratingTitle(true);
+    try {
+      const response = await fetch('/api/openai/rename', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: initial.id, preview: true }),
+        }),
+        result = (await response.json()) as { error?: unknown; title?: unknown };
+      if (!response.ok)
+        throw new Error(
+          typeof result.error === 'string'
+            ? result.error
+            : 'Could not regenerate the task name.',
+        );
+      if (typeof result.title !== 'string' || !result.title.trim())
+        throw new Error('OpenAI did not return a task name.');
+      setTitle(result.title);
+      setTitleNotice('New name generated. Save changes to keep it.');
+    } catch (e) {
+      setLocalError(
+        e instanceof Error ? e.message : 'Could not regenerate the task name.',
+      );
+    } finally {
+      setRegeneratingTitle(false);
+    }
+  }
+
   async function submit(
     e: { preventDefault: () => void },
     nextStatus = status,
@@ -1186,6 +1220,29 @@ function TaskEditor({
           placeholder="A focused outcome"
         />
       </Field>
+      {initial.id && initial.source?.trim() && (
+        <div className="task-name-actions">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={saving || regeneratingTitle}
+            aria-label="Regenerate task name from original input"
+            onClick={() => void regenerateTitle()}
+          >
+            {regeneratingTitle ? (
+              <Loader2 className="spin" />
+            ) : (
+              <RotateCcw />
+            )}
+            {regeneratingTitle ? 'Regenerating…' : 'Regenerate name'}
+          </Button>
+          {titleNotice && (
+            <small className="secondary-text" role="status">
+              {titleNotice}
+            </small>
+          )}
+        </div>
+      )}
       <Field label="Project">
         <NativeSelect
           value={projectId}

@@ -390,6 +390,16 @@ p {
   color: var(--subtle);
   line-height: 1.5;
 }
+.task-name-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: -12px;
+}
+.task-name-actions small {
+  font-size: 12px;
+}
 .field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

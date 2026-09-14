@@ -27,12 +27,18 @@ export async function POST(request: Request) {
   try {
     const owner = await requireOwner(request, true),
       body = object(await jsonBody(request));
-    const id = text(body.id, 'Task ID', 200, true);
+    const id = text(body.id, 'Task ID', 200, true),
+      preview = body.preview === true;
     const { workspace } = await readWorkspace(owner),
       task = workspace.tasks.find((t) => t.id === id);
-    if (!task || !eligible(task))
+    if (
+      !task ||
+      task.deletedAt ||
+      !task.source.trim() ||
+      (!preview && !eligible(task))
+    )
       throw new InputError(
-        'This task is no longer active or has no original input.',
+        'This task is in Trash, no longer active, or has no original input.',
       );
     const config = await openAIConnection(owner);
     if (!config.key)
@@ -45,14 +51,16 @@ export async function POST(request: Request) {
         e instanceof Error ? e.message : 'Could not generate a title.',
       );
     }
-    // Optimistic concurrency preserves edits and completions made during generation.
-    // Update only the title; retain the exact original input and existing plan.
-    await mutate(owner, {
-      action: 'update_task',
-      id,
-      requestId: crypto.randomUUID(),
-      task: { title: draft.title, expectedUpdatedAt: task.updatedAt },
-    });
+    if (!preview) {
+      // Optimistic concurrency preserves edits and completions made during generation.
+      // Update only the title; retain the exact original input and existing plan.
+      await mutate(owner, {
+        action: 'update_task',
+        id,
+        requestId: crypto.randomUUID(),
+        task: { title: draft.title, expectedUpdatedAt: task.updatedAt },
+      });
+    }
     return Response.json({ id, title: draft.title }, { headers });
   } catch (e) {
     return fail(e);
