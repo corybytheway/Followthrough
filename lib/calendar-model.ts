@@ -6,7 +6,6 @@ export type PendingCalendarMove = {
   properties: Record<string, string>;
 };
 export type CalendarCredentials = {
-  openai?: { apiKey: string; model: string };
   google?: {
     clientId: string;
     clientSecret: string;
@@ -17,7 +16,6 @@ export type CalendarCredentials = {
   oauth?: { stateHash: string; verifier: string; expiresAt: number };
 };
 export type CalendarConnection = {
-  openaiConfigured?: boolean;
   marker: string;
   googleCalendars: CalendarChoice[];
   icloudCalendars: CalendarChoice[];

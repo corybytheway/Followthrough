@@ -4,12 +4,8 @@ import { object, text, taskInput, InputError } from '@/lib/validation';
 import { readWorkspace } from '@/lib/store';
 import { aiDraft } from '@/lib/capture';
 import {
-  readCalendar,
-  saveCalendar,
-  withCalendarLock,
-} from '@/lib/calendar-store';
-import {
   openAIConnection,
+  saveOpenAIConnection,
   DEFAULT_CAPTURE_MODEL,
 } from '@/lib/openai-connection';
 export const dynamic = 'force-dynamic';
@@ -51,12 +47,7 @@ export async function POST(request: Request) {
           : 'OpenAI connection could not be verified.',
       );
     }
-    await withCalendarLock(owner, async () => {
-      const { connection, credentials } = await readCalendar(owner);
-      credentials.openai = { apiKey: key, model: DEFAULT_CAPTURE_MODEL };
-      connection.openaiConfigured = true;
-      await saveCalendar(owner, connection, credentials);
-    });
+    await saveOpenAIConnection(owner, key);
     return Response.json(
       {
         connected: true,

@@ -1,5 +1,5 @@
 // Created by Cory McCabe
-import { resolveOpenAI } from './openai-connection';
+import { openAIConnection } from './openai-connection';
 import { aiDraft } from './capture';
 import {
   googleAccess,
@@ -119,7 +119,7 @@ export async function syncCalendars(
       }
       // Fill existing captures once, without replacing user-authored checklists.
       // A model failure must never stop the calendar from being replanned.
-      const config = resolveOpenAI(credentials);
+      const config = await openAIConnection(owner);
       if (config.key) {
         const candidates = initial.workspace.tasks
           .filter(

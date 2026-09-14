@@ -30,3 +30,10 @@ export const calendarLocks = sqliteTable('calendar_locks', {
   token: text('token').notNull(),
   expiresAt: integer('expires_at').notNull(),
 });
+
+// AI settings use their own encrypted storage so calendar syncing cannot block setup.
+export const openaiConnections = sqliteTable('openai_connections', {
+  ownerId: text('owner_id').primaryKey(),
+  credentials: text('credentials').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});

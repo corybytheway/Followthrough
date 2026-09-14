@@ -7,12 +7,14 @@ import {
   type BusyEvent,
 } from './model';
 import { calendarFlags } from './calendar-store';
+import { hasOpenAIConnection } from './openai-connection';
 import { normalizeCaptureStatus } from './capture-status';
 import { plan, localDay } from './scheduler';
 import { applyAction } from './actions';
 import { InputError, object, text } from './validation';
 type Row = { document: string; revision: number };
 const flags = async (ownerId: string) => ({
+  ai: await hasOpenAIConnection(ownerId),
   ...(await calendarFlags(ownerId)),
 });
 
