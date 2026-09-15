@@ -140,26 +140,31 @@ export async function googleBusy(
   ids: string[],
   start: string,
   end: string,
+  ignoreAllDayIds: ReadonlySet<string> = new Set(),
+  fallbackTimeZone = 'UTC',
 ): Promise<BusyEvent[]> {
   if (!ids.length) return [];
   if (ids.length > 50)
     throw new InputError('Select up to 50 Google calendars.');
-  const data = await googleRequest<{
+  const freeBusyIds = ids.filter((id) => !ignoreAllDayIds.has(id));
+  const data = freeBusyIds.length
+    ? await googleRequest<{
     calendars?: Record<
       string,
       { busy?: { start: string; end: string }[]; errors?: unknown[] }
     >;
   }>(token, 'freeBusy', {
-    method: 'POST',
-    body: JSON.stringify({
-      timeMin: start,
-      timeMax: end,
-      items: ids.map((id) => ({ id })),
-      calendarExpansionMax: 50,
-    }),
-  });
+        method: 'POST',
+        body: JSON.stringify({
+          timeMin: start,
+          timeMax: end,
+          items: freeBusyIds.map((id) => ({ id })),
+          calendarExpansionMax: 50,
+        }),
+      })
+    : { calendars: {} };
   const events: BusyEvent[] = [];
-  for (const id of ids) {
+  for (const id of freeBusyIds) {
     const calendar = data.calendars?.[id];
     if (!calendar || calendar.errors?.length || !Array.isArray(calendar.busy))
       throw new InputError(
@@ -182,6 +187,17 @@ export async function googleBusy(
       });
     }
   }
+  for (const id of ids.filter((calendarId) => ignoreAllDayIds.has(calendarId)))
+    events.push(
+      ...(await googleCalendarEventsBusy(
+        token,
+        id,
+        start,
+        end,
+        fallbackTimeZone,
+        true,
+      )),
+    );
   return events;
 }
 export async function ensureOutputCalendar(
@@ -403,13 +419,14 @@ export async function calendarDescription(
 
 // Read individual busy events on the shared task/meeting calendar. Never subtract
 // task intervals from freeBusy: that would also erase overlapping appointments.
-export async function googleOutputBusy(
+async function googleCalendarEventsBusy(
   token: string,
   calendarId: string,
-  marker: string,
   start: string,
   end: string,
   fallbackTimeZone: string,
+  ignoreAllDay = false,
+  marker?: string,
 ): Promise<BusyEvent[]> {
   const busy: BusyEvent[] = [];
   let pageToken = '';
@@ -432,13 +449,15 @@ export async function googleOutputBusy(
     }>(token, `calendars/${encodeURIComponent(calendarId)}/events?${params}`);
     for (const event of data.items || []) {
       if (
-        event.extendedProperties?.private?.followthrough === marker ||
+        (marker &&
+          event.extendedProperties?.private?.followthrough === marker) ||
         event.status === 'cancelled' ||
         event.transparency === 'transparent' ||
         event.eventType === 'workingLocation' ||
         event.attendees?.some((a) => a.self && a.responseStatus === 'declined')
       )
         continue;
+      if (ignoreAllDay && event.start?.date && !event.start.dateTime) continue;
       const instant = (value?: { dateTime?: string; date?: string }) => {
         if (value?.dateTime) return Date.parse(value.dateTime);
         if (value?.date)
@@ -466,7 +485,29 @@ export async function googleOutputBusy(
     pageToken = data.nextPageToken;
   }
   throw new InputError(
-    'There are too many events in the task calendar to sync safely.',
+    'There are too many events in a selected calendar to sync safely.',
+  );
+}
+
+// Read individual busy events on the shared task/meeting calendar. Never subtract
+// task intervals from freeBusy: that would also erase overlapping appointments.
+export async function googleOutputBusy(
+  token: string,
+  calendarId: string,
+  marker: string,
+  start: string,
+  end: string,
+  fallbackTimeZone: string,
+  ignoreAllDay = false,
+): Promise<BusyEvent[]> {
+  return googleCalendarEventsBusy(
+    token,
+    calendarId,
+    start,
+    end,
+    fallbackTimeZone,
+    ignoreAllDay,
+    marker,
   );
 }
 

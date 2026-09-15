@@ -107,6 +107,7 @@ export async function POST(request: Request) {
           connection.icloudCalendars = await icloudCalendars(secret);
           credentials.icloud = secret;
           connection.selectedIcloud = [];
+          connection.ignoreAllDayIcloud = [];
           connection.syncEnabled = false;
           break;
         }
@@ -119,6 +120,12 @@ export async function POST(request: Request) {
             connection.icloudCalendars = await icloudCalendars(
               credentials.icloud,
             );
+          connection.ignoreAllDayGoogle = connection.ignoreAllDayGoogle.filter(
+            (id) => connection.googleCalendars.some((calendar) => calendar.id === id),
+          );
+          connection.ignoreAllDayIcloud = connection.ignoreAllDayIcloud.filter(
+            (id) => connection.icloudCalendars.some((calendar) => calendar.id === id),
+          );
           break;
         }
         case 'save_selection': {
@@ -151,6 +158,25 @@ export async function POST(request: Request) {
             )
               connection[key].push(connection.outputCalendarId);
           }
+          for (const [key, selected] of [
+            ['ignoreAllDayGoogle', connection.selectedGoogle],
+            ['ignoreAllDayIcloud', connection.selectedIcloud],
+          ] as const) {
+            const value =
+              input[key] === undefined
+                ? connection[key].filter((id) => selected.includes(id))
+                : input[key];
+            if (
+              !Array.isArray(value) ||
+              value.some(
+                (id) => typeof id !== 'string' || !selected.includes(id),
+              )
+            )
+              throw new InputError(
+                'Ignore all-day events only on selected calendars.',
+              );
+            connection[key] = [...new Set(value as string[])];
+          }
           // A changed selection must receive a full successful availability read.
           connection.lastSync = null;
           break;
@@ -180,10 +206,12 @@ export async function POST(request: Request) {
             delete credentials.oauth;
             connection.googleCalendars = [];
             connection.selectedGoogle = [];
+            connection.ignoreAllDayGoogle = [];
           } else {
             delete credentials.icloud;
             connection.icloudCalendars = [];
             connection.selectedIcloud = [];
+            connection.ignoreAllDayIcloud = [];
           }
           await saveCalendarAvailability(
             owner,

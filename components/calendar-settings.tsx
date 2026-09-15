@@ -17,11 +17,15 @@ export default function CalendarSettings() {
   const [googleClientId, setGoogleClientId] = useState(''),
     [googleClientSecret, setGoogleClientSecret] = useState('');
   const [selectedGoogle, setGoogle] = useState<string[]>([]),
-    [selectedIcloud, setIcloud] = useState<string[]>([]);
+    [selectedIcloud, setIcloud] = useState<string[]>([]),
+    [ignoreAllDayGoogle, setIgnoreAllDayGoogle] = useState<string[]>([]),
+    [ignoreAllDayIcloud, setIgnoreAllDayIcloud] = useState<string[]>([]);
   const accept = (next: CalendarStatus) => {
     setStatus(next);
     setGoogle(next.selectedGoogle);
     setIcloud(next.selectedIcloud);
+    setIgnoreAllDayGoogle(next.ignoreAllDayGoogle || []);
+    setIgnoreAllDayIcloud(next.ignoreAllDayIcloud || []);
   };
   useEffect(() => {
     let live = true;
@@ -78,6 +82,21 @@ export default function CalendarSettings() {
     checked: boolean,
   ) => {
     const update = provider === 'google' ? setGoogle : setIcloud;
+    const updateIgnore =
+      provider === 'google' ? setIgnoreAllDayGoogle : setIgnoreAllDayIcloud;
+    update((values) =>
+      checked ? [...values, id] : values.filter((value) => value !== id),
+    );
+    if (!checked)
+      updateIgnore((values) => values.filter((value) => value !== id));
+  };
+  const setIgnoreAllDay = (
+    provider: 'google' | 'icloud',
+    id: string,
+    checked: boolean,
+  ) => {
+    const update =
+      provider === 'google' ? setIgnoreAllDayGoogle : setIgnoreAllDayIcloud;
     update((values) =>
       checked ? [...values, id] : values.filter((value) => value !== id),
     );
@@ -85,7 +104,11 @@ export default function CalendarSettings() {
   const selectionChanged =
     !!status &&
     (JSON.stringify(selectedGoogle) !== JSON.stringify(status.selectedGoogle) ||
-      JSON.stringify(selectedIcloud) !== JSON.stringify(status.selectedIcloud));
+      JSON.stringify(selectedIcloud) !== JSON.stringify(status.selectedIcloud) ||
+      JSON.stringify(ignoreAllDayGoogle) !==
+        JSON.stringify(status.ignoreAllDayGoogle || []) ||
+      JSON.stringify(ignoreAllDayIcloud) !==
+        JSON.stringify(status.ignoreAllDayIcloud || []));
   const googleAccount = status?.googleConnected
     ? status.googleCalendars.find((calendar) => calendar.primary)?.id
     : undefined;
@@ -416,6 +439,10 @@ export default function CalendarSettings() {
                   );
                   const selected =
                     provider === 'google' ? selectedGoogle : selectedIcloud;
+                  const ignored =
+                    provider === 'google'
+                      ? ignoreAllDayGoogle
+                      : ignoreAllDayIcloud;
                   return choices.length ? (
                     <fieldset key={provider}>
                       <legend>
@@ -427,26 +454,46 @@ export default function CalendarSettings() {
                           </span>
                         )}
                       </legend>
-                      {choices.map((calendar) => (
-                        <label className="calendar-option" key={calendar.id}>
-                          <Checkbox
-                            checked={selected.includes(calendar.id)}
-                            disabled={
-                              working ||
-                              (provider === 'google' &&
-                                status.outputOnPrimary &&
-                                calendar.id === status.outputCalendarId)
-                            }
-                            onCheckedChange={(value) =>
-                              select(provider, calendar.id, !!value)
-                            }
-                          />
-                          <span>
-                            {calendar.name}
-                            {calendar.primary ? ' (primary)' : ''}
-                          </span>
-                        </label>
-                      ))}
+                      {choices.map((calendar) => {
+                        const isSelected = selected.includes(calendar.id);
+                        return (
+                          <div className="calendar-option-row" key={calendar.id}>
+                            <label className="calendar-option">
+                              <Checkbox
+                                checked={isSelected}
+                                disabled={
+                                  working ||
+                                  (provider === 'google' &&
+                                    status.outputOnPrimary &&
+                                    calendar.id === status.outputCalendarId)
+                                }
+                                onCheckedChange={(value) =>
+                                  select(provider, calendar.id, !!value)
+                                }
+                              />
+                              <span>
+                                {calendar.name}
+                                {calendar.primary ? ' (primary)' : ''}
+                              </span>
+                            </label>
+                            <div className="calendar-all-day-option">
+                              <Checkbox
+                                aria-label={`Ignore all-day events on ${calendar.name}`}
+                                checked={ignored.includes(calendar.id)}
+                                disabled={working || !isSelected}
+                                onCheckedChange={(value) =>
+                                  setIgnoreAllDay(
+                                    provider,
+                                    calendar.id,
+                                    !!value,
+                                  )
+                                }
+                              />
+                              <span>Ignore all-day events</span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </fieldset>
                   ) : null;
                 })}
@@ -459,6 +506,8 @@ export default function CalendarSettings() {
                           action: 'save_selection',
                           selectedGoogle,
                           selectedIcloud,
+                          ignoreAllDayGoogle,
+                          ignoreAllDayIcloud,
                         });
                         if (status.syncEnabled)
                           await action({ action: 'sync' });

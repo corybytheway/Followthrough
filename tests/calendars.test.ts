@@ -123,6 +123,16 @@ void test('expanded iCloud recurrence instances, all-day DST, transparent and ca
   assert.equal(busy[0].start, '2026-11-01T05:00:00.000Z');
   assert.equal(busy[0].end, '2026-11-02T06:00:00.000Z');
   assert.equal(busy[1].start, '2026-11-02T16:00:00.000Z');
+  const timedOnly = await expandedIcloudBusy(
+    data,
+    'calendar',
+    '2026-11-01T00:00:00Z',
+    '2026-11-06T00:00:00Z',
+    'America/Chicago',
+    true,
+  );
+  assert.equal(timedOnly.length, 1);
+  assert.equal(timedOnly[0].start, '2026-11-02T16:00:00.000Z');
   await assert.rejects(
     expandedIcloudBusy(
       calendar(
@@ -208,6 +218,36 @@ void test('Google availability fails closed if even one selected calendar fails'
     ),
     /could not provide availability/,
   );
+});
+void test('Google can ignore all-day events while retaining timed bookings', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    assert.match(url, /calendars\/studio\/events/);
+    return Response.json({
+      timeZone: 'America/Chicago',
+      items: [
+        {
+          id: 'closed',
+          start: { date: '2026-09-09' },
+          end: { date: '2026-09-10' },
+        },
+        {
+          id: 'booking',
+          start: { dateTime: '2026-09-09T15:00:00Z' },
+          end: { dateTime: '2026-09-09T16:00:00Z' },
+        },
+      ],
+    });
+  });
+  const busy = await googleBusy(
+    'test',
+    ['studio'],
+    '2026-09-09T00:00:00Z',
+    '2026-09-10T00:00:00Z',
+    new Set(['studio']),
+    'America/Chicago',
+  );
+  assert.equal(busy.length, 1);
+  assert.equal(busy[0].start, '2026-09-09T15:00:00.000Z');
 });
 void test('Google calendar listing follows pagination', async (t) => {
   const urls: string[] = [];

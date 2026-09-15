@@ -26,9 +26,14 @@ export async function readCalendar(owner: string): Promise<{
   )
     .bind(owner)
     .first<Row>();
+  const stored = row ? (JSON.parse(row.document) as CalendarConnection) : null;
   return row
     ? {
-        connection: JSON.parse(row.document),
+        connection: {
+          ...stored!,
+          ignoreAllDayGoogle: stored!.ignoreAllDayGoogle || [],
+          ignoreAllDayIcloud: stored!.ignoreAllDayIcloud || [],
+        },
         credentials: await unseal(row.credentials, secret(), owner),
       }
     : { connection: emptyCalendarConnection(), credentials: {} };

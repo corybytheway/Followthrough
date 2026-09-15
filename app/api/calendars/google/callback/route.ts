@@ -90,6 +90,9 @@ export async function GET(request: Request) {
           primary.id,
         ]),
       ];
+      connection.ignoreAllDayGoogle = connection.ignoreAllDayGoogle.filter(
+        (id) => connection.selectedGoogle.includes(id),
+      );
       connection.lastError = null;
       await saveCalendar(owner, connection, credentials);
       success = true;

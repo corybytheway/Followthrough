@@ -112,6 +112,7 @@ export async function expandedIcloudBusy(
   start: string,
   end: string,
   timeZone: string,
+  ignoreAllDay = false,
 ): Promise<BusyEvent[]> {
   if (data.length > 2_000_000)
     throw new InputError(
@@ -132,6 +133,7 @@ export async function expandedIcloudBusy(
     const event = new ICAL.Event(component);
     if (!component.hasProperty('dtstart'))
       throw new InputError('An iCloud event has no start time. Sync stopped.');
+    if (ignoreAllDay && event.startDate.isDate) continue;
     const instant = (value: ICAL.Time, property: ICAL.Property | null) => {
       const tzid = property?.getParameter('tzid');
       return calendarInstant(
@@ -169,6 +171,7 @@ export async function icloudBusy(
   start: string,
   end: string,
   timeZone: string,
+  ignoreAllDayIds: ReadonlySet<string> = new Set(),
 ): Promise<BusyEvent[]> {
   if (!ids.length) return [];
   if (ids.length > 20)
@@ -195,7 +198,14 @@ export async function icloudBusy(
           'iCloud returned an unreadable event. Sync stopped.',
         );
       busy.push(
-        ...(await expandedIcloudBusy(object.data, id, start, end, timeZone)),
+        ...(await expandedIcloudBusy(
+          object.data,
+          id,
+          start,
+          end,
+          timeZone,
+          ignoreAllDayIds.has(id),
+        )),
       );
     }
   }

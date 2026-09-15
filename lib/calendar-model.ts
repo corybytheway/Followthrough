@@ -21,6 +21,8 @@ export type CalendarConnection = {
   icloudCalendars: CalendarChoice[];
   selectedGoogle: string[];
   selectedIcloud: string[];
+  ignoreAllDayGoogle: string[];
+  ignoreAllDayIcloud: string[];
   outputCalendarId: string | null;
   outputOnPrimary?: boolean;
   outputCalendarName?: string;
@@ -48,6 +50,8 @@ export function emptyCalendarConnection(): CalendarConnection {
     icloudCalendars: [],
     selectedGoogle: [],
     selectedIcloud: [],
+    ignoreAllDayGoogle: [],
+    ignoreAllDayIcloud: [],
     outputCalendarId: null,
     syncEnabled: false,
     lastSync: null,

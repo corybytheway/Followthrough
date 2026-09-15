@@ -78,6 +78,8 @@ export async function syncCalendars(
             ),
             start,
             end,
+            new Set(connection.ignoreAllDayGoogle),
+            initial.workspace.settings.timeZone,
           )
         : [];
       if (access && connection.outputOnPrimary && connection.outputCalendarId)
@@ -89,6 +91,9 @@ export async function syncCalendars(
             start,
             end,
             initial.workspace.settings.timeZone,
+            connection.ignoreAllDayGoogle.includes(
+              connection.outputCalendarId,
+            ),
           )),
         );
       const icloud = credentials.icloud
@@ -98,6 +103,7 @@ export async function syncCalendars(
             start,
             end,
             initial.workspace.settings.timeZone,
+            new Set(connection.ignoreAllDayIcloud),
           )
         : [];
       if (
