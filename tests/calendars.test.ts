@@ -23,6 +23,29 @@ import { applyAction } from '../lib/actions';
 import { plan } from '../lib/scheduler';
 import type { PendingCalendarMove } from '../lib/calendar-model';
 import type { Block } from '../lib/model';
+import { calendarActionUrl } from '../lib/calendar-actions';
+
+void test('calendar action URLs accept only the Apps Script bridge or exact Followthrough relay', () => {
+  assert.equal(
+    calendarActionUrl(
+      'https://followthrough-actions.corybytheway.chatgpt.site/action',
+    ),
+    'https://followthrough-actions.corybytheway.chatgpt.site/action',
+  );
+  assert.equal(
+    calendarActionUrl(
+      'https://script.google.com/macros/s/deployment-safe-id_123/exec',
+    ),
+    'https://script.google.com/macros/s/deployment-safe-id_123/exec',
+  );
+  for (const url of [
+    'http://followthrough-actions.corybytheway.chatgpt.site/action',
+    'https://followthrough-actions.corybytheway.chatgpt.site/action?next=bad',
+    'https://followthrough-actions.corybytheway.chatgpt.site/other',
+    'https://attacker.example/action',
+  ])
+    assert.throws(() => calendarActionUrl(url));
+});
 
 void test('calendar credentials are authenticated, encrypted, and bound to their owner', async () => {
   const secret = 'a'.repeat(64),

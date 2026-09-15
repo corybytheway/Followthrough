@@ -45,15 +45,20 @@ export function calendarActionUrl(value: string): string {
   } catch {
     throw new InputError('Calendar action links are not configured.');
   }
+  const isAppsScript =
+      url.hostname === 'script.google.com' &&
+      /^\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url.pathname),
+    isFollowthroughRelay =
+      url.hostname === 'followthrough-actions.corybytheway.chatgpt.site' &&
+      url.pathname === '/action';
   if (
     url.protocol !== 'https:' ||
-    url.hostname !== 'script.google.com' ||
     url.port ||
     url.username ||
     url.password ||
     url.search ||
     url.hash ||
-    !/^\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url.pathname)
+    (!isAppsScript && !isFollowthroughRelay)
   )
     throw new InputError('Calendar action links are not configured.');
   return url.toString();
