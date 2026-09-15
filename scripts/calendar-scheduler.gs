@@ -53,7 +53,10 @@ function doGet(event) {
   const input = calendarActionInput_(event && event.parameter);
   if (!input)
     return actionPage_('Link unavailable', 'This Followthrough task link is invalid.', true);
-  const endpoint = ScriptApp.getService().getUrl();
+  const endpoint = ScriptApp.getService().getUrl().replace(
+    /^https:\/\/script\.google\.com\/(?:a\/[^/]+\/)?macros\//,
+    'https://script.google.com/macros/'
+  );
   const fields = Object.keys(input).map(function(key) {
     return '<input type="hidden" name="' + escapeHtml_(key) + '" value="' +
       escapeHtml_(input[key]) + '">';
