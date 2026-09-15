@@ -372,11 +372,11 @@ void test('calendar descriptions show concise signed actions, original input, an
   );
   assert.ok(
     description.includes(
-      '>Complete</a> · ',
+      '>Complete</a><br>',
     ),
   );
-  assert.ok(description.includes('>Postpone</a> · '));
-  assert.ok(description.includes('>Delete</a> · '));
+  assert.ok(description.includes('>Postpone</a><br>'));
+  assert.ok(description.includes('>Delete</a><br>'));
   assert.ok(description.includes('>Manage in Followthrough</a>'));
   assert.ok(!description.includes('>https://'));
   assert.equal((description.match(/signature=[a-f0-9]{64}/g) || []).length, 3);

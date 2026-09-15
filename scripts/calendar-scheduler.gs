@@ -72,9 +72,13 @@ function doGet(event) {
 }
 
 function doPost(event) {
-  const input = calendarActionInput_(event && event.parameter);
+  const parameters = event && event.parameter;
+  const input = calendarActionInput_(parameters);
   if (!input)
-    return actionPage_('Link unavailable', 'This Followthrough task link is invalid.', true);
+    return actionResponse_(parameters, 'Link unavailable', 'This Followthrough task link is invalid.', true, {
+      ok: false,
+      error: 'This Followthrough task link is invalid.'
+    });
   try {
     const properties = PropertiesService.getScriptProperties();
     const gateway = properties.getProperty('SITES_GATEWAY_TOKEN');
@@ -98,11 +102,19 @@ function doPost(event) {
     try { result = JSON.parse(response.getContentText()); }
     catch (_) { throw new Error('Followthrough returned an unexpected response.'); }
     if (response.getResponseCode() !== 200 || result.ok !== true)
-      return actionPage_('Could not update task', result.error || 'Open the latest calendar event and try again.', true);
-    return actionPage_('Done', result.message || 'Followthrough updated the task.', false);
+      return actionResponse_(parameters, 'Could not update task', result.error || 'Open the latest calendar event and try again.', true, result);
+    return actionResponse_(parameters, 'Done', result.message || 'Followthrough updated the task.', false, result);
   } catch (error) {
-    return actionPage_('Could not update task', error.message || 'Try again from the latest calendar event.', true);
+    const message = error.message || 'Try again from the latest calendar event.';
+    return actionResponse_(parameters, 'Could not update task', message, true, { ok: false, error: message });
   }
+}
+
+function actionResponse_(parameters, title, message, isError, result) {
+  if (parameters && parameters.relay === '1')
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  return actionPage_(title, message, isError);
 }
 
 function calendarActionInput_(parameters) {

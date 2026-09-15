@@ -386,7 +386,10 @@ export async function calendarDescription(
           return `<a href="${baseUrl}?${query}">${label}</a>`;
         }),
       );
-    actions = '<br><br><b>Task actions</b><br>' + links.join(' · ') + ' · ';
+    actions =
+      '<br><br><b>Task actions</b><br>' +
+      links.join('<br>') +
+      '<br>';
   } else actions = '<br><br>';
   return (
     '<b>Suggested steps</b>' +
