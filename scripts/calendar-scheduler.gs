@@ -41,10 +41,9 @@ function installFollowthroughScheduler() {
   const existing = ScriptApp.getProjectTriggers().filter(function(trigger) {
     return trigger.getHandlerFunction() === 'syncFollowthrough';
   });
-  if (existing.length === 0)
-    ScriptApp.newTrigger('syncFollowthrough').timeBased().everyMinutes(5).create();
-  existing.slice(1).forEach(function(trigger) { ScriptApp.deleteTrigger(trigger); });
-  console.log('Followthrough timer installed: every five minutes.');
+  existing.forEach(function(trigger) { ScriptApp.deleteTrigger(trigger); });
+  ScriptApp.newTrigger('syncFollowthrough').timeBased().everyMinutes(1).create();
+  console.log('Followthrough timer installed: every minute.');
 }
 
 // A calendar click loads this inert page first. Its browser script immediately

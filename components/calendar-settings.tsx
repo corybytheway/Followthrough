@@ -509,7 +509,7 @@ export default function CalendarSettings() {
                       ? `Last background update: ${new Date(status.lastBackgroundSync).toLocaleString()}.`
                       : 'Waiting for the first background update.'}{' '}
                     {status.backgroundHealthy
-                      ? 'Checks every five minutes, even when Followthrough is closed.'
+                      ? 'Checks every minute, even when Followthrough is closed.'
                       : 'No successful background update in the last 15 minutes. Sync now or check the scheduler.'}
                   </p>
                 )}

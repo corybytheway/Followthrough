@@ -659,7 +659,7 @@ export default function FollowthroughApp() {
                 )}
                 <p className="small-note">
                   {state.integrations.background
-                    ? 'Unfinished tasks are replanned every five minutes, even when Followthrough is closed.'
+                    ? 'Unfinished tasks are replanned every minute, even when Followthrough is closed.'
                     : 'The plan updates every minute while Followthrough is open.'}
                   Check off completed work or adjust its remaining time.
                 </p>

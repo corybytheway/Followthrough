@@ -28,7 +28,7 @@ export async function syncCalendars(
     const started = Date.now();
     if (
       trigger === 'background' &&
-      started - Date.parse(connection.lastBackgroundSync || '') < 120_000
+      started - Date.parse(connection.lastBackgroundSync || '') < 45_000
     )
       return { skipped: true, reason: 'recent_background_sync' };
     try {
