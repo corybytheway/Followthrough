@@ -46,6 +46,12 @@ export const draftSchema = {
   ],
 };
 
+type CaptureFacts = {
+  estimateMinutes?: number;
+  priority?: 'high' | 'medium' | 'low';
+  dueDate?: string;
+};
+
 const NUMBER_WORDS: Record<string, string> = {
   zero: '0',
   one: '1',
@@ -72,6 +78,39 @@ const NUMBER_WORDS: Record<string, string> = {
 
 function regexEscape(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function addLocalDays(day: string, amount: number): string {
+  const date = new Date(day + 'T12:00:00Z');
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Preserve scheduling facts that the user stated explicitly, even when the
+ * model overlooks them while synthesizing the rest of the task. */
+export function explicitCaptureFacts(
+  source: string,
+  localDate: string,
+): CaptureFacts {
+  const facts: CaptureFacts = {};
+  const duration = source.match(
+    /\b(\d+(?:\.\d+)?)\s*(hours?|hrs?|minutes?|mins?)\b/i,
+  );
+  if (duration) {
+    const amount = Number(duration[1]);
+    const minutes = /^(?:hours?|hrs?)$/i.test(duration[2])
+      ? amount * 60
+      : amount;
+    if (Number.isInteger(minutes) && minutes >= 1 && minutes <= 60000)
+      facts.estimateMinutes = minutes;
+  }
+  const priority = source.match(/\b(high|medium|low)[ -]?priority\b/i)?.[1];
+  if (priority)
+    facts.priority = priority.toLowerCase() as CaptureFacts['priority'];
+  if (/\btoday\b/i.test(source)) facts.dueDate = localDate;
+  else if (/\btomorrow\b/i.test(source))
+    facts.dueDate = addLocalDays(localDate, 1);
+  return facts;
 }
 
 export function normalizeGeneratedTitle(
@@ -142,6 +181,7 @@ export async function aiDraft(
   key: string,
   model: string,
 ) {
+  const localDate = localDay(Date.now(), w.settings.timeZone);
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -155,7 +195,7 @@ export async function aiDraft(
       instructions: GRANULARITY_RULES,
       input: JSON.stringify({
         request: source,
-        localDate: localDay(Date.now(), w.settings.timeZone),
+        localDate,
         timeZone: w.settings.timeZone,
         projects: w.projects.map(({ id, name, aliases, description }) => ({
           id,
@@ -210,8 +250,10 @@ export async function aiDraft(
     )
   )
     throw new Error('The suggested steps were incomplete. Try again.');
+  const explicitFacts = explicitCaptureFacts(source, localDate);
   return {
     ...draft,
+    ...explicitFacts,
     title: normalizeGeneratedTitle(
       draft.title,
       w.projects.find((project) => project.id === draft.projectId),

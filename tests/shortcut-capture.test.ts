@@ -7,7 +7,10 @@ import {
   prepareShortcutCapture,
   tokenHash,
 } from '../lib/shortcut-capture';
-import { normalizeGeneratedTitle } from '../lib/capture';
+import {
+  explicitCaptureFacts,
+  normalizeGeneratedTitle,
+} from '../lib/capture';
 import { initialWorkspace, type Task } from '../lib/model';
 import { normalizeCaptureStatus } from '../lib/capture-status';
 import { applyAction } from '../lib/actions';
@@ -27,6 +30,27 @@ void test('generated task titles use numerals and ampersands', () => {
   assert.equal(
     normalizeGeneratedTitle('Record two intros and eight outros'),
     'Record 2 intros & 8 outros',
+  );
+});
+void test('explicit duration, priority, and relative deadline override omissions', () => {
+  assert.deepEqual(
+    explicitCaptureFacts(
+      'Submit the timesheet today; it will take 2 hours and is high priority.',
+      '2026-09-15',
+    ),
+    {
+      estimateMinutes: 120,
+      priority: 'high',
+      dueDate: '2026-09-15',
+    },
+  );
+  assert.deepEqual(
+    explicitCaptureFacts('Review the cut tomorrow for 45 mins.', '2026-09-15'),
+    { estimateMinutes: 45, dueDate: '2026-09-16' },
+  );
+  assert.deepEqual(
+    explicitCaptureFacts('Review the cut when there is room.', '2026-09-15'),
+    {},
   );
 });
 void test('generated task titles omit context already supplied by the project', () => {
