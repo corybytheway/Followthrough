@@ -397,7 +397,7 @@ export async function calendarDescription(
     '<br>Original input: ' +
     escape(task.source || '').replace(/\r?\n/g, '<br>') +
     actions +
-    '<a href="https://followthrough.corybytheway.chatgpt.site/">Manage in Followthrough</a>'
+    `<a href="https://followthrough.corybytheway.chatgpt.site/?task=${encodeURIComponent(task.id)}">Manage in Followthrough</a>`
   );
 }
 

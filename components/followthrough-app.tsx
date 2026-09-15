@@ -180,9 +180,9 @@ export default function FollowthroughApp() {
     refresh()
       .then(async (next) => {
         if (!live) return;
-        const calendarResult = new URLSearchParams(window.location.search).get(
-          'calendar',
-        );
+        const location = new URL(window.location.href),
+          calendarResult = location.searchParams.get('calendar'),
+          requestedTaskId = location.searchParams.get('task');
         if (calendarResult) {
           setTab('settings');
           if (calendarResult === 'connected')
@@ -193,7 +193,29 @@ export default function FollowthroughApp() {
             setError(
               'Google connection was not completed. Try connecting again in Settings.',
             );
-          history.replaceState(null, '', window.location.pathname);
+          location.searchParams.delete('calendar');
+          history.replaceState(
+            null,
+            '',
+            location.pathname + location.search + location.hash,
+          );
+        }
+        if (requestedTaskId) {
+          const requestedTask = next.tasks.find(
+            (task) => task.id === requestedTaskId && !task.deletedAt,
+          );
+          if (requestedTask) {
+            setTab('tasks');
+            setEditing(requestedTask.id);
+          } else {
+            location.searchParams.delete('task');
+            history.replaceState(
+              null,
+              '',
+              location.pathname + location.search + location.hash,
+            );
+            setError('This task is no longer available.');
+          }
         }
 
         setDay(localDay(Date.now(), next.settings.timeZone));
@@ -207,6 +229,17 @@ export default function FollowthroughApp() {
       live = false;
     };
   }, [refresh, commit]);
+  useEffect(() => {
+    if (!loaded) return;
+    const location = new URL(window.location.href);
+    if (editing) location.searchParams.set('task', editing);
+    else location.searchParams.delete('task');
+    history.replaceState(
+      null,
+      '',
+      location.pathname + location.search + location.hash,
+    );
+  }, [editing, loaded]);
   useEffect(() => {
     if (!loaded) return;
     const receiveCapture = () => {
