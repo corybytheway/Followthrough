@@ -10,6 +10,11 @@ import { InputError } from './validation';
 import { hash } from './calendar-security';
 import ICAL from 'ical.js';
 import { calendarInstant } from './icloud-calendar';
+import {
+  CALENDAR_TASK_ACTIONS,
+  calendarActionUrl,
+  signCalendarTaskAction,
+} from './calendar-actions';
 export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
   'https://www.googleapis.com/auth/calendar.events.freebusy',
@@ -241,6 +246,7 @@ export async function reconcileGoogle(
   stillCurrent: () => Promise<void> = async () => {},
   deadlineRiskIds: ReadonlySet<string> = new Set(),
   projects: Project[] = [],
+  actionLinks?: { baseUrl: string; secret: string },
 ) {
   if (blocks.length > 500)
     throw new InputError(
@@ -265,7 +271,7 @@ export async function reconcileGoogle(
         projects.find((p) => p.id === task.projectId)?.name,
       ),
       colorId: '8',
-      description: calendarDescription(task),
+      description: await calendarDescription(task, actionLinks),
       start: { dateTime: block.start },
       end: { dateTime: block.end },
       transparency:
@@ -341,9 +347,10 @@ export async function reconcileGoogle(
   return written;
 }
 
-export function calendarDescription(
-  task: Pick<Task, 'steps' | 'source'>,
-): string {
+export async function calendarDescription(
+  task: Pick<Task, 'id' | 'updatedAt' | 'steps' | 'source'>,
+  actionLinks?: { baseUrl: string; secret: string },
+): Promise<string> {
   const escape = (value: string) =>
     value
       .replace(/&/g, '&amp;')
@@ -356,12 +363,38 @@ export function calendarDescription(
       steps.map((step) => '<li>' + escape(step.title) + '</li>').join('') +
       '</ul>'
     : '<br>Suggested steps have not been generated yet.<br>';
+  let actions = '';
+  if (actionLinks) {
+    const baseUrl = calendarActionUrl(actionLinks.baseUrl),
+      links = await Promise.all(
+        CALENDAR_TASK_ACTIONS.map(async (action) => {
+          const signature = await signCalendarTaskAction(
+              task.id,
+              action,
+              task.updatedAt,
+              actionLinks.secret,
+            ),
+            query = new URLSearchParams({
+              task: task.id,
+              action,
+              stamp: task.updatedAt,
+              signature,
+            })
+              .toString()
+              .replace(/&/g, '&amp;'),
+            label = action[0].toUpperCase() + action.slice(1);
+          return `<a href="${baseUrl}?${query}">${label}</a>`;
+        }),
+      );
+    actions = '<br><br><b>Task actions</b><br>' + links.join(' · ') + ' · ';
+  } else actions = '<br><br>';
   return (
     '<b>Suggested steps</b>' +
     suggested +
     '<br>Original input: ' +
     escape(task.source || '').replace(/\r?\n/g, '<br>') +
-    '<br><br>Complete, manage, or remove this task at <a href="https://followthrough.corybytheway.chatgpt.site/">Followthrough.corybytheway.chatgpt.site</a>'
+    actions +
+    '<a href="https://followthrough.corybytheway.chatgpt.site/">Manage in Followthrough</a>'
   );
 }
 

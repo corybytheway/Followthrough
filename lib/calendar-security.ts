@@ -19,6 +19,20 @@ export async function hash(value: string): Promise<string> {
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 }
+export async function hmac(value: string, secret: string): Promise<string> {
+  if (!/^[a-f0-9]{64}$/.test(secret))
+    throw new InputError('Calendar action links need secure signing configured.');
+  const key = await crypto.subtle.importKey(
+    'raw',
+    Uint8Array.from(secret.match(/../g)!, (b) => parseInt(b, 16)),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  return [...new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(value)))]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
 export async function pkceChallenge(value: string): Promise<string> {
   return base64(
     new Uint8Array(

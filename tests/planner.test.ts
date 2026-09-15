@@ -4,9 +4,10 @@ import assert from 'node:assert/strict';
 import { initialWorkspace } from '../lib/model';
 import { taskInput, settingsInput } from '../lib/validation';
 import { applyAction } from '../lib/actions';
-import { plan, localDay } from '../lib/scheduler';
+import { plan, localDay, nextWorkDay } from '../lib/scheduler';
 import { basicDraft } from '../lib/capture';
 import { toolAction } from '../lib/tools';
+import { postponeUntil } from '../lib/calendar-actions';
 const NOW = Date.parse('2026-09-08T13:00:00Z');
 function example(minutes = 300) {
   const w = initialWorkspace();
@@ -23,6 +24,34 @@ function example(minutes = 300) {
   ];
   return w;
 }
+void test('postpone moves a task to the next configured workday', () => {
+  const w = example(30),
+    task = w.tasks[0];
+  w.settings.workDays = [1, 2, 3, 4, 5];
+  w.blocks = [
+    {
+      id: task.id + '-0',
+      taskId: task.id,
+      start: '2026-09-18T15:00:00.000Z',
+      end: '2026-09-18T15:30:00.000Z',
+      kind: 'task',
+    },
+  ];
+  assert.equal(
+    postponeUntil(w, task, Date.parse('2026-09-18T14:00:00.000Z')),
+    '2026-09-21',
+  );
+  task.dueDate = '2026-09-18';
+  assert.throws(
+    () => postponeUntil(w, task, Date.parse('2026-09-18T14:00:00.000Z')),
+    /cannot be postponed past its deadline/,
+  );
+});
+void test('next workday skips days outside the configured schedule', () => {
+  assert.equal(nextWorkDay('2026-09-18', [1, 2, 3, 4, 5]), '2026-09-21');
+  assert.equal(nextWorkDay('2026-09-19', [1, 2, 3, 4, 5]), '2026-09-21');
+  assert.equal(nextWorkDay('2026-09-19', [0, 6]), '2026-09-20');
+});
 await test('one outcome retains its checklist across multiple calendar sessions', () => {
   const w = example();
   const out = plan(w, NOW);

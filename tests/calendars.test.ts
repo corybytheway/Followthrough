@@ -271,7 +271,7 @@ void test('calendar sync creates one stable event, retries without duplication, 
   assert.equal(mutations.length, beforeDescription + 1);
   assert.equal(
     events.get(eventId)?.description,
-    calendarDescription(workspace.tasks[0]),
+    await calendarDescription(workspace.tasks[0]),
   );
   await reconcileGoogle('test', 'dedicated', marker, blocks, workspace.tasks);
   assert.equal(mutations.length, beforeDescription + 1);
@@ -346,8 +346,10 @@ void test('calendar sync creates one stable event, retries without duplication, 
   }
 });
 
-void test('calendar descriptions show at most five bullets, original input and the management link, escaping user HTML', () => {
+void test('calendar descriptions show concise signed actions, original input, and escaped user HTML', async () => {
   const task = {
+    id: 'task-safe-id',
+    updatedAt: '2026-09-15T12:00:00.000Z',
     source: '<script>alert(1)</script>\nOriginal & unchanged',
     steps: Array.from({ length: 6 }, (_, i) => ({
       id: String(i),
@@ -355,7 +357,11 @@ void test('calendar descriptions show at most five bullets, original input and t
       done: false,
     })),
   };
-  const description = calendarDescription(task);
+  const description = await calendarDescription(task, {
+    baseUrl:
+      'https://script.google.com/macros/s/deployment-safe-id_123/exec',
+    secret: 'a'.repeat(64),
+  });
   assert.equal((description.match(/<li>/g) || []).length, 5);
   assert.ok(description.includes('Step &lt;0&gt;'));
   assert.ok(!description.includes('Step &lt;5&gt;'));
@@ -366,11 +372,23 @@ void test('calendar descriptions show at most five bullets, original input and t
   );
   assert.ok(
     description.includes(
-      'Complete, manage, or remove this task at <a href="https://followthrough.corybytheway.chatgpt.site/">Followthrough.corybytheway.chatgpt.site</a>',
+      '>Complete</a> · ',
     ),
   );
+  assert.ok(description.includes('>Postpone</a> · '));
+  assert.ok(description.includes('>Delete</a> · '));
+  assert.ok(description.includes('>Manage in Followthrough</a>'));
+  assert.ok(!description.includes('>https://'));
+  assert.equal((description.match(/signature=[a-f0-9]{64}/g) || []).length, 3);
   assert.ok(
-    calendarDescription({ source: '', steps: [] }).includes(
+    (
+      await calendarDescription({
+        id: 'empty',
+        updatedAt: '2026-09-15T12:00:00.000Z',
+        source: '',
+        steps: [],
+      })
+    ).includes(
       'have not been generated yet',
     ),
   );

@@ -10,7 +10,12 @@ import {
   restoreMovedGoogleMetadata,
 } from './google-calendar';
 import { icloudBusy } from './icloud-calendar';
-import { readCalendar, saveCalendar, withCalendarLock } from './calendar-store';
+import {
+  calendarConfig,
+  readCalendar,
+  saveCalendar,
+  withCalendarLock,
+} from './calendar-store';
 import { readWorkspace, saveCalendarAvailability, mutate } from './store';
 import { InputError } from './validation';
 export async function syncCalendars(
@@ -178,6 +183,13 @@ export async function syncCalendars(
               .map((warning) => warning.taskId),
           ),
           saved.workspace.projects,
+          calendarConfig().CALENDAR_ACTION_URL &&
+            calendarConfig().CALENDAR_ACTION_SECRET
+            ? {
+                baseUrl: calendarConfig().CALENDAR_ACTION_URL,
+                secret: calendarConfig().CALENDAR_ACTION_SECRET,
+              }
+            : undefined,
         );
       }
       connection.lastSync = new Date().toISOString();

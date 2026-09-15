@@ -14,6 +14,7 @@ A private personal planner built with React, vinext, shadcn, and Cloudflare D1 o
 - Google OAuth with offline access, encrypted account credentials, calendar selection, and a dedicated Followthrough Google calendar. iCloud uses an app-specific password and CalDAV.
 - Explicit start/pause/sync controls. Sync reads both providers before publishing, updates only marked Followthrough events, and stops on incomplete availability or concurrent plan changes.
 - Replanning on changes, on opening the app, and every minute while its tab is visible. Time passing never completes work.
+- One-tap Complete, Postpone, and Delete links in Google task events. The public relay does not expose workspace access; each action is signed for one task version and submits with POST only after a real browser opens it.
 - Four WebMCP tools using the same actions as the visible app: list, create task, update task, create project.
 - Authenticated stateless Streamable HTTP MCP endpoint at /mcp.
 - Authenticated JSON backup and calendar snapshot downloads.
@@ -69,11 +70,13 @@ The approved output is a dedicated Google calendar. Read availability from selec
 
 - `CALENDAR_ENCRYPTION_KEY`: 32 random bytes as 64 lowercase hexadecimal characters, stored as a Sites secret. Do not replace after pairing without a credential migration. AES-GCM ciphertext is bound to the workspace owner. Credentials are excluded from task exports, snapshots, and MCP.
 - `CALENDAR_APP_ORIGIN`: the canonical live HTTPS origin. The Google web-client redirect URI must be `<origin>/api/calendars/google/callback`.
+- `CALENDAR_ACTION_URL`: the deployed Google Apps Script web-app `/exec` URL. Deploy it to execute as the owner and allow anyone with the link; its GET page only auto-submits a POST in a browser, limiting accidental action from link-preview fetches.
+- `CALENDAR_ACTION_SECRET`: a separate 32-byte lowercase hexadecimal Sites secret. It signs a single task ID, action, and task version, so links cannot be changed or replayed after the task updates.
 - Settings accepts the downloaded Google **web** OAuth client JSON and encrypts it before storage. Google scopes: `calendar.calendarlist.readonly`, `calendar.events.freebusy`, and `calendar.app.created`. No editing scope for existing appointment calendars is requested.
 - OAuth state is random, hashed, owner-bound, expires after ten minutes, and is consumed once. PKCE protects the authorization code. External Testing grants expire after seven days; for this personal Workspace deployment prefer an Internal audience when suitable, or finish External production consent setup.
 - iCloud: enter the Apple Account email and a Followthrough app-specific password directly in Settings. Discovery and redirects are restricted to Apple CalDAV HTTPS hosts. Recurrences are expanded on the provider; incomplete expansion stops sync. Busy imports preserve all-day/DST semantics and ignore transparent/cancelled instances.
 - Start sync creates/reuses an app-marked Google calendar and schedules only ready tasks. Google event IDs are deterministic. Provider event markers and ETags protect unrelated or concurrently edited events. Failed availability reads leave prior busy data and task events untouched. Later publishing failures report partial completion and are safe to retry.
-- Sync runs on app focus and every minute while visible, or through Sync now. It **does not run with the app closed**. A production background runner remains a separate required deployment.
+- Sync runs on app focus, every minute while visible, and through the installed five-minute Apps Script timer. The same private script relays signed one-tap calendar actions without exposing its stored scheduler credentials.
 - Pausing/disconnecting leaves Google task blocks in place. The UI explains this; disconnect removes that account's imported availability and pauses publication. Completing or modifying tasks should happen in Followthrough; dragging/deleting its Google blocks does not change task state.
 - Apply append-only migration `0002_nifty_luke_cage.sql` for calendar credential storage and operation locks.
 

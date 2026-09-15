@@ -21,6 +21,16 @@ export function clockMinutes(time: string): number {
   const [h, m] = time.split(':').map(Number);
   return h * 60 + m;
 }
+
+export function nextWorkDay(day: string, workDays: number[]): string {
+  const date = new Date(day + 'T12:00:00Z');
+  for (let offset = 1; offset <= 7; offset++) {
+    date.setUTCDate(date.getUTCDate() + 1);
+    if (workDays.includes(date.getUTCDay()))
+      return date.toISOString().slice(0, 10);
+  }
+  throw new Error('At least one workday is required.');
+}
 function overlaps(a: number, b: number, c: number, d: number) {
   return a < d && b > c;
 }
