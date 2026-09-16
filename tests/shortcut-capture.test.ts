@@ -53,6 +53,26 @@ void test('explicit duration, priority, and relative deadline override omissions
     {},
   );
 });
+void test('availability dates become start constraints instead of deadlines', () => {
+  assert.deepEqual(
+    explicitCaptureFacts(
+      'On Monday for 1 hour I need to check in with Nicole.',
+      '2026-09-16',
+    ),
+    { estimateMinutes: 60, dueDate: null, notBefore: '2026-09-21' },
+  );
+  assert.deepEqual(
+    explicitCaptureFacts(
+      "I can't start this until Friday, and it is due Monday.",
+      '2026-09-16',
+    ),
+    { dueDate: '2026-09-21', notBefore: '2026-09-18' },
+  );
+  assert.deepEqual(
+    explicitCaptureFacts('Finish the proposal by Monday.', '2026-09-16'),
+    { dueDate: '2026-09-21' },
+  );
+});
 void test('generated task titles omit context already supplied by the project', () => {
   const orbit = { name: 'Orbit', aliases: ['orbit'] },
     btf = { name: 'BTF', aliases: ['Behind The Film'] },
@@ -201,6 +221,18 @@ void test('missing AI connection keeps the request without using it as the title
   assert.equal(draft.notes, '');
   assert.equal(draft.captureMode, 'basic');
   assert.match(draft.rationale, /without AI planning/);
+});
+
+void test('non-AI capture retains explicit start constraints and duration', async (t) => {
+  t.mock.method(Date, 'now', () => Date.parse('2026-09-16T17:00:00Z'));
+  const draft = await prepareShortcutCapture(
+    'On Monday for 1 hour I need to check in with Nicole.',
+    initialWorkspace(),
+  );
+  assert.equal(draft.notBefore, '2026-09-21');
+  assert.equal(draft.dueDate, null);
+  assert.equal(draft.estimateMinutes, 60);
+  assert.equal(draft.estimateProvisional, false);
 });
 
 void test('legacy capture notices move out of notes without changing user text or task content', () => {
