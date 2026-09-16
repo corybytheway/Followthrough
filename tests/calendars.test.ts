@@ -232,6 +232,7 @@ void test('Google can ignore all-day events while retaining timed bookings', asy
         },
         {
           id: 'booking',
+          transparency: 'transparent',
           start: { dateTime: '2026-09-09T15:00:00Z' },
           end: { dateTime: '2026-09-09T16:00:00Z' },
         },
@@ -490,7 +491,7 @@ void test('a new meeting reschedules a task without completing it', async (t) =>
   assert.equal(w.tasks[0].remainingMinutes, 60);
 });
 
-void test('primary calendar keeps overlapping appointments while excluding own task blocks, free and declined events', async (t) => {
+void test('primary calendar keeps fixed timed events while excluding own blocks, ignored all-day events, and declined events', async (t) => {
   const span = {
     start: { dateTime: '2026-11-01T15:00:00Z' },
     end: { dateTime: '2026-11-01T16:00:00Z' },
@@ -538,12 +539,13 @@ void test('primary calendar keeps overlapping appointments while excluding own t
     '2026-11-01T00:00:00Z',
     '2026-11-03T00:00:00Z',
     'UTC',
+    true,
   );
   assert.equal(busy.length, 2);
   assert.equal(busy[0].start, '2026-11-01T15:00:00.000Z');
   assert.equal(busy[0].end, '2026-11-01T16:00:00.000Z');
-  assert.equal(busy[1].start, '2026-11-01T05:00:00.000Z');
-  assert.equal(busy[1].end, '2026-11-02T06:00:00.000Z');
+  assert.equal(busy[1].start, '2026-11-01T15:00:00.000Z');
+  assert.equal(busy[1].end, '2026-11-01T16:00:00.000Z');
   assert.match(calls[0], /singleEvents=true/);
   assert.match(calls[1], /pageToken=next/);
 });

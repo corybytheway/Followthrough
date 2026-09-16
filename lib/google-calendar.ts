@@ -196,6 +196,8 @@ export async function googleBusy(
         end,
         fallbackTimeZone,
         true,
+        undefined,
+        true,
       )),
     );
   return events;
@@ -427,6 +429,7 @@ async function googleCalendarEventsBusy(
   fallbackTimeZone: string,
   ignoreAllDay = false,
   marker?: string,
+  includeTransparentTimed = false,
 ): Promise<BusyEvent[]> {
   const busy: BusyEvent[] = [];
   let pageToken = '';
@@ -452,7 +455,8 @@ async function googleCalendarEventsBusy(
         (marker &&
           event.extendedProperties?.private?.followthrough === marker) ||
         event.status === 'cancelled' ||
-        event.transparency === 'transparent' ||
+        (event.transparency === 'transparent' &&
+          !(includeTransparentTimed && event.start?.dateTime)) ||
         event.eventType === 'workingLocation' ||
         event.attendees?.some((a) => a.self && a.responseStatus === 'declined')
       )
@@ -508,6 +512,7 @@ export async function googleOutputBusy(
     fallbackTimeZone,
     ignoreAllDay,
     marker,
+    true,
   );
 }
 
