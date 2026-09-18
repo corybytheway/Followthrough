@@ -5,6 +5,7 @@ import {
   captureRequest,
   fallbackCapture,
   prepareShortcutCapture,
+  prepareShortcutCaptures,
   tokenHash,
 } from '../lib/shortcut-capture';
 import {
@@ -208,6 +209,75 @@ void test('model title and checklist are saved while original input stays verbat
   assert.equal(saved[0].captureMode, 'ai');
 });
 
+void test('one Shortcut request can produce several independent tasks with the same verbatim source', async (t) => {
+  const workspace = initialWorkspace();
+  workspace.projects.push({
+    id: 'project-btf',
+    name: 'BTF',
+    aliases: ['Behind The Film'],
+    description: '',
+    color: '#c11527',
+  });
+  const source =
+    'Orbit task 1: test 1\nOrbit task 2: test 2\nBehind The Film task 1\nMeta note task 7';
+  const task = (
+    title: string,
+    projectId: string,
+  ): Record<string, unknown> => ({
+    title,
+    projectId,
+    steps: [`Complete ${title.toLowerCase()}`],
+    estimateMinutes: 30,
+    priority: 'medium',
+    dueDate: null,
+    notBefore: null,
+    notes: '',
+    rationale: 'An independently tracked outcome.',
+  });
+  const fetchMock = t.mock.method(
+    globalThis,
+    'fetch',
+    async (_url: string | URL | Request, init?: RequestInit) => {
+      assert.equal(typeof init?.body, 'string');
+      const body = JSON.parse(init?.body as string);
+      assert.match(body.instructions, /Explicit list items/);
+      assert.match(body.instructions, /every independent outcome/);
+      return Response.json({
+        status: 'completed',
+        output: [
+          {
+            content: [
+              {
+                type: 'output_text',
+                text: JSON.stringify({
+                  tasks: [
+                    task('Run test 1', 'project-1'),
+                    task('Run test 2', 'project-1'),
+                    task('Handle task 1', 'project-btf'),
+                    task('Handle task 7', 'project-2'),
+                  ],
+                }),
+              },
+            ],
+          },
+        ],
+      });
+    },
+  );
+  const drafts = await prepareShortcutCaptures(
+    source,
+    workspace,
+    'test-key',
+  );
+  assert.equal(fetchMock.mock.callCount(), 1);
+  assert.equal(drafts.length, 4);
+  assert.deepEqual(
+    drafts.map(({ projectId }) => projectId),
+    ['project-1', 'project-1', 'project-btf', 'project-2'],
+  );
+  assert.ok(drafts.every((draft) => draft.source === source));
+});
+
 void test('missing AI connection keeps the request without using it as the title', async (t) => {
   const fetchMock = t.mock.method(globalThis, 'fetch', async () => {
     throw new Error('Unexpected network request');
@@ -312,4 +382,39 @@ void test('a retry cannot duplicate or overwrite a captured task after the reque
     await tokenHash('connection:request'),
     await tokenHash('other:request'),
   );
+});
+
+void test('a captured task group is atomic and idempotent', () => {
+  const workspace = initialWorkspace(),
+    groupId = 'capture_' + 'c'.repeat(64),
+    secondId = 'capture_' + 'd'.repeat(64),
+    source = 'Orbit task 1\nMeta Note task 2',
+    action = {
+      action: 'capture_tasks',
+      captureGroupId: groupId,
+      captures: [
+        {
+          captureId: groupId,
+          task: { ...fallbackCapture(source, workspace), title: 'Run task 1' },
+        },
+        {
+          captureId: secondId,
+          task: {
+            ...fallbackCapture(source, workspace),
+            title: 'Run task 2',
+            projectId: 'project-2',
+          },
+        },
+      ],
+    };
+  const first = applyAction(workspace, action);
+  assert.equal(first.workspace.tasks.length, 2);
+  assert.ok(first.workspace.tasks.every((task) => task.source === source));
+  assert.deepEqual(
+    first.workspace.tasks.map((task) => task.captureGroupId),
+    [groupId, groupId],
+  );
+  const retry = applyAction(first.workspace, action);
+  assert.equal(retry.workspace.tasks.length, 2);
+  assert.equal(retry.result.duplicate, true);
 });

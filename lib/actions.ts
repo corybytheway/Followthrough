@@ -63,6 +63,49 @@ export function applyAction(
       result = { task };
       break;
     }
+    case 'capture_tasks': {
+      const groupId = text(v.captureGroupId, 'Capture group ID', 72, true);
+      if (!/^capture_[a-f0-9]{64}$/.test(groupId))
+        throw new InputError('Provide a valid capture group ID.');
+      if (
+        !Array.isArray(v.captures) ||
+        v.captures.length < 1 ||
+        v.captures.length > 20
+      )
+        throw new InputError('Capture between 1 and 20 tasks at a time.');
+      const captures = v.captures.map((raw, index) => {
+        const capture = object(raw),
+          id = text(capture.captureId, `Capture ID ${index + 1}`, 72, true);
+        if (!/^capture_[a-f0-9]{64}$/.test(id))
+          throw new InputError('Provide a valid capture ID.');
+        return { id, task: capture.task };
+      });
+      if (new Set(captures.map(({ id }) => id)).size !== captures.length)
+        throw new InputError('Each captured task needs a unique ID.');
+      const existing = w.tasks
+        .filter(
+          (task) => task.captureGroupId === groupId || task.id === groupId,
+        )
+        .sort((a, b) => (a.captureIndex || 0) - (b.captureIndex || 0));
+      if (existing.length) {
+        result = { tasks: existing, duplicate: true };
+        break;
+      }
+      if (w.tasks.length + captures.length > 1000)
+        throw new InputError(
+          'Your workspace is too full for every task in this request. Free space and try again.',
+        );
+      const tasks = captures.map((capture, index) => {
+        const task = taskInput(capture.task, w);
+        task.id = capture.id;
+        task.captureGroupId = groupId;
+        task.captureIndex = index;
+        return task;
+      });
+      w.tasks.push(...tasks);
+      result = { tasks };
+      break;
+    }
     case 'create_task': {
       if (w.tasks.length >= 1000)
         throw new InputError(

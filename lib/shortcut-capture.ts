@@ -1,7 +1,24 @@
 // Created by Cory McCabe
 import type { Workspace } from './model';
-import { aiDraft, basicDraft } from './capture';
+import { aiDraft, aiDrafts, basicDraft } from './capture';
 import { InputError, object, taskInput, text } from './validation';
+
+export type PreparedCapture = {
+  title: string;
+  projectId: string | null;
+  steps: string[];
+  estimateMinutes: number;
+  estimateProvisional?: boolean;
+  status: 'ready';
+  priority: 'high' | 'medium' | 'low';
+  dueDate: string | null;
+  notBefore: string | null;
+  notes: string;
+  source: string;
+  rationale: string;
+  captureMode: 'basic' | 'ai';
+  mode: string;
+};
 
 export async function tokenHash(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -25,7 +42,10 @@ export function captureRequest(raw: unknown) {
     throw new InputError('Provide a unique request ID.');
   return { source, requestId };
 }
-export function fallbackCapture(source: string, workspace: Workspace) {
+export function fallbackCapture(
+  source: string,
+  workspace: Workspace,
+): PreparedCapture {
   return {
     ...basicDraft(source, workspace),
     status: 'ready',
@@ -37,12 +57,12 @@ export async function prepareShortcutCapture(
   workspace: Workspace,
   key?: string,
   model = 'gpt-5.6-luna',
-) {
+): Promise<PreparedCapture> {
   if (key) {
     try {
       const draft = {
         ...(await aiDraft(source, workspace, key, model)),
-        status: 'ready',
+        status: 'ready' as const,
       };
       taskInput(draft, workspace);
       return draft;
@@ -51,4 +71,24 @@ export async function prepareShortcutCapture(
     }
   }
   return fallbackCapture(source, workspace);
+}
+
+export async function prepareShortcutCaptures(
+  source: string,
+  workspace: Workspace,
+  key?: string,
+  model = 'gpt-5.6-luna',
+): Promise<PreparedCapture[]> {
+  if (key) {
+    try {
+      const drafts = (await aiDrafts(source, workspace, key, model)).map(
+        (draft) => ({ ...draft, source, status: 'ready' as const }),
+      );
+      drafts.forEach((draft) => taskInput(draft, workspace));
+      return drafts;
+    } catch {
+      // A model outage must not lose a spoken request or masquerade as AI naming.
+    }
+  }
+  return [fallbackCapture(source, workspace)];
 }

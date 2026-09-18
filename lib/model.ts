@@ -17,6 +17,8 @@ export type Task = {
   deletedAt?: string;
   statusBeforeDelete?: Task['status'];
   captureMode?: 'basic' | 'ai';
+  captureGroupId?: string;
+  captureIndex?: number;
   id: string;
   title: string;
   projectId: string | null;

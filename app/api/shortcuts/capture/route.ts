@@ -5,7 +5,7 @@ import { readWorkspace, mutate } from '@/lib/store';
 import { authenticateShortcut } from '@/lib/shortcut-connection';
 import {
   captureRequest,
-  prepareShortcutCapture,
+  prepareShortcutCaptures,
   tokenHash,
 } from '@/lib/shortcut-capture';
 import { InputError } from '@/lib/validation';
@@ -28,29 +28,50 @@ export async function POST(request: Request) {
   try {
     const { ownerId, hash } = await authenticateShortcut(request);
     const { source, requestId } = captureRequest(await jsonBody(request));
-    const captureId = 'capture_' + (await tokenHash(hash + ':' + requestId));
+    const captureGroupId =
+      'capture_' + (await tokenHash(hash + ':' + requestId));
     const config = await openAIConnection(ownerId);
     const initial = await readWorkspace(ownerId);
-    let task = initial.workspace.tasks.find((t) => t.id === captureId);
-    let duplicate = !!task;
-    if (!task) {
-      const draft = await prepareShortcutCapture(
+    const inGroup = (tasks: Task[]) =>
+      tasks
+        .filter(
+          (task) =>
+            task.captureGroupId === captureGroupId ||
+            task.id === captureGroupId,
+        )
+        .sort((a, b) => (a.captureIndex || 0) - (b.captureIndex || 0));
+    let tasks = inGroup(initial.workspace.tasks),
+      duplicate = tasks.length > 0;
+    if (!tasks.length) {
+      const drafts = await prepareShortcutCaptures(
         source,
         initial.workspace,
         config.key,
         config.model,
       );
+      const captures = await Promise.all(
+        drafts.map(async (task, index) => ({
+          captureId:
+            index === 0
+              ? captureGroupId
+              : 'capture_' +
+                (await tokenHash(
+                  hash + ':' + requestId + ':task:' + String(index),
+                )),
+          task: { ...task, source },
+        })),
+      );
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
           const saved = await mutate(ownerId, {
-            action: 'capture_task',
-            captureId,
-            task: draft,
-            requestId: captureId,
+            action: 'capture_tasks',
+            captureGroupId,
+            captures,
+            requestId: captureGroupId,
           });
-          task =
-            (saved.result.task as Task | undefined) ||
-            saved.state.tasks.find((t) => t.id === captureId);
+          tasks =
+            (saved.result.tasks as Task[] | undefined) ||
+            inGroup(saved.state.tasks);
           duplicate = saved.result.duplicate === true;
           break;
         } catch (e) {
@@ -59,14 +80,21 @@ export async function POST(request: Request) {
         }
       }
     }
-    if (!task) throw new Error('Capture result missing.');
+    if (!tasks.length) throw new Error('Capture result missing.');
     const message = duplicate
       ? 'Already saved to Followthrough. No duplicate created.'
-      : task.estimateProvisional
+      : tasks.some((task) => task.estimateProvisional)
         ? 'Saved to Followthrough, but AI naming was unavailable. Your original input is preserved; the title and 30-minute estimate are temporary.'
-        : `Saved to Followthrough: ${task.title}`;
+        : tasks.length === 1
+          ? `Saved to Followthrough: ${tasks[0].title}`
+          : `Saved ${tasks.length} tasks to Followthrough.`;
     return Response.json(
-      { ok: true, message, taskId: task.id },
+      {
+        ok: true,
+        message,
+        taskId: tasks[0].id,
+        taskIds: tasks.map((task) => task.id),
+      },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (e) {

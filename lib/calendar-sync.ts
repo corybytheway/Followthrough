@@ -149,6 +149,7 @@ export async function syncCalendars(
               initial.workspace,
               config.key,
               config.model,
+              { title: task.title, projectId: task.projectId },
             );
             await mutate(owner, {
               action: 'update_task',

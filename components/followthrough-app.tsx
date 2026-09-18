@@ -1270,9 +1270,9 @@ function TaskEditor({
             {regeneratingTitle ? 'Regenerating…' : 'Regenerate name'}
           </Button>
           {titleNotice && (
-            <small className="secondary-text" role="status">
+            <output className="secondary-text">
               {titleNotice}
-            </small>
+            </output>
           )}
         </div>
       )}
@@ -1481,7 +1481,10 @@ function TaskEditor({
           ) && <p className="secondary-text">No unfinished tasks available.</p>}
         </div>
       </div>
-      <Field label="Notes">
+      <Field
+        label="Task notes"
+        hint="Suggested or added context for this task. The exact original input is preserved separately below."
+      >
         <Textarea
           rows={3}
           maxLength={10000}
@@ -1492,7 +1495,7 @@ function TaskEditor({
       </Field>
       {initial.source && (
         <details className="original-request">
-          <summary>Original input</summary>
+          <summary>Original input (verbatim)</summary>
           <p>{initial.source}</p>
         </details>
       )}
