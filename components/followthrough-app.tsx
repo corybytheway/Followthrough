@@ -61,6 +61,7 @@ import {
   type Task,
 } from '@/lib/model';
 import { localDay } from '@/lib/scheduler';
+import { scheduledTaskComparator } from '@/lib/task-order';
 import { TOOL_DEFINITIONS, toolAction } from '@/lib/tools';
 import ShortcutSettings from '@/components/shortcut-settings';
 import CalendarSettings from '@/components/calendar-settings';
@@ -408,9 +409,19 @@ export default function FollowthroughApp() {
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
-  if (statusFilter === 'all') {
+  const compareBySchedule = scheduledTaskComparator(state.blocks);
+  if (statusFilter === 'active') {
+    visible.sort(compareBySchedule);
+  } else if (statusFilter === 'all') {
     const statusOrder = { ready: 0, waiting: 0, done: 1, archived: 2 };
-    visible.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
+    visible.sort((a, b) => {
+      const statusDifference = statusOrder[a.status] - statusOrder[b.status];
+      if (statusDifference) return statusDifference;
+      if (['ready', 'waiting'].includes(a.status)) {
+        return compareBySchedule(a, b);
+      }
+      return 0;
+    });
   }
   const taskById = new Map(state.tasks.map((t) => [t.id, t]));
   const selected = editing
@@ -659,17 +670,7 @@ export default function FollowthroughApp() {
                 {active.length ? (
                   <div className="task-list">
                     {[...active]
-                      .sort(
-                        (a, b) =>
-                          (state.blocks.findIndex((v) => v.taskId === a.id) < 0
-                            ? 999
-                            : state.blocks.findIndex(
-                                (v) => v.taskId === a.id,
-                              )) -
-                          (state.blocks.findIndex((v) => v.taskId === b.id) < 0
-                            ? 999
-                            : state.blocks.findIndex((v) => v.taskId === b.id)),
-                      )
+                      .sort(compareBySchedule)
                       .slice(0, 8)
                       .map(taskRow)}
                   </div>
