@@ -1,7 +1,7 @@
 // Created by Cory McCabe
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialWorkspace } from '../lib/model';
+import { initialWorkspace, taskLabel } from '../lib/model';
 import { taskInput, settingsInput } from '../lib/validation';
 import { applyAction } from '../lib/actions';
 import { plan, localDay, nextWorkDay } from '../lib/scheduler';
@@ -9,6 +9,9 @@ import { basicDraft } from '../lib/capture';
 import { toolAction } from '../lib/tools';
 import { postponeUntil } from '../lib/calendar-actions';
 const NOW = Date.parse('2026-09-08T13:00:00Z');
+void test('unassigned task labels use Task as their context', () => {
+  assert.equal(taskLabel('Buy black Henley shirt'), '⚡️ Task: Buy black Henley shirt');
+});
 function example(minutes = 300) {
   const w = initialWorkspace();
   w.tasks = [

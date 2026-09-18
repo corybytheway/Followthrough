@@ -1,5 +1,5 @@
 // Created by Cory McCabe
-export function taskLabel(title: string, projectName = 'No project'): string {
+export function taskLabel(title: string, projectName = 'Task'): string {
   const prefix = projectName + ': ';
   let name = title.replace(/^(?:\s*⚡[\uFE0E\uFE0F]?\s*)+/, '').trimStart();
   while (name.startsWith(prefix)) name = name.slice(prefix.length);
