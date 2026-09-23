@@ -70,6 +70,26 @@ export function plan(
     endMinute = clockMinutes(s.workEnd);
   const remaining = new Map(w.tasks.map((t) => [t.id, t.remainingMinutes]));
   const worked = new Map<string, number>();
+  const canSchedule = (taskId: string) => {
+    const task = taskMap.get(taskId);
+    return Boolean(
+      task?.status === 'ready' &&
+        task.remainingMinutes &&
+        !task.blockers.some((id) => taskMap.get(id)?.status !== 'done'),
+    );
+  };
+  // An elapsed session does not imply progress. Keep its unfinished task at
+  // the front of the plan until the user explicitly completes it or records
+  // progress. This also lets it displace a different task that had previously
+  // been scheduled immediately afterward.
+  const rolloverTaskId = w.blocks
+    .filter((block) => Date.parse(block.end) <= now && canSchedule(block.taskId))
+    .sort(
+      (a, b) =>
+        Date.parse(b.end) - Date.parse(a.end) ||
+        b.start.localeCompare(a.start) ||
+        a.id.localeCompare(b.id),
+    )[0]?.taskId;
   // Keep the current session stable; elapsed time never implies completed work.
   for (const b of w.blocks) {
     const start = Date.parse(b.start),
@@ -82,6 +102,7 @@ export function plan(
       t?.status === 'ready' &&
       start <= now &&
       end > now &&
+      (!rolloverTaskId || b.taskId === rolloverTaskId) &&
       t.remainingMinutes >= duration &&
       !t.blockers.some((id) => taskMap.get(id)?.status !== 'done') &&
       s.workDays.includes(c.weekday) &&
@@ -119,6 +140,7 @@ export function plan(
     })
     .sort(
       (a, b) =>
+        Number(b.id === rolloverTaskId) - Number(a.id === rolloverTaskId) ||
         (a.dueDate || '9999').localeCompare(b.dueDate || '9999') ||
         ranks[a.priority] - ranks[b.priority] ||
         a.createdAt.localeCompare(b.createdAt) ||
@@ -126,8 +148,11 @@ export function plan(
     );
   // Compute local calendar boundaries once, including DST transitions.
   const slots: { start: number; day: string; minutes: number }[] = [];
+  const planningStart = rolloverTaskId
+    ? Math.floor(now / QUANTUM) * QUANTUM
+    : Math.ceil(now / QUANTUM) * QUANTUM;
   for (
-    let start = Math.ceil(now / QUANTUM) * QUANTUM;
+    let start = planningStart;
     start < now + HORIZON_DAYS * 86400000;
     start += QUANTUM
   ) {

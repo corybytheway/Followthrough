@@ -91,15 +91,40 @@ await test('tasks avoid meetings and stay within work hours', () => {
   for (let i = 1; i < out.blocks.length; i++)
     assert.ok(out.blocks[i - 1].end <= out.blocks[i].start);
 });
-await test('missing a session does not complete or subtract from its task', () => {
+await test('an unfinished elapsed session rolls forward from its prior boundary', () => {
   const w = example(60);
   w.blocks = plan(w, NOW).blocks;
+  const priorEnd = w.blocks[0].end;
   const past = Date.parse(w.blocks[0].end) + 60000;
   const next = plan(w, past);
   assert.equal(w.tasks[0].remainingMinutes, 60);
   assert.equal(w.tasks[0].status, 'ready');
-  assert.ok(Date.parse(next.blocks[0].start) >= past);
+  assert.equal(next.blocks[0].start, priorEnd);
   assert.equal(next.blocks[0].taskId, w.tasks[0].id);
+});
+await test('an unfinished task displaces the next task until marked complete', () => {
+  const w = example(60),
+    first = w.tasks[0];
+  first.priority = 'high';
+  w.tasks.push(
+    taskInput(
+      {
+        title: 'Prepare the next deliverable',
+        estimateMinutes: 60,
+        priority: 'medium',
+      },
+      w,
+    ),
+  );
+  w.blocks = plan(w, NOW).blocks;
+  const firstEnd = w.blocks.find((block) => block.taskId === first.id)!.end;
+  const rolled = plan(w, Date.parse(firstEnd) + 60000);
+  assert.equal(rolled.blocks[0].start, firstEnd);
+  assert.equal(rolled.blocks[0].taskId, first.id);
+  first.status = 'done';
+  const completed = plan(w, Date.parse(firstEnd) + 60000);
+  assert.ok(!completed.blocks.some((block) => block.taskId === first.id));
+  assert.equal(completed.blocks[0].taskId, w.tasks[1].id);
 });
 await test('current session remains stable during replanning', () => {
   const w = example(120);
