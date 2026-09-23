@@ -1,5 +1,5 @@
 // Created by Cory McCabe
-import type { Block, PlanWarning, Workspace } from './model';
+import type { Block, PlanWarning, Task, Workspace } from './model';
 const MINUTE = 60_000,
   QUANTUM = 15 * MINUTE,
   HORIZON_DAYS = 42;
@@ -74,16 +74,29 @@ export function plan(
     const task = taskMap.get(taskId);
     return Boolean(
       task?.status === 'ready' &&
-        task.remainingMinutes &&
-        !task.blockers.some((id) => taskMap.get(id)?.status !== 'done'),
+      task.remainingMinutes &&
+      !task.blockers.some((id) => taskMap.get(id)?.status !== 'done'),
     );
   };
+  const ranks = { high: 0, medium: 1, low: 2 };
+  const compareTasks = (a: Task, b: Task) =>
+    (a.dueDate || '9999').localeCompare(b.dueDate || '9999') ||
+    ranks[a.priority] - ranks[b.priority] ||
+    a.createdAt.localeCompare(b.createdAt) ||
+    a.id.localeCompare(b.id);
+  const highestRankedTaskId = w.tasks
+    .filter((task) => canSchedule(task.id))
+    .sort(compareTasks)[0]?.id;
   // An elapsed session does not imply progress. Keep its unfinished task at
-  // the front of the plan until the user explicitly completes it or records
-  // progress. This also lets it displace a different task that had previously
-  // been scheduled immediately afterward.
+  // the front of the plan only while it remains the highest-ranked eligible
+  // task. Lower-ranked unfinished work yields when a more urgent task is ready.
   const rolloverTaskId = w.blocks
-    .filter((block) => Date.parse(block.end) <= now && canSchedule(block.taskId))
+    .filter(
+      (block) =>
+        Date.parse(block.end) <= now &&
+        block.taskId === highestRankedTaskId &&
+        canSchedule(block.taskId),
+    )
     .sort(
       (a, b) =>
         Date.parse(b.end) - Date.parse(a.end) ||
@@ -118,7 +131,6 @@ export function plan(
       worked.set(c.day, (worked.get(c.day) || 0) + duration);
     }
   }
-  const ranks = { high: 0, medium: 1, low: 2 };
   const candidates = w.tasks
     .filter((t) => {
       if (t.status === 'waiting')
@@ -141,10 +153,7 @@ export function plan(
     .sort(
       (a, b) =>
         Number(b.id === rolloverTaskId) - Number(a.id === rolloverTaskId) ||
-        (a.dueDate || '9999').localeCompare(b.dueDate || '9999') ||
-        ranks[a.priority] - ranks[b.priority] ||
-        a.createdAt.localeCompare(b.createdAt) ||
-        a.id.localeCompare(b.id),
+        compareTasks(a, b),
     );
   // Compute local calendar boundaries once, including DST transitions.
   const slots: { start: number; day: string; minutes: number }[] = [];
