@@ -3,11 +3,8 @@ import { openAIConnection } from '@/lib/openai-connection';
 import { jsonBody, fail } from '@/lib/http';
 import { readWorkspace, mutate } from '@/lib/store';
 import { authenticateShortcut } from '@/lib/shortcut-connection';
-import {
-  captureRequest,
-  prepareShortcutCaptures,
-  tokenHash,
-} from '@/lib/shortcut-capture';
+import { captureRequest, tokenHash } from '@/lib/shortcut-capture';
+import { prepareCaptureDrafts } from '@/lib/capture-pipeline';
 import { InputError } from '@/lib/validation';
 import type { Task } from '@/lib/model';
 export const dynamic = 'force-dynamic';
@@ -43,7 +40,7 @@ export async function POST(request: Request) {
     let tasks = inGroup(initial.workspace.tasks),
       duplicate = tasks.length > 0;
     if (!tasks.length) {
-      const drafts = await prepareShortcutCaptures(
+      const drafts = await prepareCaptureDrafts(
         source,
         initial.workspace,
         config.key,

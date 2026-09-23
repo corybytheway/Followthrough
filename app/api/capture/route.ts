@@ -2,8 +2,8 @@
 import { openAIConnection } from '@/lib/openai-connection';
 import { requireOwner, jsonBody, fail } from '@/lib/http';
 import { readWorkspace } from '@/lib/store';
-import { aiDraft, basicDraft } from '@/lib/capture';
-import { object, text, taskInput, InputError } from '@/lib/validation';
+import { prepareCaptureDrafts } from '@/lib/capture-pipeline';
+import { object, text } from '@/lib/validation';
 export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
@@ -13,17 +13,16 @@ export async function POST(request: Request) {
     const source = v.source as string;
     const { workspace } = await readWorkspace(owner),
       config = await openAIConnection(owner);
-    if (!config.key) return Response.json(basicDraft(source, workspace));
-    let draft;
-    try {
-      draft = await aiDraft(source, workspace, config.key, config.model);
-    } catch (e) {
-      throw new InputError(
-        e instanceof Error ? e.message : 'Could not prepare the draft.',
-      );
-    }
-    taskInput(draft, workspace);
-    return Response.json(draft, { headers: { 'Cache-Control': 'no-store' } });
+    const drafts = await prepareCaptureDrafts(
+      source,
+      workspace,
+      config.key,
+      config.model,
+    );
+    return Response.json(
+      { drafts },
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
   } catch (e) {
     return fail(e);
   }

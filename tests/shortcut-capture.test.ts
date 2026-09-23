@@ -3,15 +3,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   captureRequest,
-  fallbackCapture,
   prepareShortcutCapture,
-  prepareShortcutCaptures,
   tokenHash,
 } from '../lib/shortcut-capture';
-import {
-  explicitCaptureFacts,
-  normalizeGeneratedTitle,
-} from '../lib/capture';
+import { fallbackCapture, prepareCaptureDrafts } from '../lib/capture-pipeline';
+import { explicitCaptureFacts, normalizeGeneratedTitle } from '../lib/capture';
 import { initialWorkspace, type Task } from '../lib/model';
 import { normalizeCaptureStatus } from '../lib/capture-status';
 import { applyAction } from '../lib/actions';
@@ -170,19 +166,23 @@ void test('model title and checklist are saved while original input stays verbat
             {
               type: 'output_text',
               text: JSON.stringify({
-                title: 'Fix the HP Studios booking button',
-                projectId: 'project-4',
-                steps: [
-                  'Check the button on mobile',
-                  'Publish and verify the fix',
+                tasks: [
+                  {
+                    title: 'Fix the HP Studios booking button',
+                    projectId: 'project-4',
+                    steps: [
+                      'Check the button on mobile',
+                      'Publish and verify the fix',
+                    ],
+                    estimateMinutes: 45,
+                    priority: 'medium',
+                    dueDate: null,
+                    notBefore: null,
+                    notes: '',
+                    rationale: 'One focused repair.',
+                    source: 'The model must not replace the original input.',
+                  },
                 ],
-                estimateMinutes: 45,
-                priority: 'medium',
-                dueDate: null,
-                notBefore: null,
-                notes: '',
-                rationale: 'One focused repair.',
-                source: 'The model must not replace the original input.',
               }),
             },
           ],
@@ -209,7 +209,7 @@ void test('model title and checklist are saved while original input stays verbat
   assert.equal(saved[0].captureMode, 'ai');
 });
 
-void test('one Shortcut request can produce several independent tasks with the same verbatim source', async (t) => {
+void test('the shared capture pipeline produces several independent tasks with the same verbatim source', async (t) => {
   const workspace = initialWorkspace();
   workspace.projects.push({
     id: 'project-btf',
@@ -220,10 +220,7 @@ void test('one Shortcut request can produce several independent tasks with the s
   });
   const source =
     'Orbit task 1: test 1\nOrbit task 2: test 2\nBehind The Film task 1\nMeta note task 7';
-  const task = (
-    title: string,
-    projectId: string,
-  ): Record<string, unknown> => ({
+  const task = (title: string, projectId: string): Record<string, unknown> => ({
     title,
     projectId,
     steps: [`Complete ${title.toLowerCase()}`],
@@ -264,11 +261,7 @@ void test('one Shortcut request can produce several independent tasks with the s
       });
     },
   );
-  const drafts = await prepareShortcutCaptures(
-    source,
-    workspace,
-    'test-key',
-  );
+  const drafts = await prepareCaptureDrafts(source, workspace, 'test-key');
   assert.equal(fetchMock.mock.callCount(), 1);
   assert.equal(drafts.length, 4);
   assert.deepEqual(
