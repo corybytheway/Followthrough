@@ -62,6 +62,7 @@ import {
 } from '@/lib/model';
 import { localDay } from '@/lib/scheduler';
 import { scheduledTaskComparator } from '@/lib/task-order';
+import { tasksAvailableToday } from '@/lib/task-availability';
 import { TOOL_DEFINITIONS, toolAction } from '@/lib/tools';
 import ShortcutSettings from '@/components/shortcut-settings';
 import CalendarSettings from '@/components/calendar-settings';
@@ -417,6 +418,7 @@ export default function FollowthroughApp() {
   const active = state.tasks.filter((t) =>
     ['ready', 'waiting'].includes(t.status),
   );
+  const availableToday = tasksAvailableToday(state.tasks, state.currentDate);
   const visible = state.tasks.filter(
     (t) =>
       (statusFilter === 'trash'
@@ -694,12 +696,13 @@ export default function FollowthroughApp() {
                 <div className="section-heading">
                   <h2>Ready when you are</h2>
                   <span>
-                    {active.length} {active.length === 1 ? 'task' : 'tasks'}
+                    {availableToday.length}{' '}
+                    {availableToday.length === 1 ? 'task' : 'tasks'}
                   </span>
                 </div>
-                {active.length ? (
+                {availableToday.length ? (
                   <div className="task-list">
-                    {[...active]
+                    {[...availableToday]
                       .sort(compareBySchedule)
                       .slice(0, 8)
                       .map(taskRow)}
@@ -716,9 +719,10 @@ export default function FollowthroughApp() {
                     </p>
                   </div>
                 )}
-                {active.length > 8 && (
+                {availableToday.length > 8 && (
                   <Button variant="link" onClick={() => setTab('tasks')}>
-                    View all {active.length} tasks <ArrowRight />
+                    View all {availableToday.length} available tasks{' '}
+                    <ArrowRight />
                   </Button>
                 )}
                 <p className="small-note">
