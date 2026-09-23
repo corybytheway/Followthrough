@@ -893,11 +893,17 @@ export default function FollowthroughApp() {
                 onChange={(e) => setProjectFilter(e.target.value)}
               >
                 <option value="all">All projects</option>
-                {state.projects.map((p) => (
-                  <option value={p.id} key={p.id}>
-                    {p.name}
-                  </option>
-                ))}
+                {[...state.projects]
+                  .sort((a, b) =>
+                    a.name.localeCompare(b.name, undefined, {
+                      sensitivity: 'base',
+                    }),
+                  )
+                  .map((p) => (
+                    <option value={p.id} key={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
               </NativeSelect>
               <NativeSelect
                 aria-label="Filter status"
