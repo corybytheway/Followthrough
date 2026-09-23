@@ -161,6 +161,34 @@ await test('lower-ranked unfinished work yields to the highest-ranked ready task
   assert.equal(replanned.blocks[0].taskId, urgent.id);
   assert.equal(replanned.blocks[0].start, '2026-09-08T15:00:00.000Z');
 });
+await test('higher-ranked ready work preempts a current lower-ranked session', () => {
+  const w = example(60),
+    urgent = w.tasks[0];
+  urgent.priority = 'high';
+  urgent.dueDate = '2026-09-08';
+  const lower = taskInput(
+    {
+      title: 'Launch a later campaign',
+      estimateMinutes: 60,
+      priority: 'low',
+      dueDate: '2027-05-31',
+    },
+    w,
+  );
+  w.tasks.push(lower);
+  w.blocks = [
+    {
+      id: `${lower.id}-0`,
+      taskId: lower.id,
+      start: '2026-09-08T14:00:00.000Z',
+      end: '2026-09-08T15:00:00.000Z',
+      kind: 'task',
+    },
+  ];
+  const replanned = plan(w, Date.parse('2026-09-08T14:31:00.000Z'));
+  assert.equal(replanned.blocks[0].taskId, urgent.id);
+  assert.equal(replanned.blocks[0].start, '2026-09-08T14:45:00.000Z');
+});
 await test('current session remains stable during replanning', () => {
   const w = example(120);
   w.blocks = plan(w, NOW).blocks;

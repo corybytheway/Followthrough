@@ -115,6 +115,7 @@ export function plan(
       t?.status === 'ready' &&
       start <= now &&
       end > now &&
+      b.taskId === highestRankedTaskId &&
       (!rolloverTaskId || b.taskId === rolloverTaskId) &&
       t.remainingMinutes >= duration &&
       !t.blockers.some((id) => taskMap.get(id)?.status !== 'done') &&
