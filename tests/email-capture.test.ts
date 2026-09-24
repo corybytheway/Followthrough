@@ -3,10 +3,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addressFromHeader,
+  authenticateEmailCapture,
   emailTaskSource,
   resendEmailEvent,
   verifyResendWebhook,
 } from '../lib/email-capture';
+import { hash } from '../lib/calendar-security';
 
 function base64(bytes: ArrayBuffer) {
   return btoa(String.fromCharCode(...new Uint8Array(bytes)));
@@ -103,5 +105,39 @@ void test('Resend webhook signatures are checked with replay protection', async 
       secret,
       Number(timestamp) * 1000,
     ),
+  );
+});
+
+void test('private-site email relay is owner-bound and requires the scheduler credential', async () => {
+  const key = 'a'.repeat(64);
+  const config = {
+    CALENDAR_BACKGROUND_OWNER_ID: 'owner-a',
+    CALENDAR_BACKGROUND_TOKEN_HASH: await hash(key),
+  };
+  const request = (token = key) =>
+    new Request('https://example.test/api/email/capture', {
+      method: 'POST',
+      headers: {
+        'x-followthrough-email-relay': '1',
+        'x-followthrough-scheduler-key': token,
+      },
+    });
+  const connection = { ownerId: 'owner-a', webhookSecret: 'not-used' };
+
+  await assert.doesNotReject(
+    authenticateEmailCapture(request(), '{}', connection, config),
+  );
+  await assert.rejects(
+    authenticateEmailCapture(request('b'.repeat(64)), '{}', connection, config),
+    { status: 401 },
+  );
+  await assert.rejects(
+    authenticateEmailCapture(
+      request(),
+      '{}',
+      { ...connection, ownerId: 'owner-b' },
+      config,
+    ),
+    { status: 401 },
   );
 });

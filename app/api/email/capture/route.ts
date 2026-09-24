@@ -1,10 +1,11 @@
 // Created by Cory McCabe
+import { env } from 'cloudflare:workers';
 import {
   addressFromHeader,
+  authenticateEmailCapture,
   emailTaskSource,
   resendEmailEvent,
   retrieveResendEmail,
-  verifyResendWebhook,
 } from '@/lib/email-capture';
 import { findEmailConnection } from '@/lib/email-connection';
 import { fail } from '@/lib/http';
@@ -22,7 +23,12 @@ export async function POST(request: Request) {
     if (!event) return Response.json({ ok: true, ignored: true });
     const config = await findEmailConnection(event.to);
     if (!config) return Response.json({ ok: true, ignored: true });
-    await verifyResendWebhook(payload, request.headers, config.webhookSecret);
+    await authenticateEmailCapture(
+      request,
+      payload,
+      config,
+      env as unknown as Record<string, string>,
+    );
     if (!config.allowedSenders.includes(addressFromHeader(event.from)))
       return Response.json({ ok: true, ignored: true });
 

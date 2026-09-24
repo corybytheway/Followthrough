@@ -1,4 +1,5 @@
 // Created by Cory McCabe
+import { authenticateBackground } from './calendar-background';
 import { InputError, object, text } from './validation';
 
 function decodeBase64(value: string) {
@@ -69,6 +70,23 @@ export async function verifyResendWebhook(
     throw Object.assign(new InputError('Invalid email webhook signature.'), {
       status: 401,
     });
+}
+
+export async function authenticateEmailCapture(
+  request: Request,
+  payload: string,
+  connection: { ownerId: string; webhookSecret: string },
+  config: Record<string, string>,
+) {
+  if (request.headers.get('x-followthrough-email-relay') === '1') {
+    const owner = await authenticateBackground(request, config);
+    if (owner !== connection.ownerId)
+      throw Object.assign(new InputError('Email relay owner mismatch.'), {
+        status: 401,
+      });
+    return;
+  }
+  await verifyResendWebhook(payload, request.headers, connection.webhookSecret);
 }
 
 export function resendEmailEvent(raw: unknown) {
