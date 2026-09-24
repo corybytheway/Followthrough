@@ -126,13 +126,37 @@ function randomCaptureId() {
   );
 }
 
-export default function FollowthroughApp() {
+export type WorkspaceTab = 'today' | 'projects' | 'tasks' | 'settings';
+
+const TAB_PATHS: Record<WorkspaceTab, string> = {
+  today: '/today',
+  projects: '/projects',
+  tasks: '/tasks',
+  settings: '/settings',
+};
+
+function workspaceTabFromPath(pathname: string): WorkspaceTab {
+  const section = pathname.split('/').filter(Boolean)[0];
+  return section === 'projects' || section === 'tasks' || section === 'settings'
+    ? section
+    : 'today';
+}
+
+function compareProjectsByName(a: Project, b: Project) {
+  return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+}
+
+export default function FollowthroughApp({
+  initialTab = 'today',
+}: {
+  initialTab?: WorkspaceTab;
+}) {
   const [state, setState] = useState<Snapshot>(empty),
     [loaded, setLoaded] = useState(false),
     [saving, setSaving] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState('');
-  const [tab, setTab] = useState('today'),
+  const [tab, setTab] = useState<WorkspaceTab>(initialTab),
     [source, setSource] = useState(''),
     [draft, setDraft] = useState<Draft | null>(null),
     [captureDrafts, setCaptureDrafts] = useState<Draft[]>([]),
@@ -152,6 +176,23 @@ export default function FollowthroughApp() {
     stateRef = useRef(state),
     busyRef = useRef(false),
     completingRef = useRef(new Set<string>());
+  const navigateToTab = useCallback(
+    (nextTab: WorkspaceTab, mode: 'push' | 'replace' = 'push') => {
+      setTab(nextTab);
+      const location = new URL(window.location.href);
+      location.pathname = TAB_PATHS[nextTab];
+      if (nextTab !== 'tasks') location.searchParams.delete('task');
+      const nextUrl = location.pathname + location.search + location.hash;
+      const currentUrl =
+        window.location.pathname +
+        window.location.search +
+        window.location.hash;
+      if (nextUrl === currentUrl) return;
+      if (mode === 'replace') history.replaceState(null, '', nextUrl);
+      else history.pushState(null, '', nextUrl);
+    },
+    [],
+  );
   const accept = useCallback((next: Snapshot) => {
     flushSync(() => setState(next));
     stateRef.current = next;
@@ -220,8 +261,9 @@ export default function FollowthroughApp() {
         const location = new URL(window.location.href),
           calendarResult = location.searchParams.get('calendar'),
           requestedTaskId = location.searchParams.get('task');
+        let destination = workspaceTabFromPath(location.pathname);
         if (calendarResult) {
-          setTab('settings');
+          destination = 'settings';
           if (calendarResult === 'connected')
             setNotice(
               'Google connected. Select the calendars that should block task time.',
@@ -231,29 +273,27 @@ export default function FollowthroughApp() {
               'Google connection was not completed. Try connecting again in Settings.',
             );
           location.searchParams.delete('calendar');
-          history.replaceState(
-            null,
-            '',
-            location.pathname + location.search + location.hash,
-          );
         }
         if (requestedTaskId) {
           const requestedTask = next.tasks.find(
             (task) => task.id === requestedTaskId && !task.deletedAt,
           );
           if (requestedTask) {
-            setTab('tasks');
+            destination = 'tasks';
             setEditing(requestedTask.id);
           } else {
             location.searchParams.delete('task');
-            history.replaceState(
-              null,
-              '',
-              location.pathname + location.search + location.hash,
-            );
             setError('This task is no longer available.');
           }
         }
+
+        setTab(destination);
+        location.pathname = TAB_PATHS[destination];
+        history.replaceState(
+          null,
+          '',
+          location.pathname + location.search + location.hash,
+        );
 
         setDay(localDay(Date.now(), next.settings.timeZone));
         setLoaded(true);
@@ -269,8 +309,10 @@ export default function FollowthroughApp() {
   useEffect(() => {
     if (!loaded) return;
     const location = new URL(window.location.href);
-    if (editing) location.searchParams.set('task', editing);
-    else location.searchParams.delete('task');
+    if (editing) {
+      location.pathname = TAB_PATHS.tasks;
+      location.searchParams.set('task', editing);
+    } else location.searchParams.delete('task');
     history.replaceState(
       null,
       '',
@@ -279,12 +321,31 @@ export default function FollowthroughApp() {
   }, [editing, loaded]);
   useEffect(() => {
     if (!loaded) return;
+    const syncFromHistory = () => {
+      const nextTab = workspaceTabFromPath(window.location.pathname);
+      setTab(nextTab);
+      const requestedTaskId = new URL(window.location.href).searchParams.get(
+        'task',
+      );
+      if (nextTab !== 'tasks' || !requestedTaskId) setEditing(null);
+      else if (
+        stateRef.current.tasks.some(
+          (task) => task.id === requestedTaskId && !task.deletedAt,
+        )
+      )
+        setEditing(requestedTaskId);
+    };
+    window.addEventListener('popstate', syncFromHistory);
+    return () => window.removeEventListener('popstate', syncFromHistory);
+  }, [loaded]);
+  useEffect(() => {
+    if (!loaded) return;
     const receiveCapture = () => {
       const fragment = new URLSearchParams(window.location.hash.slice(1));
       const incoming = fragment.get('capture');
       if (!incoming?.trim()) return;
       setSource(incoming.slice(0, 8000));
-      setTab('today');
+      navigateToTab('today', 'replace');
       setNotice('Text received from Shortcuts. Review the task, then save it.');
       fragment.delete('capture');
       const remaining = fragment.toString();
@@ -299,7 +360,7 @@ export default function FollowthroughApp() {
     receiveCapture();
     window.addEventListener('hashchange', receiveCapture);
     return () => window.removeEventListener('hashchange', receiveCapture);
-  }, [loaded]);
+  }, [loaded, navigateToTab]);
   useEffect(() => {
     if (!loaded) return;
     const update = () => {
@@ -375,16 +436,16 @@ export default function FollowthroughApp() {
             };
           }
           const result = await commit(action);
+          const destination =
+            definition.name === 'create_followthrough_project'
+              ? 'projects'
+              : 'tasks';
           flushSync(() => {
-            setTab(
-              definition.name === 'create_followthrough_project'
-                ? 'projects'
-                : 'tasks',
-            );
             setProjectFilter('all');
             setStatusFilter('active');
             setNotice('Followthrough updated.');
           });
+          navigateToTab(destination);
           return result;
         },
       };
@@ -397,7 +458,7 @@ export default function FollowthroughApp() {
       }
     }
     return () => lifecycle.abort();
-  }, [loaded, commit, refresh]);
+  }, [loaded, commit, refresh, navigateToTab]);
   async function capture() {
     setError('');
     setSaving(true);
@@ -443,6 +504,9 @@ export default function FollowthroughApp() {
     ['ready', 'waiting'].includes(t.status),
   );
   const availableToday = tasksAvailableToday(state.tasks, state.currentDate);
+  const projectsAlphabetically = [...state.projects].sort(
+    compareProjectsByName,
+  );
   const visible = state.tasks.filter(
     (t) =>
       (statusFilter === 'trash'
@@ -485,6 +549,10 @@ export default function FollowthroughApp() {
     setCaptureIndex(0);
     setCaptureGroupId('');
     setEditing(null);
+  }
+  function openTask(taskId: string) {
+    navigateToTab('tasks');
+    setEditing(taskId);
   }
   const agenda = [
     ...state.blocks.map((b) => ({
@@ -598,7 +666,7 @@ export default function FollowthroughApp() {
               }
             />
           )}
-          <button className="task-body" onClick={() => setEditing(task.id)}>
+          <button className="task-body" onClick={() => openTask(task.id)}>
             <strong>
               {taskLabel(
                 task.title,
@@ -652,7 +720,7 @@ export default function FollowthroughApp() {
   return (
     <main className="app-shell">
       <header className="app-header">
-        <Link href="/" className="brand">
+        <Link href="/today" className="brand">
           <span className="brand-mark">
             <svg
               width="27"
@@ -717,7 +785,11 @@ export default function FollowthroughApp() {
           )}
         </div>
       ) : (
-        <Tabs value={tab} onValueChange={setTab} className="workspace-tabs">
+        <Tabs
+          value={tab}
+          onValueChange={(value) => navigateToTab(value as WorkspaceTab)}
+          className="workspace-tabs"
+        >
           <TabsList variant="line" className="main-tabs">
             <TabsTrigger value="today">
               <CalendarDays />
@@ -798,7 +870,7 @@ export default function FollowthroughApp() {
                   </div>
                 )}
                 {availableToday.length > 8 && (
-                  <Button variant="link" onClick={() => setTab('tasks')}>
+                  <Button variant="link" onClick={() => navigateToTab('tasks')}>
                     View all {availableToday.length} available tasks{' '}
                     <ArrowRight />
                   </Button>
@@ -870,7 +942,7 @@ export default function FollowthroughApp() {
                           <small>{time(event.end)}</small>
                         </span>
                         {event.taskId ? (
-                          <button onClick={() => setEditing(event.taskId)}>
+                          <button onClick={() => openTask(event.taskId)}>
                             <strong>{event.title}</strong>
                             <small>
                               {minutesLabel(
@@ -932,7 +1004,7 @@ export default function FollowthroughApp() {
                 </p>
                 <button
                   className="text-button"
-                  onClick={() => setTab('settings')}
+                  onClick={() => navigateToTab('settings')}
                 >
                   Calendar connections <ArrowRight size={16} />
                 </button>
@@ -975,17 +1047,11 @@ export default function FollowthroughApp() {
                 onChange={(e) => setProjectFilter(e.target.value)}
               >
                 <option value="all">All projects</option>
-                {[...state.projects]
-                  .sort((a, b) =>
-                    a.name.localeCompare(b.name, undefined, {
-                      sensitivity: 'base',
-                    }),
-                  )
-                  .map((p) => (
-                    <option value={p.id} key={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
+                {projectsAlphabetically.map((p) => (
+                  <option value={p.id} key={p.id}>
+                    {p.name}
+                  </option>
+                ))}
               </NativeSelect>
               <NativeSelect
                 aria-label="Filter status"
@@ -1029,7 +1095,7 @@ export default function FollowthroughApp() {
               </Button>
             </div>
             <div className="project-grid">
-              {state.projects.map((p) => (
+              {projectsAlphabetically.map((p) => (
                 <article className="project-card" key={p.id}>
                   <div className="project-card-heading">
                     <span
@@ -1059,7 +1125,7 @@ export default function FollowthroughApp() {
                       setProjectFilter(p.id);
                       setStatusFilter('active');
                       setQuery('');
-                      setTab('tasks');
+                      navigateToTab('tasks');
                     }}
                   >
                     <h2>{p.name}</h2>
@@ -1441,7 +1507,7 @@ function TaskEditor({
           onChange={(e) => setProjectId(e.target.value)}
         >
           <option value="">No project</option>
-          {state.projects.map((p) => (
+          {[...state.projects].sort(compareProjectsByName).map((p) => (
             <option value={p.id} key={p.id}>
               {p.name}
             </option>
