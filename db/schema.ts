@@ -37,3 +37,12 @@ export const openaiConnections = sqliteTable('openai_connections', {
   credentials: text('credentials').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
+
+// Inbound email credentials are encrypted and resolved by recipient address.
+export const emailConnections = sqliteTable('email_connections', {
+  ownerId: text('owner_id').primaryKey(),
+  inboundAddress: text('inbound_address').notNull().unique(),
+  allowedSenders: text('allowed_senders').notNull(),
+  credentials: text('credentials').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});

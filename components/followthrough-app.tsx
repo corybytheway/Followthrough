@@ -70,6 +70,7 @@ import { TOOL_DEFINITIONS, toolAction } from '@/lib/tools';
 import ShortcutSettings from '@/components/shortcut-settings';
 import CalendarSettings from '@/components/calendar-settings';
 import OpenAISettings from '@/components/openai-settings';
+import EmailCaptureSettings from '@/components/email-capture-settings';
 
 type Draft = Partial<Task> & {
   rationale?: string;
@@ -83,7 +84,13 @@ const empty: Snapshot = {
   revision: 0,
   currentDate: '',
   warnings: [],
-  integrations: { ai: false, google: false, icloud: false, background: false },
+  integrations: {
+    ai: false,
+    google: false,
+    icloud: false,
+    background: false,
+    email: { connected: false, address: '', allowedSenders: [] },
+  },
 };
 function Field({
   label,
@@ -1971,6 +1978,7 @@ function SettingsPanel({
       <div className="connections">
         <CalendarSettings />
         <OpenAISettings />
+        <EmailCaptureSettings />
         <div className="settings-card">
           <MessageSquare />
           <h2>Chat capture</h2>

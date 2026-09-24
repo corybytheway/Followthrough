@@ -85,6 +85,11 @@ export type Snapshot = Workspace & {
     google: boolean;
     icloud: boolean;
     background: boolean;
+    email: {
+      connected: boolean;
+      address: string;
+      allowedSenders: string[];
+    };
   };
 };
 export const COLORS = [
