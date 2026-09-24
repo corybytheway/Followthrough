@@ -169,6 +169,19 @@ p {
   border-radius: 10px;
   font-size: 15px;
 }
+.feedback-layer {
+  position: absolute;
+  z-index: 30;
+  top: 62px;
+  right: 0;
+  width: min(420px, 100%);
+  pointer-events: none;
+}
+.feedback-layer .feedback {
+  margin-top: 8px;
+  box-shadow: 0 10px 30px rgb(15 35 65 / 14%);
+  pointer-events: auto;
+}
 .feedback.error {
   background: #fff5f3;
   border-color: #f0c8c0;
@@ -719,6 +732,10 @@ summary {
   }
 }
 @media (max-width: 440px) {
+  .feedback-layer {
+    left: 0;
+    width: auto;
+  }
   .task-row {
     padding: 17px 15px;
   }

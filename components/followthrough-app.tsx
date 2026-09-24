@@ -717,29 +717,9 @@ export default function FollowthroughApp({
       </div>
     );
   };
-  return (
-    <main className="app-shell">
-      <header className="app-header">
-        <Link href="/today" className="brand">
-          <span className="brand-mark">
-            <svg
-              width="27"
-              height="27"
-              viewBox="0 0 64 64"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M37 7 13 36h16l-3 21 25-31H35z" />
-            </svg>
-          </span>
-          Followthrough
-        </Link>
-        <span className="private-label">
-          {saving
-            ? 'Saving…'
-            : 'The project manager that makes you follow through'}
-        </span>
-      </header>
+
+  const feedbackMessages = (
+    <>
       {error && (
         <div className="feedback error" role="alert">
           <span>{error}</span>
@@ -766,24 +746,53 @@ export default function FollowthroughApp({
           </Button>
         </output>
       )}
-      {!loaded ? (
-        <div className="loading-state">
-          {error ? (
-            <Button
-              onClick={() =>
-                void refresh()
-                  .then(() => setLoaded(true))
-                  .catch((e) => setError(e.message))
-              }
+    </>
+  );
+
+  return (
+    <main className="app-shell">
+      <header className="app-header">
+        <Link href="/today" className="brand">
+          <span className="brand-mark">
+            <svg
+              width="27"
+              height="27"
+              viewBox="0 0 64 64"
+              fill="currentColor"
+              aria-hidden="true"
             >
-              Try again
-            </Button>
-          ) : (
-            <>
-              <Loader2 className="spin" /> Loading your plan…
-            </>
-          )}
-        </div>
+              <path d="M37 7 13 36h16l-3 21 25-31H35z" />
+            </svg>
+          </span>
+          Followthrough
+        </Link>
+        <span className="private-label">
+          {saving
+            ? 'Saving…'
+            : 'The project manager that makes you follow through'}
+        </span>
+      </header>
+      {!loaded ? (
+        <>
+          {feedbackMessages}
+          <div className="loading-state">
+            {error ? (
+              <Button
+                onClick={() =>
+                  void refresh()
+                    .then(() => setLoaded(true))
+                    .catch((e) => setError(e.message))
+                }
+              >
+                Try again
+              </Button>
+            ) : (
+              <>
+                <Loader2 className="spin" /> Loading your plan…
+              </>
+            )}
+          </div>
+        </>
       ) : (
         <Tabs
           value={tab}
@@ -808,6 +817,7 @@ export default function FollowthroughApp({
               Settings
             </TabsTrigger>
           </TabsList>
+          <div className="feedback-layer">{feedbackMessages}</div>
           <TabsContent value="today">
             <div className="page-heading">
               <div>

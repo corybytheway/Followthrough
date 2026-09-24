@@ -190,6 +190,7 @@ body {
 }
 .workspace-tabs {
   gap: 0;
+  position: relative;
 }
 .main-tabs {
   height: 62px !important;
