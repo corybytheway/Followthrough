@@ -158,26 +158,36 @@ export default function FollowthroughApp() {
       setSaving(true);
       setError('');
       try {
-        const response = await fetch('/api/workspace', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...action,
-            revision: stateRef.current.revision,
-            requestId: action.requestId || crypto.randomUUID(),
-          }),
-        });
-        const data = (await response.json()) as {
-          state: Snapshot;
-          result: Record<string, unknown>;
-          error?: string;
-        };
-        if (!response.ok) {
-          if (response.status === 409) await refresh();
+        const requestId =
+          typeof action.requestId === 'string'
+            ? action.requestId
+            : crypto.randomUUID();
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const response = await fetch('/api/workspace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...action,
+              revision: stateRef.current.revision,
+              requestId,
+            }),
+          });
+          const data = (await response.json()) as {
+            state: Snapshot;
+            result: Record<string, unknown>;
+            error?: string;
+          };
+          if (response.ok) {
+            accept(data.state);
+            return data.result;
+          }
+          if (response.status === 409 && attempt < 2) {
+            await refresh();
+            continue;
+          }
           throw new Error(data.error || 'Could not save this change.');
         }
-        accept(data.state);
-        return data.result;
+        throw new Error('Could not save this change.');
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not save.');
         throw e;

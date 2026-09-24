@@ -10,7 +10,10 @@ import { toolAction } from '../lib/tools';
 import { postponeUntil } from '../lib/calendar-actions';
 const NOW = Date.parse('2026-09-08T13:00:00Z');
 void test('unassigned task labels use Task as their context', () => {
-  assert.equal(taskLabel('Buy black Henley shirt'), '⚡️ Task: Buy black Henley shirt');
+  assert.equal(
+    taskLabel('Buy black Henley shirt'),
+    '⚡️ Task: Buy black Henley shirt',
+  );
 });
 function example(minutes = 300) {
   const w = initialWorkspace();
@@ -90,6 +93,14 @@ await test('tasks avoid meetings and stay within work hours', () => {
   );
   for (let i = 1; i < out.blocks.length; i++)
     assert.ok(out.blocks[i - 1].end <= out.blocks[i].start);
+});
+await test('the latest workday end allows a task to fill the final hour', () => {
+  const w = example(60);
+  w.settings.workStart = '09:00';
+  w.settings.workEnd = '21:30';
+  const out = plan(w, Date.parse('2026-09-09T01:30:00.000Z'));
+  assert.equal(out.blocks[0].start, '2026-09-09T01:30:00.000Z');
+  assert.equal(out.blocks[0].end, '2026-09-09T02:30:00.000Z');
 });
 await test('an unfinished elapsed session rolls forward from its prior boundary', () => {
   const w = example(60);
