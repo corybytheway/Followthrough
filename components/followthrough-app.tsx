@@ -136,8 +136,12 @@ export default function FollowthroughApp() {
     [projectFilter, setProjectFilter] = useState('all'),
     [statusFilter, setStatusFilter] = useState('active');
   const [day, setDay] = useState(''),
+    [completionPhases, setCompletionPhases] = useState<
+      Record<string, 'checking' | 'collapsing'>
+    >({}),
     stateRef = useRef(state),
-    busyRef = useRef(false);
+    busyRef = useRef(false),
+    completingRef = useRef(new Set<string>());
   const accept = useCallback((next: Snapshot) => {
     flushSync(() => setState(next));
     stateRef.current = next;
@@ -500,6 +504,47 @@ export default function FollowthroughApp() {
         .toISOString()
         .slice(0, 10),
     );
+  const setTaskCompletion = async (task: Task, complete: boolean) => {
+    if (!complete || task.status === 'done') {
+      await commit({
+        action: 'update_task',
+        id: task.id,
+        task: { status: complete ? 'done' : 'ready' },
+      });
+      return;
+    }
+    if (completingRef.current.has(task.id)) return;
+    completingRef.current.add(task.id);
+    const reducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+    try {
+      setCompletionPhases((current) => ({
+        ...current,
+        [task.id]: 'checking',
+      }));
+      if (!reducedMotion)
+        await new Promise((resolve) => window.setTimeout(resolve, 240));
+      setCompletionPhases((current) => ({
+        ...current,
+        [task.id]: 'collapsing',
+      }));
+      if (!reducedMotion)
+        await new Promise((resolve) => window.setTimeout(resolve, 300));
+      await commit({
+        action: 'update_task',
+        id: task.id,
+        task: { status: 'done' },
+      });
+    } finally {
+      completingRef.current.delete(task.id);
+      setCompletionPhases((current) => {
+        const next = { ...current };
+        delete next[task.id];
+        return next;
+      });
+    }
+  };
   const taskRow = (task: Task) => {
     const project = state.projects.find((p) => p.id === task.projectId),
       blocked = task.blockers.some((id) => taskById.get(id)?.status !== 'done'),
@@ -507,77 +552,87 @@ export default function FollowthroughApp() {
         (w) =>
           w.taskId === task.id && ['deadline', 'capacity'].includes(w.reason),
       );
-    const planned = state.blocks.find((block) => block.taskId === task.id);
+    const planned = state.blocks.find((block) => block.taskId === task.id),
+      completionPhase = completionPhases[task.id];
     return (
       <div
-        className={'task-row ' + (task.status === 'done' ? 'completed' : '')}
+        className={
+          'task-row-shell ' +
+          (completionPhase === 'collapsing' ? 'collapsing' : '')
+        }
         key={task.id}
       >
-        {!task.deletedAt && (
-          <Checkbox
-            className="task-completion"
-            title={task.status === 'done' ? 'Reopen task' : 'Mark complete'}
-            aria-label={
-              task.status === 'done'
-                ? 'Reopen ' + task.title
-                : 'Complete ' + task.title
-            }
-            checked={task.status === 'done'}
-            disabled={saving}
-            onCheckedChange={(checked) =>
-              void commit({
-                action: 'update_task',
-                id: task.id,
-                task: { status: checked ? 'done' : 'ready' },
-              }).catch(() => {})
-            }
-          />
-        )}
-        <button className="task-body" onClick={() => setEditing(task.id)}>
-          <strong>
-            {taskLabel(
-              task.title,
-              state.projects.find((p) => p.id === task.projectId)?.name,
-            )}
-          </strong>
-          <span className="task-meta">
-            {project && (
-              <span style={{ color: project.color }}>{project.name}</span>
-            )}
-            <span>
-              {task.estimateProvisional ? '~' : ''}
-              {minutesLabel(task.remainingMinutes)}
-              {task.estimateProvisional ? ' · temporary estimate' : ''}
-            </span>
-            {task.steps.length > 0 && (
+        <div
+          className={
+            'task-row ' +
+            (task.status === 'done' ? 'completed ' : '') +
+            (completionPhase ? 'completing' : '')
+          }
+        >
+          {!task.deletedAt && (
+            <Checkbox
+              className="task-completion"
+              title={task.status === 'done' ? 'Reopen task' : 'Mark complete'}
+              aria-label={
+                task.status === 'done'
+                  ? 'Reopen ' + task.title
+                  : 'Complete ' + task.title
+              }
+              checked={task.status === 'done' || Boolean(completionPhase)}
+              disabled={saving && !completionPhase}
+              onCheckedChange={(checked) =>
+                void setTaskCompletion(task, checked === true).catch(() => {})
+              }
+            />
+          )}
+          <button className="task-body" onClick={() => setEditing(task.id)}>
+            <strong>
+              {taskLabel(
+                task.title,
+                state.projects.find((p) => p.id === task.projectId)?.name,
+              )}
+            </strong>
+            <span className="task-meta">
+              {project && (
+                <span style={{ color: project.color }}>{project.name}</span>
+              )}
               <span>
-                {task.steps.filter((s) => s.done).length}/{task.steps.length}{' '}
-                steps
+                {task.estimateProvisional ? '~' : ''}
+                {minutesLabel(task.remainingMinutes)}
+                {task.estimateProvisional ? ' · temporary estimate' : ''}
               </span>
-            )}
-            {task.dueDate && <span>Due {dayLabel(task.dueDate)}</span>}
-            {planned && (
-              <span>
-                Planned{' '}
-                {dayLabel(localDay(planned.start, state.settings.timeZone))} ·{' '}
-                {time(planned.start)}
-              </span>
-            )}
-            {blocked && (
-              <span className="pill">
-                <Link2 size={11} />
-                Blocked
-              </span>
-            )}
-            {task.status === 'waiting' && <span className="pill">On hold</span>}
+              {task.steps.length > 0 && (
+                <span>
+                  {task.steps.filter((s) => s.done).length}/{task.steps.length}{' '}
+                  steps
+                </span>
+              )}
+              {task.dueDate && <span>Due {dayLabel(task.dueDate)}</span>}
+              {planned && (
+                <span>
+                  Planned{' '}
+                  {dayLabel(localDay(planned.start, state.settings.timeZone))} ·{' '}
+                  {time(planned.start)}
+                </span>
+              )}
+              {blocked && (
+                <span className="pill">
+                  <Link2 size={11} />
+                  Blocked
+                </span>
+              )}
+              {task.status === 'waiting' && (
+                <span className="pill">On hold</span>
+              )}
 
-            {task.priority === 'high' && (
-              <span className="urgent">High priority</span>
-            )}
-          </span>
-          {warning && <span className="task-warning">{warning.message}</span>}
-        </button>
-        <ArrowUpRight className="row-arrow" size={17} />
+              {task.priority === 'high' && (
+                <span className="urgent">High priority</span>
+              )}
+            </span>
+            {warning && <span className="task-warning">{warning.message}</span>}
+          </button>
+          <ArrowUpRight className="row-arrow" size={17} />
+        </div>
       </div>
     );
   };
