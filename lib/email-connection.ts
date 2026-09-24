@@ -112,6 +112,30 @@ export async function saveEmailConnection(
   return { connected: true, address, allowedSenders };
 }
 
+export async function updateEmailAllowedSenders(
+  ownerId: string,
+  values: string[],
+) {
+  const allowedSenders = [
+    ...new Set(
+      values.map((value) => normalizeAddress(value, 'Allowed sender')),
+    ),
+  ];
+  if (!allowedSenders.length)
+    throw new InputError('Add at least one allowed sender.');
+
+  const result = await env.DB.prepare(
+    'UPDATE email_connections SET allowed_senders = ?, updated_at = ? WHERE owner_id = ?',
+  )
+    .bind(JSON.stringify(allowedSenders), new Date().toISOString(), ownerId)
+    .run();
+  if (!result.meta.changes)
+    throw new InputError('Connect email capture before editing senders.');
+
+  const status = await emailCaptureStatus(ownerId);
+  return status;
+}
+
 export async function disconnectEmail(ownerId: string) {
   await env.DB.prepare('DELETE FROM email_connections WHERE owner_id = ?')
     .bind(ownerId)

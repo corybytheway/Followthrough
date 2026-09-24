@@ -25,6 +25,7 @@ export default function EmailCaptureSettings() {
   const [apiKey, setApiKey] = useState('');
   const [webhookSecret, setWebhookSecret] = useState('');
   const [busy, setBusy] = useState(false);
+  const [editingSenders, setEditingSenders] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -34,6 +35,7 @@ export default function EmailCaptureSettings() {
         const data = (await response.json()) as Status & { error?: string };
         if (!response.ok) throw new Error(data.error);
         setStatus(data);
+        setSenders(data.allowedSenders.join(', '));
         setLoaded(true);
       })
       .catch(() =>
@@ -74,6 +76,36 @@ export default function EmailCaptureSettings() {
     }
   }
 
+  async function updateSenders(event: { preventDefault(): void }) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch('/api/email/connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update-senders',
+          allowedSenders: senders
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean),
+        }),
+      });
+      const data = (await response.json()) as Status & { error?: string };
+      if (!response.ok) throw new Error(data.error);
+      setStatus(data);
+      setSenders(data.allowedSenders.join(', '));
+      setEditingSenders(false);
+      setMessage('Accepted senders updated.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Update failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="settings-card">
       <Mail />
@@ -96,7 +128,47 @@ export default function EmailCaptureSettings() {
             <Mail size={16} />
             {status.address}
           </a>
-          <p>Accepted senders: {status.allowedSenders.join(', ')}</p>
+          {editingSenders ? (
+            <form className="editor-form" onSubmit={updateSenders}>
+              <label className="field" htmlFor="email-capture-senders-edit">
+                Allowed sender emails
+                <Input
+                  id="email-capture-senders-edit"
+                  value={senders}
+                  onChange={(event) => setSenders(event.target.value)}
+                  required
+                  disabled={busy}
+                />
+              </label>
+              <div className="form-actions">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setSenders(status.allowedSenders.join(', '));
+                    setEditingSenders(false);
+                  }}
+                  disabled={busy}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={busy}>
+                  {busy ? 'Saving…' : 'Save senders'}
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <p>Accepted senders: {status.allowedSenders.join(', ')}</p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditingSenders(true)}
+              >
+                Edit accepted senders
+              </Button>
+            </>
+          )}
         </>
       ) : (
         <form className="editor-form" onSubmit={connect}>

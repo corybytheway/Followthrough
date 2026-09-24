@@ -3,6 +3,7 @@ import {
   disconnectEmail,
   emailCaptureStatus,
   saveEmailConnection,
+  updateEmailAllowedSenders,
 } from '@/lib/email-connection';
 import { fail, jsonBody, requireOwner } from '@/lib/http';
 import { object, text } from '@/lib/validation';
@@ -38,6 +39,12 @@ export async function POST(request: Request) {
           text(value, 'Allowed sender', 500, true),
         )
       : [];
+    if (action === 'update-senders') {
+      return Response.json(
+        await updateEmailAllowedSenders(ownerId, allowedSenders),
+        { headers },
+      );
+    }
     const result = await saveEmailConnection(ownerId, {
       address: text(body.address, 'Inbound address', 500, true),
       allowedSenders,
