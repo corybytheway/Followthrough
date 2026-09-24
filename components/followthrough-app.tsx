@@ -193,6 +193,20 @@ export default function FollowthroughApp({
     },
     [],
   );
+  const navigateToCapture = useCallback(() => {
+    setTab('today');
+    const nextUrl = '/today#capture';
+    const currentUrl =
+      window.location.pathname +
+      window.location.search +
+      window.location.hash;
+    if (nextUrl !== currentUrl) history.pushState(null, '', nextUrl);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.getElementById('capture')?.focus();
+      });
+    });
+  }, []);
   const accept = useCallback((next: Snapshot) => {
     flushSync(() => setState(next));
     stateRef.current = next;
@@ -1027,15 +1041,7 @@ export default function FollowthroughApp({
                 <h1>Your tasks.</h1>
               </div>
               <Button
-                onClick={() =>
-                  setDraft({
-                    title: '',
-                    estimateMinutes: 30,
-                    remainingMinutes: 30,
-                    steps: [],
-                    projectId: projectFilter === 'all' ? null : projectFilter,
-                  })
-                }
+                onClick={navigateToCapture}
               >
                 <Plus />
                 New task

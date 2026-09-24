@@ -173,8 +173,9 @@ p {
   position: absolute;
   z-index: 30;
   top: 62px;
-  right: 0;
+  left: 50%;
   width: min(420px, 100%);
+  transform: translateX(-50%);
   pointer-events: none;
 }
 .feedback-layer .feedback {
@@ -734,7 +735,9 @@ summary {
 @media (max-width: 440px) {
   .feedback-layer {
     left: 0;
+    right: 0;
     width: auto;
+    transform: none;
   }
   .task-row {
     padding: 17px 15px;
