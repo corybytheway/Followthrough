@@ -2,7 +2,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initialWorkspace, type Task } from '../lib/model';
-import { scheduledTaskComparator } from '../lib/task-order';
+import {
+  completedTaskComparator,
+  scheduledTaskComparator,
+} from '../lib/task-order';
 
 function task(id: string, createdAt: string): Task {
   const workspace = initialWorkspace();
@@ -77,5 +80,40 @@ void test('unscheduled tasks follow scheduled tasks in stable creation order', (
       .sort(scheduledTaskComparator(blocks))
       .map((item) => item.id),
     ['scheduled', 'older', 'newer'],
+  );
+});
+
+void test('completed tasks sort by most recent completion first', () => {
+  const older = task('older', '2026-09-08T10:00:00.000Z');
+  older.status = 'done';
+  older.completedAt = '2026-09-18T15:00:00.000Z';
+  const newest = task('newest', '2026-09-08T11:00:00.000Z');
+  newest.status = 'done';
+  newest.completedAt = '2026-09-20T15:00:00.000Z';
+  const middle = task('middle', '2026-09-08T12:00:00.000Z');
+  middle.status = 'done';
+  middle.completedAt = '2026-09-19T15:00:00.000Z';
+
+  assert.deepEqual(
+    [older, newest, middle]
+      .sort(completedTaskComparator)
+      .map((item) => item.id),
+    ['newest', 'middle', 'older'],
+  );
+});
+
+void test('legacy completed tasks fall back to their last update time', () => {
+  const older = task('older', '2026-09-08T10:00:00.000Z');
+  older.status = 'done';
+  older.completedAt = null;
+  older.updatedAt = '2026-09-18T15:00:00.000Z';
+  const newer = task('newer', '2026-09-08T11:00:00.000Z');
+  newer.status = 'done';
+  newer.completedAt = null;
+  newer.updatedAt = '2026-09-19T15:00:00.000Z';
+
+  assert.deepEqual(
+    [older, newer].sort(completedTaskComparator).map((item) => item.id),
+    ['newer', 'older'],
   );
 });

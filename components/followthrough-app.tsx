@@ -61,7 +61,10 @@ import {
   type Task,
 } from '@/lib/model';
 import { localDay } from '@/lib/scheduler';
-import { scheduledTaskComparator } from '@/lib/task-order';
+import {
+  completedTaskComparator,
+  scheduledTaskComparator,
+} from '@/lib/task-order';
 import { tasksAvailableToday } from '@/lib/task-availability';
 import { TOOL_DEFINITIONS, toolAction } from '@/lib/tools';
 import ShortcutSettings from '@/components/shortcut-settings';
@@ -450,6 +453,8 @@ export default function FollowthroughApp() {
   const compareBySchedule = scheduledTaskComparator(state.blocks);
   if (statusFilter === 'active') {
     visible.sort(compareBySchedule);
+  } else if (statusFilter === 'done') {
+    visible.sort(completedTaskComparator);
   } else if (statusFilter === 'all') {
     const statusOrder = { ready: 0, waiting: 0, done: 1, archived: 2 };
     visible.sort((a, b) => {
@@ -458,6 +463,7 @@ export default function FollowthroughApp() {
       if (['ready', 'waiting'].includes(a.status)) {
         return compareBySchedule(a, b);
       }
+      if (a.status === 'done') return completedTaskComparator(a, b);
       return 0;
     });
   }

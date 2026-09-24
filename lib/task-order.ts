@@ -28,3 +28,13 @@ export function scheduledTaskComparator(blocks: Block[]) {
     return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
   };
 }
+
+export function completedTaskComparator(a: Task, b: Task) {
+  const aCompleted = a.completedAt || a.updatedAt || a.createdAt;
+  const bCompleted = b.completedAt || b.updatedAt || b.createdAt;
+  return (
+    bCompleted.localeCompare(aCompleted) ||
+    b.createdAt.localeCompare(a.createdAt) ||
+    a.id.localeCompare(b.id)
+  );
+}
