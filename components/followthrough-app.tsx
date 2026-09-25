@@ -78,6 +78,9 @@ type Draft = Partial<Task> & {
   steps?: Task['steps'];
 };
 type Action = Record<string, unknown>;
+
+const COMPLETION_CHECK_SETTLE_MS = 340;
+const COMPLETION_COLLAPSE_SETTLE_MS = 380;
 type Commit = (action: Action) => Promise<Record<string, unknown>>;
 const empty: Snapshot = {
   ...initialWorkspace(),
@@ -530,7 +533,10 @@ export default function FollowthroughApp({
             (statusFilter === 'active'
               ? ['ready', 'waiting'].includes(t.status)
               : t.status === statusFilter))) &&
-      (projectFilter === 'all' || t.projectId === projectFilter) &&
+      (projectFilter === 'all' ||
+        (projectFilter === 'none'
+          ? t.projectId === null
+          : t.projectId === projectFilter)) &&
       (t.title + ' ' + t.notes + ' ' + t.steps.map((s) => s.title).join(' '))
         .toLowerCase()
         .includes(query.toLowerCase()),
@@ -619,13 +625,17 @@ export default function FollowthroughApp({
         [task.id]: 'checking',
       }));
       if (!reducedMotion)
-        await new Promise((resolve) => window.setTimeout(resolve, 240));
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, COMPLETION_CHECK_SETTLE_MS),
+        );
       setCompletionPhases((current) => ({
         ...current,
         [task.id]: 'collapsing',
       }));
       if (!reducedMotion)
-        await new Promise((resolve) => window.setTimeout(resolve, 300));
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, COMPLETION_COLLAPSE_SETTLE_MS),
+        );
       await commit({
         action: 'update_task',
         id: task.id,
@@ -1063,6 +1073,7 @@ export default function FollowthroughApp({
                 onChange={(e) => setProjectFilter(e.target.value)}
               >
                 <option value="all">All projects</option>
+                <option value="none">No Project</option>
                 {projectsAlphabetically.map((p) => (
                   <option value={p.id} key={p.id}>
                     {p.name}
