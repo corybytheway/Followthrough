@@ -5,12 +5,7 @@ import { seal, unseal } from './calendar-security';
 export const DEFAULT_CAPTURE_MODEL = 'gpt-5.6-luna';
 type Credential = { apiKey: string; model: string };
 export async function hasOpenAIConnection(owner: string) {
-  if (calendarConfig().OPENAI_API_KEY) return true;
-  return !!(await env.DB.prepare(
-    'SELECT owner_id FROM openai_connections WHERE owner_id = ?',
-  )
-    .bind(owner)
-    .first());
+  return !!(await openAIConnection(owner)).key;
 }
 export async function openAIConnection(owner: string) {
   const config = calendarConfig();
@@ -18,22 +13,34 @@ export async function openAIConnection(owner: string) {
     return {
       key: config.OPENAI_API_KEY,
       model: config.OPENAI_MODEL || DEFAULT_CAPTURE_MODEL,
+      managed: true,
     };
-  const row = await env.DB.prepare(
+  let row = await env.DB.prepare(
     'SELECT credentials FROM openai_connections WHERE owner_id = ?',
   )
     .bind(owner)
     .first<{ credentials: string }>();
+  let credentialOwner = owner;
+  const host = config.CALENDAR_BACKGROUND_OWNER_ID;
+  if (!row && host && host !== owner) {
+    row = await env.DB.prepare(
+      'SELECT credentials FROM openai_connections WHERE owner_id = ?',
+    )
+      .bind(host)
+      .first<{ credentials: string }>();
+    if (row) credentialOwner = host;
+  }
   const credential = row
     ? await unseal<Credential>(
         row.credentials,
         config.CALENDAR_ENCRYPTION_KEY || '',
-        `openai:${owner}`,
+        `openai:${credentialOwner}`,
       )
     : null;
   return {
     key: credential?.apiKey || '',
     model: config.OPENAI_MODEL || credential?.model || DEFAULT_CAPTURE_MODEL,
+    managed: credentialOwner !== owner && !!credential,
   };
 }
 export async function saveOpenAIConnection(owner: string, apiKey: string) {

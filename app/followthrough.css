@@ -862,3 +862,13 @@ summary {
 .calendar-success {
   color: #146c43;
 }
+.beta-welcome {
+  margin-bottom: 1.5rem;
+}
+.beta-data-notice {
+  max-width: 760px;
+  margin-top: 2rem;
+}
+.beta-data-notice p {
+  line-height: 1.6;
+}

@@ -2,7 +2,7 @@
 import type { Project, Workspace } from './model';
 import { localDay } from './scheduler';
 import { BASIC_CAPTURE_NOTICE } from './capture-status';
-export const GRANULARITY_RULES = `You are Followthrough, Cory McCabe's personal planner. Return a draft, never perform work.
+export const GRANULARITY_RULES = `You are Followthrough, a personal planner. Return a draft, never perform work.
 Suggest between one and five concrete, concise checklist steps based on the original input. Order them so the user can start and work toward completion. Each step should begin with an action verb and help break the same outcome into manageable chunks. Use fewer steps for simple tasks; never pad the list to five. Do not claim any step is already completed. When essential context is missing, include a focused clarification step instead of inventing details.
 Write a task title, not a transcription. Choose projectId before finalizing the title. The application displays every assigned task as "Project: Task title", so the selected project's name, aliases, obvious expansions, and spelling variants are already established context and MUST NOT appear in the title. For example, an Orbit task should be "Submit timesheet PR", not "Submit Orbit timesheet PR"; a BTF task should be "Build outreach automation", not "Build Behind The Film outreach automation"; and a TGS task should be "Confirm 8-hour workday approval", not "Confirm 8-hour workday approval with Triple Glazed Studios". Keep a client, person, or product name only when it identifies something other than the selected project.
 The first word of every title MUST be a specific imperative action verb, such as Fix, Build, Write, Send, Review, Record, Schedule, or Investigate. Make the title as short as possible while retaining enough context to identify the intended outcome within its project. Preserve the action, object, and only the context not already supplied by the project. Remove conversational filler such as "I need to", "remind me to", and "create a task". In titles, write quantities with numerals rather than number words ("2" rather than "two" and "8" rather than "eight") and use "&" rather than the standalone word "and". Never begin with a project name, a noun label, "Task:", or "To". Put deadlines, supporting steps, and explanatory details in their own fields. Do not paste the full request into the title or notes; the application preserves the exact original input separately. For example, "Can you remind me I need to send Emmanuel his podcast episode after checking the audio?" becomes "Send Emmanuel his podcast episode", with the audio check as a step. "Record two intros and eight outros" becomes "Record 2 intros & 8 outros". If the selected project is HP Studios, "The mobile booking button on HP Studios isn't responding" becomes "Fix mobile booking button".
@@ -129,10 +129,7 @@ function relativeDay(word: string, localDate: string): string {
   if (normalized === 'today') return localDate;
   if (normalized === 'tomorrow') return addLocalDays(localDate, 1);
   const current = new Date(localDate + 'T12:00:00Z').getUTCDay();
-  return addLocalDays(
-    localDate,
-    (WEEKDAYS[normalized] - current + 7) % 7,
-  );
+  return addLocalDays(localDate, (WEEKDAYS[normalized] - current + 7) % 7);
 }
 
 function mentionedDate(
@@ -212,10 +209,7 @@ export function normalizeGeneratedTitle(
         `\\s+(?:for|with|at|in|on)\\s+${phrase}(?=$|[\\s,.:;!?()])`,
         'gi',
       ),
-      standalone = new RegExp(
-        `(^|\\s)${phrase}(?=$|[\\s,.:;!?()])`,
-        'gi',
-      );
+      standalone = new RegExp(`(^|\\s)${phrase}(?=$|[\\s,.:;!?()])`, 'gi');
     normalized = normalized
       .replace(afterPreposition, '')
       .replace(standalone, '$1');
@@ -263,6 +257,7 @@ export async function aiDraft(
   key: string,
   model: string,
   focus?: { title: string; projectId: string | null },
+  ownerId?: string,
 ) {
   const localDate = localDay(Date.now(), w.settings.timeZone);
   const draft = await modelJson(
@@ -279,9 +274,15 @@ export async function aiDraft(
     'followthrough_task',
     3000,
     focus,
+    ownerId,
   );
   assertDraft(draft);
-  return finalizeDraft(draft, source, w, explicitCaptureFacts(source, localDate));
+  return finalizeDraft(
+    draft,
+    source,
+    w,
+    explicitCaptureFacts(source, localDate),
+  );
 }
 
 export async function aiDrafts(
@@ -289,6 +290,7 @@ export async function aiDrafts(
   w: Workspace,
   key: string,
   model: string,
+  ownerId?: string,
 ) {
   const localDate = localDay(Date.now(), w.settings.timeZone);
   const result = await modelJson(
@@ -300,6 +302,8 @@ export async function aiDrafts(
     draftListSchema,
     'followthrough_tasks',
     8000,
+    undefined,
+    ownerId,
   );
   if (
     !result ||
@@ -314,9 +318,7 @@ export async function aiDrafts(
   });
   const explicitFacts =
     tasks.length === 1 ? explicitCaptureFacts(source, localDate) : {};
-  return tasks.map((draft) =>
-    finalizeDraft(draft, source, w, explicitFacts),
-  );
+  return tasks.map((draft) => finalizeDraft(draft, source, w, explicitFacts));
 }
 
 async function modelJson(
@@ -329,7 +331,9 @@ async function modelJson(
   schemaName: string,
   maxOutputTokens: number,
   focus?: { title: string; projectId: string | null },
+  ownerId?: string,
 ): Promise<unknown> {
+  if (ownerId) await (await import('./ai-usage')).reserveAIRequest(ownerId);
   const localDate = localDay(Date.now(), w.settings.timeZone);
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',

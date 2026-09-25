@@ -32,6 +32,7 @@ export type CalendarConnection = {
   syncEnabled: boolean;
   lastSync: string | null;
   lastBackgroundSync?: string | null;
+  lastBackgroundAttempt?: string | null;
   lastError: string | null;
 };
 export type CalendarStatus = CalendarConnection & {
@@ -39,6 +40,7 @@ export type CalendarStatus = CalendarConnection & {
   backgroundHealthy: boolean;
   available: boolean;
   googleConfigured: boolean;
+  googleAppManaged: boolean;
   googleConnected: boolean;
   icloudConnected: boolean;
   callbackUrl: string;

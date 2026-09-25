@@ -422,8 +422,7 @@ void test('calendar descriptions show concise signed actions, original input, an
     })),
   };
   const description = await calendarDescription(task, {
-    baseUrl:
-      'https://script.google.com/macros/s/deployment-safe-id_123/exec',
+    baseUrl: 'https://script.google.com/macros/s/deployment-safe-id_123/exec',
     secret: 'a'.repeat(64),
   });
   assert.equal((description.match(/<li>/g) || []).length, 5);
@@ -434,11 +433,7 @@ void test('calendar descriptions show concise signed actions, original input, an
       'Original input: &lt;script&gt;alert(1)&lt;/script&gt;<br>Original &amp; unchanged',
     ),
   );
-  assert.ok(
-    description.includes(
-      '>Complete</a><br>',
-    ),
-  );
+  assert.ok(description.includes('>Complete</a><br>'));
   assert.ok(description.includes('>Postpone</a><br>'));
   assert.ok(description.includes('>Delete</a><br>'));
   assert.ok(description.includes('>Manage in Followthrough</a>'));
@@ -457,10 +452,26 @@ void test('calendar descriptions show concise signed actions, original input, an
         source: '',
         steps: [],
       })
-    ).includes(
-      'have not been generated yet',
-    ),
+    ).includes('have not been generated yet'),
   );
+});
+
+void test('calendar descriptions bind action URLs to a private owner handle', async () => {
+  const description = await calendarDescription(
+    {
+      id: 'capture_' + 'b'.repeat(64),
+      updatedAt: '2026-09-25T12:00:00.000Z',
+      source: 'Send the contract',
+      steps: [],
+    },
+    {
+      baseUrl: 'https://followthrough-actions.corybytheway.chatgpt.site/action',
+      secret: 'c'.repeat(64),
+      handle: 'a'.repeat(24),
+    },
+  );
+  assert.match(description, /task=u[a-f0-9]{24}_capture_[a-f0-9]{64}/);
+  assert.ok(!description.includes('owner_id='));
 });
 void test('a new meeting reschedules a task without completing it', async (t) => {
   const w = applyAction(initialWorkspace(), {

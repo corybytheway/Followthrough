@@ -17,6 +17,19 @@ export const calendarOrigin = () =>
   'https://followthrough.corybytheway.chatgpt.site';
 export const callbackUrl = () =>
   `${calendarOrigin()}/api/calendars/google/callback`;
+// The original owner keeps their existing OAuth registration. Invitees use
+// that same application registration but receive their own refresh tokens.
+export async function sharedGoogleApp(owner: string) {
+  const host = calendarConfig().CALENDAR_BACKGROUND_OWNER_ID;
+  if (!host || host === owner) return null;
+  const { credentials } = await readCalendar(host);
+  return credentials.google
+    ? {
+        clientId: credentials.google.clientId,
+        clientSecret: credentials.google.clientSecret,
+      }
+    : null;
+}
 export async function readCalendar(owner: string): Promise<{
   connection: CalendarConnection;
   credentials: CalendarCredentials;
@@ -61,6 +74,7 @@ export async function saveCalendar(
 }
 export async function calendarStatus(owner: string): Promise<CalendarStatus> {
   const { connection, credentials } = await readCalendar(owner);
+  const sharedApp = await sharedGoogleApp(owner);
   return {
     ...connection,
     backgroundConfigured: backgroundConfigured(calendarConfig(), owner),
@@ -69,7 +83,8 @@ export async function calendarStatus(owner: string): Promise<CalendarStatus> {
       backgroundConfigured(calendarConfig(), owner) &&
       backgroundHealthy(connection.lastBackgroundSync),
     available: !!secret(),
-    googleConfigured: !!credentials.google,
+    googleConfigured: !!credentials.google || !!sharedApp,
+    googleAppManaged: !!sharedApp,
     googleConnected: !!credentials.google?.refreshToken,
     icloudConnected: !!credentials.icloud,
     callbackUrl: callbackUrl(),

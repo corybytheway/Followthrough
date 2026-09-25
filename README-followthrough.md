@@ -2,7 +2,7 @@
 
 Created by Cory McCabe.
 
-A private personal planner built with React, vinext, shadcn, and Cloudflare D1 on Sites.
+A private, invite-only planner built with React, vinext, shadcn, and Cloudflare D1 on Sites.
 
 ## Working in this version
 
@@ -11,9 +11,9 @@ A private personal planner built with React, vinext, shadcn, and Cloudflare D1 o
 - Task prerequisites, completion, reopening, holding, archiving, search, and project filtering.
 - Scheduling within configurable local work hours, work days, breaks, and session lengths.
 - Meeting avoidance using manual busy times and selected Google/iCloud calendars; deadline and capacity warnings.
-- Google OAuth with offline access, encrypted account credentials, calendar selection, and a dedicated Followthrough Google calendar. iCloud uses an app-specific password and CalDAV.
+- Google OAuth with offline access, encrypted per-account credentials, calendar selection, and task blocks on each account's primary Google calendar. iCloud uses an app-specific password and CalDAV.
 - Explicit start/pause/sync controls. Sync reads both providers before publishing, updates only marked Followthrough events, and stops on incomplete availability or concurrent plan changes.
-- Replanning on changes, on opening the app, and every minute while its tab is visible. Time passing never completes work.
+- Replanning on changes, on opening the app, and every minute through the private background timer for connected accounts. Time passing never completes work.
 - One-tap Complete, Postpone, and Delete links in Google task events. The public relay does not expose workspace access; each action is signed for one task version and submits with POST only after a real browser opens it.
 - Four WebMCP tools using the same actions as the visible app: list, create task, update task, create project.
 - Authenticated stateless Streamable HTTP MCP endpoint at /mcp.
@@ -22,25 +22,23 @@ A private personal planner built with React, vinext, shadcn, and Cloudflare D1 o
 - Captures become Ready and are scheduled automatically without requiring a deadline. Without an AI-generated plan, a labeled temporary 30-minute estimate reserves time. User-entered deadlines remain separate from flexible planned calendar times.
 - Durable capture identifiers prevent duplicate requests even after the ordinary request cache expires. The old URL capture path remains supported.
 
-## Remaining before replacing Motion
+## One-person beta
 
-- Connect an OpenAI API key to activate semantic interpretation inside the app. The structured-output endpoint and task-granularity instructions are implemented. Without a key, capture is explicitly a basic draft with project alias matching and a placeholder estimate. No model call has been verified yet.
-- Complete Google application registration and account consent, connect iCloud, select busy calendars, and run a real-account sync check. Adapters and setup screens are implemented; mocked/provider-contract checks do not prove live authorization. Codex connector access does not supply hosted-app credentials.
-- Connect an always-running scheduler that invokes reconciliation while browsers and the Mac are asleep. This version has no autonomous background worker or cron trigger.
-- The user confirmed Action Button → Followthrough Task capture is working. Phone setup is complete.
-- Confirm MCP OAuth connection in Codex/ChatGPT after publication. WebMCP works in a supported open browser tab; that is different from installing a remote MCP server.
+Sites access remains restricted to the owner until an invitee is chosen. Each authenticated user gets an independent D1 workspace, calendar connection, Shortcut key, and AI usage counter. New users start with no projects or tasks and choose their own work hours. The existing owner's saved workspace is unchanged. Invitees may use the owner's Followthrough Google OAuth application and the app-held OpenAI connection without receiving either credential. Their Google refresh token and iCloud password, if connected, are encrypted under their own user ID. AI calls are limited to 100 requests per user per UTC day.
 
-Motion data, calendars, subscriptions, booking links, and meeting notes have not been modified or migrated.
+The one-minute private scheduler discovers enabled calendar connections, processes two due accounts per invocation, and keeps the existing owner-bound email relay. Calendar action links include an opaque account handle inside the signed task parameter; old owner links remain valid. The app offers export and an invitee-only data erasure control. Email capture remains available to the original owner and is hidden for invitees. The beta data notice is at `/privacy`.
+
+To invite someone later, confirm their Google OAuth access in the Google app configuration if required, then add their ChatGPT sign-in email to the Site's custom access allowlist. Keep the Site in custom access mode. Test that they see an empty workspace, can connect their own Google Calendar and Shortcut, and cannot see the owner's tasks. Do not add their email until they are ready to join.
 
 ## Development
 
-Use Node 24 LTS (the scaffold requires at least 22.13), then npm install and npm run dev. Sign in using the development-only simulated Sites identity at /signin-with-chatgpt. Production uses Sites authentication and owner-only access. Every application query is partitioned by the authenticated user ID.
+Use Node 24 LTS (the scaffold requires at least 22.13), then npm install and npm run dev. Sign in using the development-only simulated Sites identity at /signin-with-chatgpt. Production uses Sites authentication and a custom allowlist. Every application query is partitioned by the authenticated user ID.
 
 Schema lives in db/schema.ts. Generate append-only migrations with npm run db:generate. Apply generated SQL to the local D1 binding before running the app; Sites applies packaged migrations during publication. Do not put schema-changing SQL in request handlers.
 
 The personal workspace document is committed atomically with a revision check. Request IDs prevent duplicate retries; task editors also check their original task timestamp. Secrets never belong in this document. The current storage bounds are 1,000 tasks, 100 projects, and a 1.8 MB document.
 
-Configure OPENAI_API_KEY as a Sites runtime secret and optionally OPENAI_MODEL (default gpt-5-mini). Use the OpenAI Developers key workflow with user approval. Never paste credentials into source, browser storage, or chat. Local runtime credentials, if used, belong in an ignored .dev.vars file.
+The original owner's encrypted OpenAI connection is shared server-side with beta invitees when no global `OPENAI_API_KEY` secret is configured. A global Sites secret can replace that arrangement later. `OPENAI_MODEL` optionally overrides the model. Never paste credentials into source, browser storage, or chat. Local runtime credentials, if used, belong in an ignored .dev.vars file.
 
 ## Validation
 
@@ -66,18 +64,18 @@ The `/api/shortcuts/capture` GET issues only a request ID; POST accepts only sou
 
 ## Calendar setup
 
-The approved output is a dedicated Google calendar. Read availability from selected Google and iCloud calendars; never select Motion/flexible task calendars as fixed busy time. This release supports one Google account and one iCloud account per owner.
+Task blocks go on each account's primary Google calendar. Read availability from selected Google and iCloud calendars; never select Motion/flexible task calendars as fixed busy time. This release supports one Google account and one iCloud account per owner.
 
 - `CALENDAR_ENCRYPTION_KEY`: 32 random bytes as 64 lowercase hexadecimal characters, stored as a Sites secret. Do not replace after pairing without a credential migration. AES-GCM ciphertext is bound to the workspace owner. Credentials are excluded from task exports, snapshots, and MCP.
 - `CALENDAR_APP_ORIGIN`: the canonical live HTTPS origin. The Google web-client redirect URI must be `<origin>/api/calendars/google/callback`.
 - `CALENDAR_ACTION_URL`: the public Followthrough action relay `/action` URL. Its GET page only auto-submits a same-origin POST in a browser, limiting accidental action from link-preview fetches; the relay then calls the private Apps Script connection server-side.
 - `CALENDAR_ACTION_SECRET`: a separate 32-byte lowercase hexadecimal Sites secret. It signs a single task ID, action, and task version, so links cannot be changed or replayed after the task updates.
-- Settings accepts the downloaded Google **web** OAuth client JSON and encrypts it before storage. Google scopes: `calendar.calendarlist.readonly`, `calendar.events.freebusy`, and `calendar.app.created`. No editing scope for existing appointment calendars is requested.
+- The original owner can manage the Google **web** OAuth client. Invitees use that client registration without seeing its secret, then authorize their own Google account. Google scopes are defined in `lib/google-calendar.ts` and include read-only calendar listing, free/busy reads, and management of Followthrough task events on calendars the account owns.
 - OAuth state is random, hashed, owner-bound, expires after ten minutes, and is consumed once. PKCE protects the authorization code. External Testing grants expire after seven days; for this personal Workspace deployment prefer an Internal audience when suitable, or finish External production consent setup.
 - iCloud: enter the Apple Account email and a Followthrough app-specific password directly in Settings. Discovery and redirects are restricted to Apple CalDAV HTTPS hosts. Recurrences are expanded on the provider; incomplete expansion stops sync. Busy imports preserve all-day/DST semantics and ignore transparent/cancelled instances.
-- Start sync creates/reuses an app-marked Google calendar and schedules only ready tasks. Google event IDs are deterministic. Provider event markers and ETags protect unrelated or concurrently edited events. Failed availability reads leave prior busy data and task events untouched. Later publishing failures report partial completion and are safe to retry.
+- Start sync schedules ready tasks on the primary Google calendar. Google event IDs are deterministic. Provider event markers and ETags protect unrelated or concurrently edited events. Failed availability reads leave prior busy data and task events untouched. Later publishing failures report partial completion and are safe to retry.
 - Sync runs on app focus, every minute while visible, and through the installed one-minute Apps Script timer. The same private script relays signed one-tap calendar actions without exposing its stored scheduler credentials.
 - Pausing/disconnecting leaves Google task blocks in place. The UI explains this; disconnect removes that account's imported availability and pauses publication. Completing or modifying tasks should happen in Followthrough; dragging/deleting its Google blocks does not change task state.
-- Apply append-only migration `0002_nifty_luke_cage.sql` for calendar credential storage and operation locks.
+- Apply the append-only migrations in `drizzle/`; the beta adds action-owner handles and per-account AI usage in `0005_serious_madelyne_pryor.sql`.
 
 Provider references: [Google scopes](https://developers.google.com/workspace/calendar/api/auth), [Google offline OAuth](https://developers.google.com/identity/protocols/oauth2/web-server), [Apple app-specific passwords](https://support.apple.com/102654), [tsdav expanded events](https://tsdav.vercel.app/docs/caldav/fetchCalendarObjects).

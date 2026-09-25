@@ -8,6 +8,7 @@ import {
   saveOpenAIConnection,
   DEFAULT_CAPTURE_MODEL,
 } from '@/lib/openai-connection';
+import { aiUsageStatus } from '@/lib/ai-usage';
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'no-store' };
 export async function GET(request: Request) {
@@ -15,7 +16,12 @@ export async function GET(request: Request) {
     const owner = await requireOwner(request),
       config = await openAIConnection(owner);
     return Response.json(
-      { connected: !!config.key, model: config.model },
+      {
+        connected: !!config.key,
+        managed: config.managed,
+        model: config.model,
+        usage: await aiUsageStatus(owner),
+      },
       { headers },
     );
   } catch (e) {
@@ -26,6 +32,10 @@ export async function POST(request: Request) {
   try {
     const owner = await requireOwner(request, true),
       body = object(await jsonBody(request));
+    if ((await openAIConnection(owner)).managed)
+      throw new InputError(
+        'AI task planning is already included with Followthrough.',
+      );
     const key = text(body.apiKey, 'OpenAI API key', 1000, true);
     if (!key.startsWith('sk-') || /\s/.test(key))
       throw new InputError('Enter a valid OpenAI API key.');

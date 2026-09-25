@@ -1,6 +1,7 @@
 // Created by Cory McCabe
 import { env } from 'cloudflare:workers';
-import { authenticateBackground } from '@/lib/calendar-background';
+import { authenticateScheduler } from '@/lib/calendar-background';
+import { resolveActionTask } from '@/lib/calendar-action-owner';
 import {
   CALENDAR_TASK_ACTIONS,
   postponeUntil,
@@ -18,12 +19,12 @@ const responseHeaders = { 'Cache-Control': 'no-store' };
 
 export async function POST(request: Request) {
   try {
-    const owner = await authenticateBackground(
-        request,
-        env as unknown as Record<string, string>,
-      ),
-      input = object(await jsonBody(request)),
-      taskId = text(input.task, 'Task ID', 100, true),
+    await authenticateScheduler(
+      request,
+      env as unknown as Record<string, string>,
+    );
+    const input = object(await jsonBody(request)),
+      signedTaskId = text(input.task, 'Task ID', 100, true),
       action = text(input.action, 'Action', 20, true) as CalendarTaskAction,
       stamp = text(input.stamp, 'Task version', 40, true),
       signature = text(input.signature, 'Action signature', 64, true),
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
       throw new InputError('Choose a supported task action.');
     if (
       !(await verifyCalendarTaskAction(
-        taskId,
+        signedTaskId,
         action,
         stamp,
         signature,
@@ -43,8 +44,21 @@ export async function POST(request: Request) {
         status: 401,
       });
 
+    const routed = await resolveActionTask(signedTaskId);
+    const legacy = !/^u[a-f0-9]{24}_/.test(signedTaskId);
+    const owner =
+      routed?.owner ||
+      (legacy ? calendarConfig().CALENDAR_BACKGROUND_OWNER_ID : '');
+    const taskId = routed?.taskId || (legacy ? signedTaskId : '');
+    if (!owner || !taskId)
+      throw Object.assign(new InputError('This task action link is invalid.'), {
+        status: 401,
+      });
+
     const current = await readWorkspace(owner),
-      task = current.workspace.tasks.find((candidate) => candidate.id === taskId);
+      task = current.workspace.tasks.find(
+        (candidate) => candidate.id === taskId,
+      );
     if (!task || task.deletedAt || task.updatedAt !== stamp)
       throw Object.assign(
         new InputError(
@@ -53,8 +67,7 @@ export async function POST(request: Request) {
         { status: 409 },
       );
 
-    let mutation: Record<string, unknown>,
-      message: string;
+    let mutation: Record<string, unknown>, message: string;
     if (action === 'complete') {
       mutation = { action: 'complete_task', id: task.id };
       message = 'Task completed.';
@@ -87,7 +100,8 @@ export async function POST(request: Request) {
       {
         ok: true,
         message: calendarPending
-          ? message + ' The calendar will refresh during the next background sync.'
+          ? message +
+            ' The calendar will refresh during the next background sync.'
           : message,
       },
       { headers: responseHeaders },

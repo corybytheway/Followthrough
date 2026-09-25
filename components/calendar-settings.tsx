@@ -104,7 +104,8 @@ export default function CalendarSettings() {
   const selectionChanged =
     !!status &&
     (JSON.stringify(selectedGoogle) !== JSON.stringify(status.selectedGoogle) ||
-      JSON.stringify(selectedIcloud) !== JSON.stringify(status.selectedIcloud) ||
+      JSON.stringify(selectedIcloud) !==
+        JSON.stringify(status.selectedIcloud) ||
       JSON.stringify(ignoreAllDayGoogle) !==
         JSON.stringify(status.ignoreAllDayGoogle || []) ||
       JSON.stringify(ignoreAllDayIcloud) !==
@@ -157,7 +158,7 @@ export default function CalendarSettings() {
                 >
                   Connect Google
                 </Button>
-                {!status.googleConfigured && (
+                {!status.googleConfigured && !status.googleAppManaged && (
                   <details className="calendar-setup">
                     <summary>One-time Google setup</summary>
                     <p>
@@ -457,7 +458,10 @@ export default function CalendarSettings() {
                       {choices.map((calendar) => {
                         const isSelected = selected.includes(calendar.id);
                         return (
-                          <div className="calendar-option-row" key={calendar.id}>
+                          <div
+                            className="calendar-option-row"
+                            key={calendar.id}
+                          >
                             <label className="calendar-option">
                               <Checkbox
                                 checked={isSelected}

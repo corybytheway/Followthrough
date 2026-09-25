@@ -4,12 +4,9 @@ import { InputError } from './validation';
 
 export function backgroundConfigured(
   config: Record<string, string>,
-  owner: string,
+  _owner: string,
 ) {
-  return (
-    config.CALENDAR_BACKGROUND_OWNER_ID === owner &&
-    /^[a-f0-9]{64}$/.test(config.CALENDAR_BACKGROUND_TOKEN_HASH || '')
-  );
+  return /^[a-f0-9]{64}$/.test(config.CALENDAR_BACKGROUND_TOKEN_HASH || '');
 }
 
 export function backgroundHealthy(lastSync?: string | null, now = Date.now()) {
@@ -21,13 +18,21 @@ export async function authenticateBackground(
   request: Request,
   config: Record<string, string>,
 ) {
+  await authenticateScheduler(request, config);
   const owner = config.CALENDAR_BACKGROUND_OWNER_ID;
+  if (!owner)
+    throw Object.assign(new InputError('Scheduler authentication failed.'), {
+      status: 401,
+    });
+  return owner;
+}
+
+export async function authenticateScheduler(
+  request: Request,
+  config: Record<string, string>,
+): Promise<void> {
   const token = request.headers.get('x-followthrough-scheduler-key') || '';
-  if (
-    !owner ||
-    !backgroundConfigured(config, owner) ||
-    !/^[a-f0-9]{64}$/.test(token)
-  )
+  if (!backgroundConfigured(config, '') || !/^[a-f0-9]{64}$/.test(token))
     throw Object.assign(new InputError('Scheduler authentication failed.'), {
       status: 401,
     });
@@ -41,5 +46,4 @@ export async function authenticateBackground(
     throw Object.assign(new InputError('Scheduler authentication failed.'), {
       status: 401,
     });
-  return owner;
 }

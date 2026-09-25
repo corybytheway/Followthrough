@@ -1,5 +1,10 @@
 // Created by Cory McCabe
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import {
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+} from 'drizzle-orm/sqlite-core';
 
 // Atomic personal planning document, protected by a revision check on every write.
 export const workspaces = sqliteTable('workspaces', {
@@ -31,12 +36,28 @@ export const calendarLocks = sqliteTable('calendar_locks', {
   expiresAt: integer('expires_at').notNull(),
 });
 
+// Opaque public handles route one-tap calendar links to the correct private owner.
+export const calendarActionOwners = sqliteTable('calendar_action_owners', {
+  ownerId: text('owner_id').primaryKey(),
+  handle: text('handle').notNull().unique(),
+});
+
 // AI settings use their own encrypted storage so calendar syncing cannot block setup.
 export const openaiConnections = sqliteTable('openai_connections', {
   ownerId: text('owner_id').primaryKey(),
   credentials: text('credentials').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
+
+export const aiUsage = sqliteTable(
+  'ai_usage',
+  {
+    ownerId: text('owner_id').notNull(),
+    day: text('day').notNull(),
+    requests: integer('requests').notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.ownerId, table.day] })],
+);
 
 // Inbound email credentials are encrypted and resolved by recipient address.
 export const emailConnections = sqliteTable('email_connections', {

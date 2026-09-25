@@ -7,6 +7,7 @@ import {
   calendarStatus,
   withCalendarLock,
   callbackUrl,
+  sharedGoogleApp,
 } from '@/lib/calendar-store';
 import {
   googleAccess,
@@ -46,6 +47,10 @@ export async function POST(request: Request) {
       let authorizationUrl: string | undefined;
       switch (input.action) {
         case 'configure_google': {
+          if (await sharedGoogleApp(owner))
+            throw new InputError(
+              'Followthrough manages the Google application for this account.',
+            );
           if (credentials.google?.refreshToken)
             throw new InputError(
               'Disconnect Google before replacing its app configuration.',
@@ -70,6 +75,10 @@ export async function POST(request: Request) {
           break;
         }
         case 'connect_google': {
+          if (!credentials.google) {
+            const shared = await sharedGoogleApp(owner);
+            if (shared) credentials.google = shared;
+          }
           if (!credentials.google)
             throw new InputError('Set up the Google application first.');
           const state = randomToken(),
@@ -121,10 +130,12 @@ export async function POST(request: Request) {
               credentials.icloud,
             );
           connection.ignoreAllDayGoogle = connection.ignoreAllDayGoogle.filter(
-            (id) => connection.googleCalendars.some((calendar) => calendar.id === id),
+            (id) =>
+              connection.googleCalendars.some((calendar) => calendar.id === id),
           );
           connection.ignoreAllDayIcloud = connection.ignoreAllDayIcloud.filter(
-            (id) => connection.icloudCalendars.some((calendar) => calendar.id === id),
+            (id) =>
+              connection.icloudCalendars.some((calendar) => calendar.id === id),
           );
           break;
         }

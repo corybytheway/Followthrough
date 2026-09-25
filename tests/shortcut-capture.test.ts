@@ -8,7 +8,15 @@ import {
 } from '../lib/shortcut-capture';
 import { fallbackCapture, prepareCaptureDrafts } from '../lib/capture-pipeline';
 import { explicitCaptureFacts, normalizeGeneratedTitle } from '../lib/capture';
-import { initialWorkspace, type Task } from '../lib/model';
+import { initialWorkspace, newAccountWorkspace, type Task } from '../lib/model';
+
+void test('a new account has no projects, tasks, or legacy work settings', () => {
+  const workspace = newAccountWorkspace();
+  assert.deepEqual(workspace.projects, []);
+  assert.deepEqual(workspace.tasks, []);
+  assert.equal(workspace.settings.timeZone, 'UTC');
+  assert.deepEqual(workspace.settings.workDays, [1, 2, 3, 4, 5]);
+});
 import { normalizeCaptureStatus } from '../lib/capture-status';
 import { applyAction } from '../lib/actions';
 import { plan } from '../lib/scheduler';

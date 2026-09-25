@@ -1,12 +1,12 @@
 // Created by Cory McCabe
 import { env } from 'cloudflare:workers';
 import {
-  initialWorkspace,
+  newAccountWorkspace,
   type Snapshot,
   type Workspace,
   type BusyEvent,
 } from './model';
-import { calendarFlags } from './calendar-store';
+import { calendarConfig, calendarFlags } from './calendar-store';
 import { hasOpenAIConnection } from './openai-connection';
 import { normalizeCaptureStatus } from './capture-status';
 import { emailCaptureStatus } from './email-connection';
@@ -17,6 +17,8 @@ type Row = { document: string; revision: number };
 const flags = async (ownerId: string) => ({
   ai: await hasOpenAIConnection(ownerId),
   email: await emailCaptureStatus(ownerId),
+  emailSetupAvailable:
+    calendarConfig().CALENDAR_BACKGROUND_OWNER_ID === ownerId,
   ...(await calendarFlags(ownerId)),
 });
 
@@ -28,7 +30,7 @@ export async function readWorkspace(
   )
     .bind(ownerId)
     .first<Row>();
-  if (!row) return { workspace: initialWorkspace(), revision: 0 };
+  if (!row) return { workspace: newAccountWorkspace(), revision: 0 };
   const workspace: Workspace = JSON.parse(row.document);
   workspace.tasks = workspace.tasks.map(normalizeCaptureStatus);
   return { workspace, revision: row.revision };

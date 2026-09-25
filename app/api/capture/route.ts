@@ -18,6 +18,7 @@ export async function POST(request: Request) {
       workspace,
       config.key,
       config.model,
+      owner,
     );
     return Response.json(
       { drafts },

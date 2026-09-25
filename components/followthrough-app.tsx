@@ -51,7 +51,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  initialWorkspace,
+  newAccountWorkspace,
   taskLabel,
   COLORS,
   minutesLabel,
@@ -71,6 +71,7 @@ import ShortcutSettings from '@/components/shortcut-settings';
 import CalendarSettings from '@/components/calendar-settings';
 import OpenAISettings from '@/components/openai-settings';
 import EmailCaptureSettings from '@/components/email-capture-settings';
+import AccountDataSettings from '@/components/account-data-settings';
 
 type Draft = Partial<Task> & {
   rationale?: string;
@@ -83,7 +84,7 @@ const COMPLETION_CHECK_SETTLE_MS = 340;
 const COMPLETION_COLLAPSE_SETTLE_MS = 380;
 type Commit = (action: Action) => Promise<Record<string, unknown>>;
 const empty: Snapshot = {
-  ...initialWorkspace(),
+  ...newAccountWorkspace(),
   revision: 0,
   currentDate: '',
   warnings: [],
@@ -93,6 +94,7 @@ const empty: Snapshot = {
     icloud: false,
     background: false,
     email: { connected: false, address: '', allowedSenders: [] },
+    emailSetupAvailable: false,
   },
 };
 function Field({
@@ -151,8 +153,10 @@ function compareProjectsByName(a: Project, b: Project) {
 
 export default function FollowthroughApp({
   initialTab = 'today',
+  userEmail,
 }: {
   initialTab?: WorkspaceTab;
+  userEmail?: string;
 }) {
   const [state, setState] = useState<Snapshot>(empty),
     [loaded, setLoaded] = useState(false),
@@ -200,9 +204,7 @@ export default function FollowthroughApp({
     setTab('today');
     const nextUrl = '/today#capture';
     const currentUrl =
-      window.location.pathname +
-      window.location.search +
-      window.location.hash;
+      window.location.pathname + window.location.search + window.location.hash;
     if (nextUrl !== currentUrl) history.pushState(null, '', nextUrl);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -854,6 +856,22 @@ export default function FollowthroughApp({
                 {state.settings.timeZone.replace('_', ' ')}
               </span>
             </div>
+            {state.projects.length === 0 && state.tasks.length === 0 && (
+              <div className="empty-panel beta-welcome">
+                <h2>Set up your workspace</h2>
+                <p>
+                  Choose your local time zone and work hours, then connect your
+                  Google Calendar in Settings. Your tasks and calendar
+                  connections stay in your own account.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => navigateToTab('settings')}
+                >
+                  Set work hours and calendar <ArrowRight />
+                </Button>
+              </div>
+            )}
             <div className="workspace-grid">
               <section>
                 <div className="capture-panel">
@@ -863,7 +881,7 @@ export default function FollowthroughApp({
                     maxLength={8000}
                     value={source}
                     onChange={(e) => setSource(e.target.value)}
-                    placeholder="Fix the booking button on HP Studios, check mobile, and get it live by Friday."
+                    placeholder="Fix the booking button, check it on mobile, and publish by Friday."
                   />
                   <div className="capture-footer">
                     <span>One request. Every independent outcome.</span>
@@ -1050,9 +1068,7 @@ export default function FollowthroughApp({
               <div>
                 <h1>Your tasks.</h1>
               </div>
-              <Button
-                onClick={navigateToCapture}
-              >
+              <Button onClick={navigateToCapture}>
                 <Plus />
                 New task
               </Button>
@@ -1176,6 +1192,7 @@ export default function FollowthroughApp({
               state={state}
               commit={commit}
               saving={saving}
+              userEmail={userEmail}
               onSaved={() =>
                 setNotice('Work hours saved. Your tasks have been rescheduled.')
               }
@@ -1931,11 +1948,13 @@ function SettingsPanel({
   commit,
   saving,
   onSaved,
+  userEmail,
 }: {
   state: Snapshot;
   commit: Commit;
   saving: boolean;
   onSaved: () => void;
+  userEmail?: string;
 }) {
   const [settings, setSettings] = useState<Settings>(state.settings),
     [error, setError] = useState('');
@@ -1955,7 +1974,8 @@ function SettingsPanel({
       >
         <h2>Work hours</h2>
         <p className="secondary-text">
-          Your initial hours match Motion. Change them anytime.
+          Choose when tasks may be scheduled. You can change these hours
+          anytime.
         </p>
         <Field label="Time zone">
           <Input
@@ -1978,6 +1998,19 @@ function SettingsPanel({
             ))}
           </datalist>
         </Field>
+        {state.revision === 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              const localZone =
+                Intl.DateTimeFormat().resolvedOptions().timeZone;
+              if (localZone) update('timeZone', localZone);
+            }}
+          >
+            Use this device’s time zone
+          </Button>
+        )}
         <div className="field-row">
           <Field label="Start">
             <Input
@@ -2071,7 +2104,7 @@ function SettingsPanel({
       <div className="connections">
         <CalendarSettings />
         <OpenAISettings />
-        <EmailCaptureSettings />
+        {state.integrations.emailSetupAvailable && <EmailCaptureSettings />}
         <div className="settings-card">
           <MessageSquare />
           <h2>Chat capture</h2>
@@ -2115,6 +2148,24 @@ function SettingsPanel({
             Export your Followthrough data
           </Link>
         </div>
+        <div className="settings-card">
+          <h2>Your account</h2>
+          {userEmail && <p>Signed in as {userEmail}</p>}
+          <p>
+            Your projects, tasks, work hours, and calendar connections are
+            separate from other users’ workspaces.
+          </p>
+          <Link href="/privacy">Beta data & privacy</Link>
+          <Link
+            download
+            prefetch={false}
+            className="download-link"
+            href="/api/export?format=json"
+          >
+            <Download size={16} /> Export your data
+          </Link>
+        </div>
+        {!state.integrations.emailSetupAvailable && <AccountDataSettings />}
       </div>
     </div>
   );

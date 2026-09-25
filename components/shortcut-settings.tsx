@@ -114,9 +114,10 @@ export default function ShortcutSettings() {
       )}
       {connection && (
         <>
-          <label className="field">
+          <label className="field" htmlFor="shortcut-connection-code">
             <span>Private connection code</span>
             <Textarea
+              id="shortcut-connection-code"
               readOnly
               aria-label="Private connection code"
               value={connection}
@@ -156,7 +157,7 @@ export default function ShortcutSettings() {
       {!available && !message && (
         <small>Shortcut connections are being configured.</small>
       )}
-      {message && <p role="status">{message}</p>}
+      {message && <output>{message}</output>}
     </div>
   );
 }

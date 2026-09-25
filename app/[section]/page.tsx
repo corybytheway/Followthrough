@@ -23,6 +23,6 @@ export default async function SectionPage({
   if (!SECTIONS.has(section as WorkspaceTab)) notFound();
 
   const tab = section as WorkspaceTab;
-  await requireChatGPTUser(`/${tab}`);
-  return <FollowthroughApp initialTab={tab} />;
+  const user = await requireChatGPTUser(`/${tab}`);
+  return <FollowthroughApp initialTab={tab} userEmail={user.email} />;
 }

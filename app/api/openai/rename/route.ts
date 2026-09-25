@@ -45,10 +45,17 @@ export async function POST(request: Request) {
       throw new InputError('Connect OpenAI before regenerating titles.');
     let draft;
     try {
-      draft = await aiDraft(task.source, workspace, config.key, config.model, {
-        title: task.title,
-        projectId: task.projectId,
-      });
+      draft = await aiDraft(
+        task.source,
+        workspace,
+        config.key,
+        config.model,
+        {
+          title: task.title,
+          projectId: task.projectId,
+        },
+        owner,
+      );
     } catch (e) {
       throw new InputError(
         e instanceof Error ? e.message : 'Could not generate a title.',

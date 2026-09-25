@@ -40,12 +40,13 @@ export async function prepareCaptureDrafts(
   workspace: Workspace,
   key?: string,
   model = 'gpt-5.6-luna',
+  ownerId?: string,
 ): Promise<PreparedCapture[]> {
   if (key) {
     try {
-      const drafts = (await aiDrafts(source, workspace, key, model)).map(
-        (draft) => ({ ...draft, source, status: 'ready' as const }),
-      );
+      const drafts = (
+        await aiDrafts(source, workspace, key, model, ownerId)
+      ).map((draft) => ({ ...draft, source, status: 'ready' as const }));
       drafts.forEach((draft) => taskInput(draft, workspace));
       return drafts;
     } catch {

@@ -7,6 +7,8 @@ import {
 } from '@/lib/email-connection';
 import { fail, jsonBody, requireOwner } from '@/lib/http';
 import { object, text } from '@/lib/validation';
+import { calendarConfig } from '@/lib/calendar-store';
+import { InputError } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'no-store' };
@@ -25,6 +27,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const ownerId = await requireOwner(request, true);
+    if (ownerId !== calendarConfig().CALENDAR_BACKGROUND_OWNER_ID)
+      throw Object.assign(
+        new InputError('Email capture is not available for this beta account.'),
+        { status: 403 },
+      );
     const body = object(await jsonBody(request));
     const action = text(body.action, 'Action', 20, true);
     if (action === 'disconnect') {

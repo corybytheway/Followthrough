@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 export default function OpenAISettings() {
   const [connected, setConnected] = useState(false),
+    [managed, setManaged] = useState(false),
+    [usage, setUsage] = useState<{ used: number; limit: number } | null>(null),
     [loaded, setLoaded] = useState(false);
   const [key, setKey] = useState(''),
     [busy, setBusy] = useState(false);
@@ -13,9 +15,16 @@ export default function OpenAISettings() {
   useEffect(() => {
     fetch('/api/openai', { cache: 'no-store' })
       .then(async (r) => {
-        const data = (await r.json()) as { connected: boolean; error?: string };
+        const data = (await r.json()) as {
+          connected: boolean;
+          managed?: boolean;
+          usage?: { used: number; limit: number };
+          error?: string;
+        };
         if (!r.ok) throw new Error(data.error);
         setConnected(data.connected);
+        setManaged(data.managed === true);
+        setUsage(data.usage || null);
         setLoaded(true);
       })
       .catch(() =>
@@ -24,7 +33,7 @@ export default function OpenAISettings() {
         ),
       );
   }, []);
-  async function connect(e: React.FormEvent) {
+  async function connect(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
     setError('');
@@ -91,7 +100,7 @@ export default function OpenAISettings() {
   }
   return (
     <section className="settings-card">
-      <h2>AI task naming</h2>
+      <h2>AI task planning</h2>
       <span className="status-label">
         {!loaded
           ? 'Checking connection…'
@@ -103,11 +112,18 @@ export default function OpenAISettings() {
         Turn your words into a concise action title and up to five suggested
         steps. Your exact words stay in Original input.
       </p>
-      {!connected && (
+      {managed && usage && (
+        <p className="field-help">
+          AI is included in this beta. {usage.used} of {usage.limit} requests
+          used today (UTC).
+        </p>
+      )}
+      {!connected && !managed && (
         <form onSubmit={connect} className="editor-form">
-          <label className="field">
+          <label className="field" htmlFor="openai-api-key">
             OpenAI API key
             <Input
+              id="openai-api-key"
               type="password"
               autoComplete="off"
               value={key}
@@ -136,7 +152,7 @@ export default function OpenAISettings() {
           </Button>
         </>
       )}
-      {message && <p role="status">{message}</p>}
+      {message && <output>{message}</output>}
       {error && (
         <p className="form-error" role="alert">
           {error}

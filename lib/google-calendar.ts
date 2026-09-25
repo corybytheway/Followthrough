@@ -15,6 +15,7 @@ import {
   calendarActionUrl,
   signCalendarTaskAction,
 } from './calendar-actions';
+import { actionTaskId } from './calendar-action-owner';
 export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
   'https://www.googleapis.com/auth/calendar.events.freebusy',
@@ -149,11 +150,11 @@ export async function googleBusy(
   const freeBusyIds = ids.filter((id) => !ignoreAllDayIds.has(id));
   const data = freeBusyIds.length
     ? await googleRequest<{
-    calendars?: Record<
-      string,
-      { busy?: { start: string; end: string }[]; errors?: unknown[] }
-    >;
-  }>(token, 'freeBusy', {
+        calendars?: Record<
+          string,
+          { busy?: { start: string; end: string }[]; errors?: unknown[] }
+        >;
+      }>(token, 'freeBusy', {
         method: 'POST',
         body: JSON.stringify({
           timeMin: start,
@@ -264,7 +265,7 @@ export async function reconcileGoogle(
   stillCurrent: () => Promise<void> = async () => {},
   deadlineRiskIds: ReadonlySet<string> = new Set(),
   projects: Project[] = [],
-  actionLinks?: { baseUrl: string; secret: string },
+  actionLinks?: { baseUrl: string; secret: string; handle?: string },
 ) {
   if (blocks.length > 500)
     throw new InputError(
@@ -367,7 +368,7 @@ export async function reconcileGoogle(
 
 export async function calendarDescription(
   task: Pick<Task, 'id' | 'updatedAt' | 'steps' | 'source'>,
-  actionLinks?: { baseUrl: string; secret: string },
+  actionLinks?: { baseUrl: string; secret: string; handle?: string },
 ): Promise<string> {
   const escape = (value: string) =>
     value
@@ -384,16 +385,19 @@ export async function calendarDescription(
   let actions = '';
   if (actionLinks) {
     const baseUrl = calendarActionUrl(actionLinks.baseUrl),
+      signedTaskId = actionLinks.handle
+        ? actionTaskId(actionLinks.handle, task.id)
+        : task.id,
       links = await Promise.all(
         CALENDAR_TASK_ACTIONS.map(async (action) => {
           const signature = await signCalendarTaskAction(
-              task.id,
+              signedTaskId,
               action,
               task.updatedAt,
               actionLinks.secret,
             ),
             query = new URLSearchParams({
-              task: task.id,
+              task: signedTaskId,
               action,
               stamp: task.updatedAt,
               signature,
@@ -404,10 +408,7 @@ export async function calendarDescription(
           return `<a href="${baseUrl}?${query}">${label}</a>`;
         }),
       );
-    actions =
-      '<br><br><b>Task actions</b><br>' +
-      links.join('<br>') +
-      '<br>';
+    actions = '<br><br><b>Task actions</b><br>' + links.join('<br>') + '<br>';
   } else actions = '<br><br>';
   return (
     '<b>Suggested steps</b>' +

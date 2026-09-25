@@ -18,6 +18,7 @@ import {
 } from './calendar-store';
 import { readWorkspace, saveCalendarAvailability, mutate } from './store';
 import { InputError } from './validation';
+import { actionHandle } from './calendar-action-owner';
 export async function syncCalendars(
   owner: string,
   trigger: 'manual' | 'background' = 'manual',
@@ -28,9 +29,19 @@ export async function syncCalendars(
     const started = Date.now();
     if (
       trigger === 'background' &&
-      started - Date.parse(connection.lastBackgroundSync || '') < 45_000
+      started -
+        Date.parse(
+          connection.lastBackgroundAttempt ||
+            connection.lastBackgroundSync ||
+            '',
+        ) <
+        45_000
     )
       return { skipped: true, reason: 'recent_background_sync' };
+    if (trigger === 'background') {
+      connection.lastBackgroundAttempt = new Date(started).toISOString();
+      await saveCalendar(owner, connection, credentials);
+    }
     try {
       const initial = await readWorkspace(owner);
       const ensureTime = async () => {
@@ -91,9 +102,7 @@ export async function syncCalendars(
             start,
             end,
             initial.workspace.settings.timeZone,
-            connection.ignoreAllDayGoogle.includes(
-              connection.outputCalendarId,
-            ),
+            connection.ignoreAllDayGoogle.includes(connection.outputCalendarId),
           )),
         );
       const icloud = credentials.icloud
@@ -150,6 +159,7 @@ export async function syncCalendars(
               config.key,
               config.model,
               { title: task.title, projectId: task.projectId },
+              owner,
             );
             await mutate(owner, {
               action: 'update_task',
@@ -195,6 +205,7 @@ export async function syncCalendars(
             ? {
                 baseUrl: calendarConfig().CALENDAR_ACTION_URL,
                 secret: calendarConfig().CALENDAR_ACTION_SECRET,
+                handle: await actionHandle(owner),
               }
             : undefined,
         );

@@ -90,6 +90,7 @@ export type Snapshot = Workspace & {
       address: string;
       allowedSenders: string[];
     };
+    emailSetupAvailable: boolean;
   };
 };
 export const COLORS = [
@@ -148,6 +149,29 @@ export function initialWorkspace(): Workspace {
       workStart: '09:00',
       workEnd: '19:30',
       workDays: [0, 1, 2, 3, 4, 5, 6],
+      maxBlockMinutes: 90,
+      breakEveryMinutes: 300,
+      breakMinutes: 30,
+    },
+  };
+}
+
+// New accounts start with their own empty plan. Existing saved workspaces,
+// including the original owner's projects and settings, are never rewritten.
+export function newAccountWorkspace(): Workspace {
+  return {
+    version: 1,
+    projects: [],
+    tasks: [],
+    busy: [],
+    blocks: [],
+    plannedAt: null,
+    recentRequests: [],
+    settings: {
+      timeZone: 'UTC',
+      workStart: '09:00',
+      workEnd: '17:00',
+      workDays: [1, 2, 3, 4, 5],
       maxBlockMinutes: 90,
       breakEveryMinutes: 300,
       breakMinutes: 30,

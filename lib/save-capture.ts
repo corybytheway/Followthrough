@@ -29,6 +29,7 @@ export async function saveNaturalLanguageCapture(
       initial.workspace,
       config.key,
       config.model,
+      ownerId,
     );
     const captures = await Promise.all(
       drafts.map(async (task, index) => ({

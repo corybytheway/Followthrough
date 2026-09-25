@@ -1,21 +1,42 @@
 // Created by Cory McCabe
 import { env } from 'cloudflare:workers';
-import { authenticateBackground } from '@/lib/calendar-background';
+import { authenticateScheduler } from '@/lib/calendar-background';
+import {
+  dueCalendarOwners,
+  type BackgroundRow,
+} from '@/lib/calendar-background-owners';
 import { syncCalendars } from '@/lib/calendar-sync';
 import { InputError } from '@/lib/validation';
 export const dynamic = 'force-dynamic';
 
-// A dedicated credential can only wake this owner's existing calendar planner.
-// This route does not accept task edits, owner IDs, or return workspace data.
+// The one-minute private timer chooses connected owners server-side. Callers
+// cannot name an owner, edit tasks, or read private workspace data.
 export async function POST(request: Request) {
   try {
-    const owner = await authenticateBackground(
+    await authenticateScheduler(
       request,
       env as unknown as Record<string, string>,
     );
-    const result = await syncCalendars(owner, 'background');
+    const rows = await env.DB.prepare(
+      'SELECT owner_id, document FROM calendar_connections',
+    ).all<BackgroundRow>();
+    const owners = dueCalendarOwners(rows.results || []);
+    const results = [];
+    for (const owner of owners) {
+      try {
+        const result = await syncCalendars(owner, 'background');
+        results.push({ ok: true, skipped: !!result.skipped });
+      } catch {
+        results.push({ ok: false });
+      }
+    }
     return Response.json(
-      { ok: true, ...result },
+      {
+        ok: results.every((result) => result.ok),
+        attempted: results.length,
+        failed: results.filter((result) => !result.ok).length,
+        skipped: results.length === 0,
+      },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (error) {
