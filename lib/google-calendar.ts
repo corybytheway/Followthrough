@@ -380,10 +380,9 @@ export async function calendarDescription(
       .replace(/"/g, '&quot;');
   const steps = task.steps.slice(0, 5);
   const suggested = steps.length
-    ? '<ul>' +
-      steps.map((step) => '<li>' + escape(step.title) + '</li>').join('') +
-      '</ul>'
-    : '<br>Suggested steps have not been generated yet.<br>';
+    ? '<br>' +
+      steps.map((step) => '&nbsp;•&nbsp;' + escape(step.title.replace(/\s+/g, ' ').trim())).join('<br>')
+    : '<br>Suggested steps have not been generated yet.';
   let actions = '';
   if (actionLinks) {
     const baseUrl = calendarActionUrl(actionLinks.baseUrl),
@@ -428,7 +427,7 @@ export async function calendarDescription(
   return (
     '<b>Suggested steps</b>' +
     suggested +
-    '<br>Original input: ' +
+    '<br><br>Original input: ' +
     escape(task.source || '').replace(/\r?\n/g, '<br>') +
     actions +
     `<a href="https://followthrough.corybytheway.chatgpt.site/tasks?task=${encodeURIComponent(taskReference(task.id))}">Manage task and follow through</a>`

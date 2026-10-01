@@ -428,7 +428,9 @@ void test('calendar descriptions show concise signed actions, original input, an
     baseUrl: 'https://script.google.com/macros/s/deployment-safe-id_123/exec',
     secret: 'a'.repeat(64),
   });
-  assert.equal((description.match(/<li>/g) || []).length, 5);
+  assert.equal((description.match(/&nbsp;•&nbsp;/g) || []).length, 5);
+  assert.ok(description.includes('<b>Suggested steps</b><br>&nbsp;•&nbsp;Step &lt;0&gt;<br>&nbsp;•&nbsp;Step &lt;1&gt;'));
+  assert.ok(!description.includes('<ul>') && !description.includes('<li>'));
   assert.ok(description.includes('Step &lt;0&gt;'));
   assert.ok(!description.includes('Step &lt;5&gt;'));
   assert.ok(
