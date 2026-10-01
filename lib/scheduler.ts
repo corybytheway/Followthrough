@@ -78,8 +78,9 @@ export function plan(
       !task.blockers.some((id) => taskMap.get(id)?.status !== 'done'),
     );
   };
-  const ranks = { high: 0, medium: 1, low: 2 };
+  const ranks = { top: 0, high: 1, medium: 2, low: 3 };
   const compareTasks = (a: Task, b: Task) =>
+    Number(b.priority === 'top') - Number(a.priority === 'top') ||
     (a.dueDate || '9999').localeCompare(b.dueDate || '9999') ||
     ranks[a.priority] - ranks[b.priority] ||
     a.createdAt.localeCompare(b.createdAt) ||

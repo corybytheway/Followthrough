@@ -8,6 +8,7 @@ import {
   verifyCalendarTaskAction,
   type CalendarTaskAction,
 } from '@/lib/calendar-actions';
+import { decodeCalendarActionToken } from '@/lib/calendar-action-token';
 import { syncCalendars } from '@/lib/calendar-sync';
 import { calendarConfig } from '@/lib/calendar-store';
 import { readWorkspace, mutate } from '@/lib/store';
@@ -24,21 +25,26 @@ export async function POST(request: Request) {
       env as unknown as Record<string, string>,
     );
     const input = object(await jsonBody(request)),
-      signedTaskId = text(input.task, 'Task ID', 100, true),
-      action = text(input.action, 'Action', 20, true) as CalendarTaskAction,
-      stamp = text(input.stamp, 'Task version', 40, true),
-      signature = text(input.signature, 'Action signature', 64, true),
-      secret = calendarConfig().CALENDAR_ACTION_SECRET || '';
+      secret = calendarConfig().CALENDAR_ACTION_SECRET || '',
+      compact = input.k === undefined
+        ? null
+        : await decodeCalendarActionToken(text(input.k, 'Action token', 110, true), secret),
+      signedTaskId = compact?.signedTaskId || text(input.task, 'Task ID', 100, true),
+      action = compact?.action || text(input.action, 'Action', 20, true) as CalendarTaskAction,
+      stamp = compact?.stamp || text(input.stamp, 'Task version', 40, true),
+      signature = compact ? '' : text(input.signature, 'Action signature', 64, true);
+    if (input.k !== undefined && !compact)
+      throw Object.assign(new InputError('This task action link is invalid.'), { status: 401 });
     if (!CALENDAR_TASK_ACTIONS.includes(action))
       throw new InputError('Choose a supported task action.');
     if (
-      !(await verifyCalendarTaskAction(
+      (!compact && !(await verifyCalendarTaskAction(
         signedTaskId,
         action,
         stamp,
         signature,
         secret,
-      ))
+      )))
     )
       throw Object.assign(new InputError('This task action link is invalid.'), {
         status: 401,
@@ -74,6 +80,16 @@ export async function POST(request: Request) {
     } else if (action === 'delete') {
       mutation = { action: 'delete_task', id: task.id };
       message = 'Task moved to Trash.';
+    } else if (action.startsWith('priority_')) {
+      const priority = action.slice('priority_'.length) as 'low' | 'medium' | 'high' | 'top';
+      if (task.status === 'done' || task.status === 'archived')
+        throw new InputError('Reopen this task before changing its priority.');
+      mutation = {
+        action: 'update_task',
+        id: task.id,
+        task: { priority, expectedUpdatedAt: task.updatedAt },
+      };
+      message = `Task priority changed to ${priority[0].toUpperCase()}${priority.slice(1)}.`;
     } else {
       if (task.status !== 'ready')
         throw new InputError('Only a Ready task can be postponed.');

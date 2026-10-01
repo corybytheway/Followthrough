@@ -235,6 +235,9 @@ function actionResponse_(parameters, title, message, isError, result) {
 
 function calendarActionInput_(parameters) {
   if (!parameters) return null;
+  const compact = String(parameters.k || '');
+  if (compact)
+    return /^[A-Za-z0-9_-]{65,110}$/.test(compact) ? { k: compact } : null;
   const action = String(parameters.action || '');
   const input = {
     task: String(parameters.task || ''),
@@ -243,7 +246,7 @@ function calendarActionInput_(parameters) {
     signature: String(parameters.signature || ''),
   };
   if (
-    !/^(complete|postpone|delete)$/.test(action) ||
+    !/^(complete|postpone|delete|priority_(low|medium|high|top))$/.test(action) ||
     !/^[A-Za-z0-9_-]{1,100}$/.test(input.task) ||
     !/^[0-9TZ:._+-]{10,40}$/.test(input.stamp) ||
     !/^[a-f0-9]{64}$/.test(input.signature)

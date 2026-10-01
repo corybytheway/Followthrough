@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { BASIC_CAPTURE_NOTICE } from '@/lib/capture-status';
+import { resolveTaskReference, taskReference } from '@/lib/task-reference';
 import {
   Sheet,
   SheetContent,
@@ -294,9 +295,7 @@ export default function FollowthroughApp({
           location.searchParams.delete('calendar');
         }
         if (requestedTaskId) {
-          const requestedTask = next.tasks.find(
-            (task) => task.id === requestedTaskId && !task.deletedAt,
-          );
+          const requestedTask = resolveTaskReference(next.tasks, requestedTaskId);
           if (requestedTask) {
             destination = 'tasks';
             setEditing(requestedTask.id);
@@ -330,7 +329,7 @@ export default function FollowthroughApp({
     const location = new URL(window.location.href);
     if (editing) {
       location.pathname = TAB_PATHS.tasks;
-      location.searchParams.set('task', editing);
+      location.searchParams.set('task', taskReference(editing));
     } else location.searchParams.delete('task');
     history.replaceState(
       null,
@@ -347,12 +346,10 @@ export default function FollowthroughApp({
         'task',
       );
       if (nextTab !== 'tasks' || !requestedTaskId) setEditing(null);
-      else if (
-        stateRef.current.tasks.some(
-          (task) => task.id === requestedTaskId && !task.deletedAt,
-        )
-      )
-        setEditing(requestedTaskId);
+      else {
+        const task = resolveTaskReference(stateRef.current.tasks, requestedTaskId);
+        if (task) setEditing(task.id);
+      }
     };
     window.addEventListener('popstate', syncFromHistory);
     return () => window.removeEventListener('popstate', syncFromHistory);
@@ -732,8 +729,8 @@ export default function FollowthroughApp({
                 <span className="pill">On hold</span>
               )}
 
-              {task.priority === 'high' && (
-                <span className="urgent">High priority</span>
+              {(task.priority === 'high' || task.priority === 'top') && (
+                <span className="urgent">{task.priority === 'top' ? 'Top' : 'High'} priority</span>
               )}
             </span>
             {warning && <span className="task-warning">{warning.message}</span>}
@@ -1599,6 +1596,7 @@ function TaskEditor({
             <option value="low">Low</option>
             <option value="medium">Medium</option>
             <option value="high">High</option>
+            <option value="top">Top</option>
           </NativeSelect>
         </Field>
         <Field label="Status">

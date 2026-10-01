@@ -8,6 +8,10 @@ export const CALENDAR_TASK_ACTIONS = [
   'complete',
   'postpone',
   'delete',
+  'priority_low',
+  'priority_medium',
+  'priority_high',
+  'priority_top',
 ] as const;
 export type CalendarTaskAction = (typeof CALENDAR_TASK_ACTIONS)[number];
 

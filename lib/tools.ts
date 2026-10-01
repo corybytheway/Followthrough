@@ -40,7 +40,7 @@ const taskFields = {
   remainingMinutes: { type: 'integer', minimum: 1, maximum: 60000 },
   dueDate: { type: ['string', 'null'] },
   notBefore: { type: ['string', 'null'] },
-  priority: { type: 'string', enum: ['high', 'medium', 'low'] },
+  priority: { type: 'string', enum: ['top', 'high', 'medium', 'low'] },
   blockers: { type: 'array', items: { type: 'string' } },
   splittable: {
     type: 'boolean',

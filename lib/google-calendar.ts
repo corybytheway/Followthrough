@@ -16,6 +16,8 @@ import {
   signCalendarTaskAction,
 } from './calendar-actions';
 import { actionTaskId } from './calendar-action-owner';
+import { calendarActionToken } from './calendar-action-token';
+import { taskReference } from './task-reference';
 export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
   'https://www.googleapis.com/auth/calendar.events.freebusy',
@@ -294,7 +296,7 @@ export async function reconcileGoogle(
       start: { dateTime: block.start },
       end: { dateTime: block.end },
       transparency:
-        task.priority === 'high' ||
+        task.priority === 'high' || task.priority === 'top' ||
         (task.dueDate && deadlineRiskIds.has(task.id))
           ? 'opaque'
           : 'transparent',
@@ -388,8 +390,11 @@ export async function calendarDescription(
       signedTaskId = actionLinks.handle
         ? actionTaskId(actionLinks.handle, task.id)
         : task.id,
-      links = await Promise.all(
-        CALENDAR_TASK_ACTIONS.map(async (action) => {
+      link = async (action: (typeof CALENDAR_TASK_ACTIONS)[number], label: string) => {
+          const token = actionLinks.handle
+            ? await calendarActionToken(actionLinks.handle, task.id, action, task.updatedAt, actionLinks.secret)
+            : null;
+          if (token) return `<a href="${baseUrl}?k=${token}">${label}</a>`;
           const signature = await signCalendarTaskAction(
               signedTaskId,
               action,
@@ -403,12 +408,19 @@ export async function calendarDescription(
               signature,
             })
               .toString()
-              .replace(/&/g, '&amp;'),
-            label = action[0].toUpperCase() + action.slice(1);
+              .replace(/&/g, '&amp;');
           return `<a href="${baseUrl}?${query}">${label}</a>`;
-        }),
+        },
+      taskLinks = await Promise.all(
+        CALENDAR_TASK_ACTIONS.slice(0, 3).map((action) =>
+          link(action, action[0].toUpperCase() + action.slice(1))),
+      ),
+      priorityLinks = await Promise.all(
+        (['low', 'medium', 'high', 'top'] as const).map((priority) =>
+          link(`priority_${priority}`, priority[0].toUpperCase() + priority.slice(1))),
       );
-    actions = '<br><br><b>Task actions</b><br>' + links.join('<br>') + '<br>';
+    actions = '<br><br><b>Task actions</b><br>' + taskLinks.join('<br>') +
+      '<br><br><b>Change priority</b><br>' + priorityLinks.join('<br>') + '<br>';
   } else actions = '<br><br>';
   return (
     '<b>Suggested steps</b>' +
@@ -416,7 +428,7 @@ export async function calendarDescription(
     '<br>Original input: ' +
     escape(task.source || '').replace(/\r?\n/g, '<br>') +
     actions +
-    `<a href="https://followthrough.corybytheway.chatgpt.site/?task=${encodeURIComponent(task.id)}">Manage in Followthrough</a>`
+    `<a href="https://followthrough.corybytheway.chatgpt.site/tasks?task=${encodeURIComponent(taskReference(task.id))}">Manage in Followthrough</a>`
   );
 }
 

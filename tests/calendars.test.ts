@@ -24,6 +24,8 @@ import { plan } from '../lib/scheduler';
 import type { PendingCalendarMove } from '../lib/calendar-model';
 import type { Block } from '../lib/model';
 import { calendarActionUrl } from '../lib/calendar-actions';
+import { decodeCalendarActionToken } from '../lib/calendar-action-token';
+import { taskReference, resolveTaskReference } from '../lib/task-reference';
 
 void test('calendar action URLs accept only the Apps Script bridge or exact Followthrough relay', () => {
   assert.equal(
@@ -436,14 +438,16 @@ void test('calendar descriptions show concise signed actions, original input, an
   assert.ok(description.includes('>Complete</a><br>'));
   assert.ok(description.includes('>Postpone</a><br>'));
   assert.ok(description.includes('>Delete</a><br>'));
+  assert.ok(description.includes('<b>Change priority</b><br>'));
+  assert.ok(description.includes('>Top</a><br>'));
   assert.ok(description.includes('>Manage in Followthrough</a>'));
   assert.ok(
     description.includes(
-      'href="https://followthrough.corybytheway.chatgpt.site/?task=task-safe-id"',
+      'href="https://followthrough.corybytheway.chatgpt.site/tasks?task=task-safe-id"',
     ),
   );
   assert.ok(!description.includes('>https://'));
-  assert.equal((description.match(/signature=[a-f0-9]{64}/g) || []).length, 3);
+  assert.equal((description.match(/signature=[a-f0-9]{64}/g) || []).length, 7);
   assert.ok(
     (
       await calendarDescription({
@@ -470,8 +474,29 @@ void test('calendar descriptions bind action URLs to a private owner handle', as
       handle: 'a'.repeat(24),
     },
   );
-  assert.match(description, /task=u[a-f0-9]{24}_capture_[a-f0-9]{64}/);
+  assert.ok(!description.includes('task=u'));
+  const links = [...description.matchAll(/\?k=([A-Za-z0-9_-]+)/g)].map((match) => match[1]);
+  assert.equal(links.length, 7);
+  assert.ok(links.every((token) => token.length < 100));
+  assert.deepEqual(await decodeCalendarActionToken(links[0], 'c'.repeat(64)), {
+    signedTaskId: `u${'a'.repeat(24)}_capture_${'b'.repeat(64)}`,
+    action: 'complete',
+    stamp: '2026-09-25T12:00:00.000Z',
+  });
+  assert.equal(await decodeCalendarActionToken(links[0].slice(0, -1) + (links[0].endsWith('A') ? 'B' : 'A'), 'c'.repeat(64)), null);
+  assert.equal(await decodeCalendarActionToken(links[0], 'd'.repeat(64)), null);
+  assert.ok(description.includes(`?task=c${'b'.repeat(24)}`));
   assert.ok(!description.includes('owner_id='));
+});
+
+void test('short task references resolve uniquely while old full links still work', () => {
+  const workspace = initialWorkspace();
+  const task = applyAction(workspace, { action: 'create_task', task: { title: 'Write brief' } }).workspace.tasks[0];
+  const short = taskReference(task.id);
+  assert.ok(short.length < task.id.length);
+  assert.equal(resolveTaskReference([task], short)?.id, task.id);
+  assert.equal(resolveTaskReference([task], task.id)?.id, task.id);
+  assert.equal(resolveTaskReference([task, { ...task, id: task.id.slice(0, -1) + 'a' }], short), null);
 });
 void test('a new meeting reschedules a task without completing it', async (t) => {
   const w = applyAction(initialWorkspace(), {

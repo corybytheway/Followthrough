@@ -30,6 +30,17 @@ function example(minutes = 300) {
   ];
   return w;
 }
+void test('Top priority schedules first while still respecting work hours', () => {
+  const w = example(60);
+  w.tasks[0].priority = 'high';
+  w.tasks[0].dueDate = '2026-09-08';
+  const top = taskInput({ title: 'Handle top outcome', estimateMinutes: 60, priority: 'top' }, w);
+  w.tasks.push(top);
+  const blocks = plan(w, NOW).blocks;
+  assert.equal(blocks[0].taskId, top.id);
+  const firstHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: w.settings.timeZone, hour: '2-digit', hourCycle: 'h23' }).format(new Date(blocks[0].start)));
+  assert.ok(firstHour >= 9 && firstHour <= 19);
+});
 void test('postpone moves a task to the next configured workday', () => {
   const w = example(30),
     task = w.tasks[0];

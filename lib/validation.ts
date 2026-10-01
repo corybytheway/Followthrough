@@ -140,8 +140,8 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
       60000,
     );
   if (v.priority !== undefined) {
-    if (!['high', 'medium', 'low'].includes(v.priority as string))
-      throw new InputError('Priority must be high, medium, or low.');
+    if (!['top', 'high', 'medium', 'low'].includes(v.priority as string))
+      throw new InputError('Priority must be top, high, medium, or low.');
     t.priority = v.priority as Task['priority'];
   }
   if (v.status !== undefined) {

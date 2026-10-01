@@ -10,7 +10,7 @@ export type PreparedCapture = {
   estimateMinutes: number;
   estimateProvisional?: boolean;
   status: 'ready';
-  priority: 'high' | 'medium' | 'low';
+  priority: 'top' | 'high' | 'medium' | 'low';
   dueDate: string | null;
   notBefore: string | null;
   notes: string;
