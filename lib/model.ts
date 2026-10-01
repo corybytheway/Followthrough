@@ -1,9 +1,9 @@
 // Created by Cory McCabe
-export function taskLabel(title: string, projectName = 'Task'): string {
-  const prefix = projectName + ': ';
+export function taskLabel(title: string, projectName?: string): string {
+  const prefix = (projectName || 'Task') + ': ';
   let name = title.replace(/^(?:\s*⚡[\uFE0E\uFE0F]?\s*)+/, '').trimStart();
   while (name.startsWith(prefix)) name = name.slice(prefix.length);
-  return '⚡️ ' + prefix + name;
+  return '⚡️ ' + (projectName ? projectName + ': ' : '') + name;
 }
 export type Step = { id: string; title: string; done: boolean };
 export type Project = {

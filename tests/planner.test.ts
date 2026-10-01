@@ -9,11 +9,10 @@ import { basicDraft } from '../lib/capture';
 import { toolAction } from '../lib/tools';
 import { postponeUntil, nextWeekUntil } from '../lib/calendar-actions';
 const NOW = Date.parse('2026-09-08T13:00:00Z');
-void test('unassigned task labels use Task as their context', () => {
-  assert.equal(
-    taskLabel('Buy black Henley shirt'),
-    '⚡️ Task: Buy black Henley shirt',
-  );
+void test('unassigned task labels omit the Task prefix', () => {
+  assert.equal(taskLabel('Buy black Henley shirt'), '⚡️ Buy black Henley shirt');
+  assert.equal(taskLabel('Task: Buy black Henley shirt'), '⚡️ Buy black Henley shirt');
+  assert.equal(taskLabel('Submit timesheet PR', 'Orbit'), '⚡️ Orbit: Submit timesheet PR');
 });
 function example(minutes = 300) {
   const w = initialWorkspace();
