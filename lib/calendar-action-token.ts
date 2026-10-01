@@ -3,7 +3,7 @@ import { hmac } from './calendar-security';
 import type { CalendarTaskAction } from './calendar-actions';
 
 const actions: CalendarTaskAction[] = [
-  'complete', 'postpone', 'delete', 'priority_low', 'priority_medium', 'priority_high', 'priority_top',
+  'complete', 'postpone', 'delete', 'priority_low', 'priority_medium', 'priority_high', 'priority_top', 'push_next_week',
 ];
 const encoder = (bytes: Uint8Array) =>
   btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');

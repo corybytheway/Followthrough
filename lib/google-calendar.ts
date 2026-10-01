@@ -411,16 +411,18 @@ export async function calendarDescription(
               .replace(/&/g, '&amp;');
           return `<a href="${baseUrl}?${query}">${label}</a>`;
         },
-      taskLinks = await Promise.all(
-        CALENDAR_TASK_ACTIONS.slice(0, 3).map((action) =>
-          link(action, action[0].toUpperCase() + action.slice(1))),
-      ),
+      taskLinks = await Promise.all([
+        link('complete', 'Complete'),
+        link('postpone', 'Postpone 1 day'),
+        link('push_next_week', 'Push to next week'),
+        link('delete', 'Delete'),
+      ]),
       priorityLinks = await Promise.all(
         (['low', 'medium', 'high', 'top'] as const).map((priority) =>
           link(`priority_${priority}`, priority[0].toUpperCase() + priority.slice(1))),
       );
     actions = '<br><br><b>Task actions</b><br>' + taskLinks.join('<br>') +
-      '<br><br><b>Change priority</b><br>' + priorityLinks.join('<br>') + '<br>';
+      '<br><br><b>Change priority</b><br>' + priorityLinks.join('<br>') + '<br><br>';
   } else actions = '<br><br>';
   return (
     '<b>Suggested steps</b>' +
@@ -428,7 +430,7 @@ export async function calendarDescription(
     '<br>Original input: ' +
     escape(task.source || '').replace(/\r?\n/g, '<br>') +
     actions +
-    `<a href="https://followthrough.corybytheway.chatgpt.site/tasks?task=${encodeURIComponent(taskReference(task.id))}">Manage in Followthrough</a>`
+    `<a href="https://followthrough.corybytheway.chatgpt.site/tasks?task=${encodeURIComponent(taskReference(task.id))}">Manage task and follow through</a>`
   );
 }
 

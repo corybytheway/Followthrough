@@ -7,7 +7,7 @@ import { applyAction } from '../lib/actions';
 import { plan, localDay, nextWorkDay } from '../lib/scheduler';
 import { basicDraft } from '../lib/capture';
 import { toolAction } from '../lib/tools';
-import { postponeUntil } from '../lib/calendar-actions';
+import { postponeUntil, nextWeekUntil } from '../lib/calendar-actions';
 const NOW = Date.parse('2026-09-08T13:00:00Z');
 void test('unassigned task labels use Task as their context', () => {
   assert.equal(
@@ -62,6 +62,21 @@ void test('postpone moves a task to the next configured workday', () => {
   assert.throws(
     () => postponeUntil(w, task, Date.parse('2026-09-18T14:00:00.000Z')),
     /cannot be postponed past its deadline/,
+  );
+});
+void test('push to next week selects the first configured workday of the following week', () => {
+  const w = example(30), task = w.tasks[0];
+  w.settings.workDays = [2, 3, 4, 5];
+  w.blocks = [{
+    id: task.id + '-0', taskId: task.id,
+    start: '2026-10-01T15:00:00.000Z',
+    end: '2026-10-01T15:30:00.000Z', kind: 'task',
+  }];
+  assert.equal(nextWeekUntil(w, task, Date.parse('2026-10-01T14:00:00.000Z')), '2026-10-06');
+  task.dueDate = '2026-10-05';
+  assert.throws(
+    () => nextWeekUntil(w, task, Date.parse('2026-10-01T14:00:00.000Z')),
+    /cannot be pushed past its deadline/,
   );
 });
 void test('next workday skips days outside the configured schedule', () => {

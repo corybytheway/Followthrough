@@ -12,6 +12,7 @@ export const CALENDAR_TASK_ACTIONS = [
   'priority_medium',
   'priority_high',
   'priority_top',
+  'push_next_week',
 ] as const;
 export type CalendarTaskAction = (typeof CALENDAR_TASK_ACTIONS)[number];
 
@@ -86,4 +87,32 @@ export function postponeUntil(
       'This task cannot be postponed past its deadline. Change the deadline in Followthrough first.',
     );
   return until;
+}
+
+export function nextWeekUntil(
+  workspace: Workspace,
+  task: Task,
+  now = Date.now(),
+): string {
+  const nextBlock = workspace.blocks
+      .filter((block) => block.taskId === task.id && Date.parse(block.end) > now)
+      .sort((a, b) => a.start.localeCompare(b.start))[0],
+    day = localDay(
+      nextBlock ? nextBlock.start : now,
+      workspace.settings.timeZone,
+    ),
+    date = new Date(day + 'T12:00:00Z');
+  date.setUTCDate(date.getUTCDate() + ((8 - date.getUTCDay()) % 7 || 7));
+  for (let offset = 0; offset < 7; offset++) {
+    if (workspace.settings.workDays.includes(date.getUTCDay())) {
+      const until = date.toISOString().slice(0, 10);
+      if (task.dueDate && task.dueDate < until)
+        throw new InputError(
+          'This task cannot be pushed past its deadline. Change the deadline in Followthrough first.',
+        );
+      return until;
+    }
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+  throw new InputError('Choose at least one workday before pushing this task.');
 }

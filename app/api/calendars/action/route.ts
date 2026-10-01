@@ -5,6 +5,7 @@ import { resolveActionTask } from '@/lib/calendar-action-owner';
 import {
   CALENDAR_TASK_ACTIONS,
   postponeUntil,
+  nextWeekUntil,
   verifyCalendarTaskAction,
   type CalendarTaskAction,
 } from '@/lib/calendar-actions';
@@ -90,16 +91,22 @@ export async function POST(request: Request) {
         task: { priority, expectedUpdatedAt: task.updatedAt },
       };
       message = `Task priority changed to ${priority[0].toUpperCase()}${priority.slice(1)}.`;
-    } else {
+    } else if (action === 'postpone' || action === 'push_next_week') {
       if (task.status !== 'ready')
         throw new InputError('Only a Ready task can be postponed.');
-      const until = postponeUntil(current.workspace, task);
+      const until = action === 'push_next_week'
+        ? nextWeekUntil(current.workspace, task)
+        : postponeUntil(current.workspace, task);
       mutation = {
         action: 'update_task',
         id: task.id,
         task: { notBefore: until, expectedUpdatedAt: task.updatedAt },
       };
-      message = `Task postponed to the next workday (${until}).`;
+      message = action === 'push_next_week'
+        ? `Task pushed to next week (${until}).`
+        : `Task postponed to the next workday (${until}).`;
+    } else {
+      throw new InputError('Choose a supported task action.');
     }
 
     await mutate(owner, {
