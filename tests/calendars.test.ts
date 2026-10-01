@@ -416,6 +416,7 @@ void test('calendar descriptions show concise signed actions, original input, an
   const task = {
     id: 'task-safe-id',
     updatedAt: '2026-09-15T12:00:00.000Z',
+    priority: 'low' as const,
     source: '<script>alert(1)</script>\nOriginal & unchanged',
     steps: Array.from({ length: 6 }, (_, i) => ({
       id: String(i),
@@ -439,7 +440,7 @@ void test('calendar descriptions show concise signed actions, original input, an
   assert.ok(description.includes('>Postpone 1 day</a><br>'));
   assert.ok(description.includes('>Push to next week</a><br>'));
   assert.ok(description.includes('>Delete</a><br>'));
-  assert.ok(description.includes('<b>Change priority</b><br>'));
+  assert.ok(description.includes('<b>Change priority (currently Low)</b><br>'));
   assert.ok(description.includes('>Top</a><br><br>'));
   assert.ok(description.includes('>Manage task and follow through</a>'));
   assert.ok(
@@ -454,6 +455,7 @@ void test('calendar descriptions show concise signed actions, original input, an
       await calendarDescription({
         id: 'empty',
         updatedAt: '2026-09-15T12:00:00.000Z',
+        priority: 'medium',
         source: '',
         steps: [],
       })
@@ -466,6 +468,7 @@ void test('calendar descriptions bind action URLs to a private owner handle', as
     {
       id: 'capture_' + 'b'.repeat(64),
       updatedAt: '2026-09-25T12:00:00.000Z',
+      priority: 'top',
       source: 'Send the contract',
       steps: [],
     },
@@ -476,6 +479,7 @@ void test('calendar descriptions bind action URLs to a private owner handle', as
     },
   );
   assert.ok(!description.includes('task=u'));
+  assert.ok(description.includes('<b>Change priority (currently Top)</b><br>'));
   const links = [...description.matchAll(/\?k=([A-Za-z0-9_-]+)/g)].map((match) => match[1]);
   assert.equal(links.length, 8);
   assert.ok(links.every((token) => token.length < 100));

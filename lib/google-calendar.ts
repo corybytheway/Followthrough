@@ -369,7 +369,7 @@ export async function reconcileGoogle(
 }
 
 export async function calendarDescription(
-  task: Pick<Task, 'id' | 'updatedAt' | 'steps' | 'source'>,
+  task: Pick<Task, 'id' | 'updatedAt' | 'steps' | 'source' | 'priority'>,
   actionLinks?: { baseUrl: string; secret: string; handle?: string },
 ): Promise<string> {
   const escape = (value: string) =>
@@ -422,7 +422,8 @@ export async function calendarDescription(
           link(`priority_${priority}`, priority[0].toUpperCase() + priority.slice(1))),
       );
     actions = '<br><br><b>Task actions</b><br>' + taskLinks.join('<br>') +
-      '<br><br><b>Change priority</b><br>' + priorityLinks.join('<br>') + '<br><br>';
+      `<br><br><b>Change priority (currently ${task.priority[0].toUpperCase()}${task.priority.slice(1)})</b><br>` +
+      priorityLinks.join('<br>') + '<br><br>';
   } else actions = '<br><br>';
   return (
     '<b>Suggested steps</b>' +
