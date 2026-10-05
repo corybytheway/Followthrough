@@ -297,7 +297,6 @@ export default function FollowthroughApp({
         if (requestedTaskId) {
           const requestedTask = resolveTaskReference(next.tasks, requestedTaskId);
           if (requestedTask) {
-            destination = 'tasks';
             setEditing(requestedTask.id);
           } else {
             location.searchParams.delete('task');
@@ -328,7 +327,6 @@ export default function FollowthroughApp({
     if (!loaded) return;
     const location = new URL(window.location.href);
     if (editing) {
-      location.pathname = TAB_PATHS.tasks;
       location.searchParams.set('task', taskReference(editing));
     } else location.searchParams.delete('task');
     history.replaceState(
@@ -345,10 +343,10 @@ export default function FollowthroughApp({
       const requestedTaskId = new URL(window.location.href).searchParams.get(
         'task',
       );
-      if (nextTab !== 'tasks' || !requestedTaskId) setEditing(null);
+      if (!requestedTaskId) setEditing(null);
       else {
         const task = resolveTaskReference(stateRef.current.tasks, requestedTaskId);
-        if (task) setEditing(task.id);
+        setEditing(task?.id ?? null);
       }
     };
     window.addEventListener('popstate', syncFromHistory);
@@ -570,7 +568,6 @@ export default function FollowthroughApp({
     setEditing(null);
   }
   function openTask(taskId: string) {
-    navigateToTab('tasks');
     setEditing(taskId);
   }
   const agenda = [
