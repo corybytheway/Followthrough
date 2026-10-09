@@ -150,6 +150,9 @@ p {
 .urgent {
   color: #b65c24;
 }
+.urgent[data-priority='top'] {
+  color: #b42318;
+}
 .small-note {
   font-size: 13px;
   color: var(--subtle);

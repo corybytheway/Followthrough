@@ -727,7 +727,9 @@ export default function FollowthroughApp({
               )}
 
               {(task.priority === 'high' || task.priority === 'top') && (
-                <span className="urgent">{task.priority === 'top' ? 'Top' : 'High'} priority</span>
+                <span className="urgent" data-priority={task.priority}>
+                  {task.priority === 'top' ? 'Top' : 'High'} priority
+                </span>
               )}
             </span>
             {warning && <span className="task-warning">{warning.message}</span>}
