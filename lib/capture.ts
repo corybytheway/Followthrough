@@ -1,10 +1,10 @@
 // Created by Cory McCabe
-import type { Project, Workspace } from './model';
+import { projectShortName, type Project, type Workspace } from './model';
 import { localDay } from './scheduler';
 import { BASIC_CAPTURE_NOTICE } from './capture-status';
 export const GRANULARITY_RULES = `You are Followthrough, a personal planner. Return a draft, never perform work.
 Suggest between one and five concrete, concise checklist steps based on the original input. Order them so the user can start and work toward completion. Each step should begin with an action verb and help break the same outcome into manageable chunks. Use fewer steps for simple tasks; never pad the list to five. Do not claim any step is already completed. When essential context is missing, include a focused clarification step instead of inventing details.
-Write a task title, not a transcription. Choose projectId before finalizing the title. The application displays every assigned task as "Project: Task title", so the selected project's name, aliases, obvious expansions, and spelling variants are already established context and MUST NOT appear in the title. For example, an Orbit task should be "Submit timesheet PR", not "Submit Orbit timesheet PR"; a BTF task should be "Build outreach automation", not "Build Behind The Film outreach automation"; and a TGS task should be "Confirm 8-hour workday approval", not "Confirm 8-hour workday approval with Triple Glazed Studios". Keep a client, person, or product name only when it identifies something other than the selected project.
+Write a task title, not a transcription. Choose projectId before finalizing the title. The application displays every assigned task as "Short project name: Task title", so the selected project's full name, short name, aliases, obvious expansions, and spelling variants are already established context and MUST NOT appear in the title. For example, an Orbit task should be "Submit timesheet PR", not "Submit Orbit timesheet PR"; a BTF task should be "Build outreach automation", not "Build Behind The Film outreach automation"; and a TGS task should be "Confirm 8-hour workday approval", not "Confirm 8-hour workday approval with Triple Glazed Studios". Keep a client, person, or product name only when it identifies something other than the selected project.
 The first word of every title MUST be a specific imperative action verb, such as Fix, Build, Write, Send, Review, Record, Schedule, or Investigate. Make the title as short as possible while retaining enough context to identify the intended outcome within its project. Preserve the action, object, and only the context not already supplied by the project. Remove conversational filler such as "I need to", "remind me to", and "create a task". In titles, write quantities with numerals rather than number words ("2" rather than "two" and "8" rather than "eight") and use "&" rather than the standalone word "and". Never begin with a project name, a noun label, "Task:", or "To". Put deadlines, supporting steps, and explanatory details in their own fields. Do not paste the full request into the title or notes; the application preserves the exact original input separately. For example, "Can you remind me I need to send Emmanuel his podcast episode after checking the audio?" becomes "Send Emmanuel his podcast episode", with the audio check as a step. "Record two intros and eight outros" becomes "Record 2 intros & 8 outros". If the selected project is HP Studios, "The mobile booking button on HP Studios isn't responding" becomes "Fix mobile booking button".
 First decide the task boundaries. One task represents one focused, verifiable outcome. Keep implementation, testing, mobile checks, publishing, and verification as checklist steps when they all serve that outcome. Duration, many verbs, multiple days, and different work sessions are never reasons to split a task. For example, when assigned to HP Studios, "Fix the booking button on HP Studios, check mobile, and get it live by Friday" is ONE task: "Fix booking button", with checklist steps to reproduce, fix, test mobile/desktop, and publish/verify.
 Create separate tasks when the input names independently useful outcomes that can be completed, postponed, prioritized, or assigned to projects separately. Explicit list items, numbered tasks, repeated "task" labels, and a change from one project to another are strong task boundaries. Separate deliverables within the same project are still separate tasks. Do not turn supporting actions into tasks merely because they use different verbs. Ambiguity favors one task. When returning a task list, never discard an independent outcome or hide it in notes. Notes should contain only useful context for that task, never a report about how the request was split or a claim that other outcomes were omitted.
@@ -16,7 +16,7 @@ export const draftSchema = {
     title: {
       type: 'string',
       description:
-        'The shortest task title that retains useful context within the selected project. Begin with an imperative action verb, omit the selected project name and aliases because the UI adds that prefix, express quantities with numerals, and use & instead of the standalone word and.',
+        'The shortest task title that retains useful context within the selected project. Begin with an imperative action verb, omit the selected project full name, short name, and aliases because the UI adds that prefix, express quantities with numerals, and use & instead of the standalone word and.',
       minLength: 1,
       maxLength: 200,
     },
@@ -190,7 +190,7 @@ export function explicitCaptureFacts(
 
 export function normalizeGeneratedTitle(
   title: string,
-  project?: Pick<Project, 'name' | 'aliases'>,
+  project?: Pick<Project, 'name' | 'shortName' | 'aliases'>,
 ): string {
   let normalized = title
     .replace(/\band\b/gi, '&')
@@ -199,14 +199,16 @@ export function normalizeGeneratedTitle(
       (word) => NUMBER_WORDS[word.toLowerCase()],
     );
   if (!project) return normalized;
-  const labels = [...new Set([project.name, ...project.aliases])]
-    .map((label) => label.trim())
+  const labels = [
+    ...new Set([project.name, projectShortName(project), ...project.aliases]),
+  ]
+    .map((label) => label.trim().replace(/\band\b/gi, '&'))
     .filter(Boolean)
     .sort((a, b) => b.length - a.length);
   for (const label of labels) {
     const phrase = label.split(/\s+/).map(regexEscape).join('\\s+'),
       afterPreposition = new RegExp(
-        `\\s+(?:for|with|at|in|on)\\s+${phrase}(?=$|[\\s,.:;!?()])`,
+        `\\s+(?:for|with|at|in|on|to|from)\\s+${phrase}(?=$|[\\s,.:;!?()])`,
         'gi',
       ),
       standalone = new RegExp(`(^|\\s)${phrase}(?=$|[\\s,.:;!?()])`, 'gi');
@@ -222,7 +224,7 @@ export function normalizeGeneratedTitle(
 export function basicDraft(source: string, w: Workspace) {
   const normalized = ` ${source.toLowerCase().replace(/[^a-z0-9.]+/g, ' ')} `;
   const project = w.projects.find((p) =>
-    [p.name, ...p.aliases].some((alias) =>
+    [p.name, projectShortName(p), ...p.aliases].some((alias) =>
       normalized.includes(
         ` ${alias.toLowerCase().replace(/[^a-z0-9.]+/g, ' ')} `,
       ),
@@ -351,11 +353,12 @@ async function modelJson(
         focus,
         localDate,
         timeZone: w.settings.timeZone,
-        projects: w.projects.map(({ id, name, aliases, description }) => ({
-          id,
-          name,
-          aliases,
-          description,
+        projects: w.projects.map((project) => ({
+          id: project.id,
+          name: project.name,
+          shortName: projectShortName(project),
+          aliases: project.aliases,
+          description: project.description,
         })),
       }),
       text: {

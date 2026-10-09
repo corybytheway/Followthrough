@@ -1,14 +1,49 @@
 // Created by Cory McCabe
-export function taskLabel(title: string, projectName?: string): string {
-  const prefix = (projectName || 'Task') + ': ';
+export function projectShortName(
+  project: Pick<Project, 'name' | 'shortName'>,
+): string {
+  // Saved projects without a separate label keep their existing task prefix.
+  return project.shortName?.trim() || project.name;
+}
+export function suggestProjectShortName(name: string): string {
+  const words = name.trim().match(/[\p{L}\p{N}]+|&/gu) || [];
+  if (words.length < 2) return name.trim();
+  return words
+    .map((word) =>
+      /^(and|&)$/i.test(word) ? '&' : Array.from(word)[0].toUpperCase(),
+    )
+    .join('');
+}
+export function taskLabel(
+  title: string,
+  project?: Pick<Project, 'name' | 'shortName' | 'aliases'> | string,
+): string {
+  const shortName =
+    typeof project === 'string'
+      ? project
+      : project && projectShortName(project);
+  const labels =
+    typeof project === 'string'
+      ? [project]
+      : project
+        ? [shortName!, project.name, ...project.aliases]
+        : ['Task'];
   let name = title.replace(/^(?:\s*⚡[\uFE0E\uFE0F]?\s*)+/, '').trimStart();
-  while (name.startsWith(prefix)) name = name.slice(prefix.length);
-  return '⚡️ ' + (projectName ? projectName + ': ' : '') + name;
+  // Titles from older imports may already contain the full name or an alias.
+  let prefix: string | undefined;
+  while (
+    (prefix = labels.find((label) =>
+      name.toLowerCase().startsWith(label.toLowerCase() + ': '),
+    ))
+  )
+    name = name.slice(prefix.length + 2);
+  return '⚡️ ' + (shortName ? shortName + ': ' : '') + name;
 }
 export type Step = { id: string; title: string; done: boolean };
 export type Project = {
   id: string;
   name: string;
+  shortName?: string;
   aliases: string[];
   description: string;
   color: string;

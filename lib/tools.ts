@@ -4,7 +4,7 @@ const taskFields = {
   title: {
     type: 'string',
     description:
-      'The shortest name that still identifies one focused outcome within its project. Begin with an imperative action verb, such as Fix, Build, Send, or Review. When projectId is assigned, omit that project name, its aliases, obvious expansions, and spelling variants because the UI already displays Project: before the task name. Retain only context not supplied by the project, express quantities with numerals, and use & instead of the standalone word and. Summarize the outcome rather than transcribing the request.',
+      'The shortest name that still identifies one focused outcome within its project. Begin with an imperative action verb, such as Fix, Build, Send, or Review. When projectId is assigned, omit that project full name, short name, aliases, obvious expansions, and spelling variants because the UI already supplies the project short name followed by a colon. Retain only context not supplied by the project, express quantities with numerals, and use & instead of the standalone word and. Summarize the outcome rather than transcribing the request.',
   },
   projectId: {
     type: ['string', 'null'],
@@ -95,7 +95,16 @@ export const TOOL_DEFINITIONS = [
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string' },
+        name: {
+          type: 'string',
+          description:
+            'Full project name shown in project lists and selectors.',
+        },
+        shortName: {
+          type: 'string',
+          description:
+            'Short name or acronym used before task titles and calendar events. Omit or leave blank to generate an abbreviation.',
+        },
         description: { type: 'string' },
         aliases: { type: 'array', items: { type: 'string' } },
       },

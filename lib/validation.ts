@@ -1,6 +1,8 @@
 // Created by Cory McCabe
 import {
   COLORS,
+  projectShortName,
+  suggestProjectShortName,
   type Project,
   type Settings,
   type Task,
@@ -217,6 +219,12 @@ export function projectInput(
   const aliases = v.aliases === undefined ? existing?.aliases || [] : v.aliases;
   if (!Array.isArray(aliases) || aliases.length > 20)
     throw new InputError('Use up to 20 project aliases.');
+  const shortName =
+    v.shortName === undefined
+      ? existing
+        ? projectShortName(existing)
+        : suggestProjectShortName(name)
+      : text(v.shortName, 'Short name', 100) || suggestProjectShortName(name);
   const color =
     v.color === undefined
       ? existing?.color || COLORS[w.projects.length % COLORS.length]
@@ -226,6 +234,7 @@ export function projectInput(
   return {
     id: existing?.id || crypto.randomUUID(),
     name,
+    shortName,
     description:
       v.description === undefined
         ? existing?.description || ''

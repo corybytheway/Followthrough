@@ -54,6 +54,8 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   newAccountWorkspace,
   taskLabel,
+  projectShortName,
+  suggestProjectShortName,
   COLORS,
   minutesLabel,
   type Project,
@@ -575,8 +577,7 @@ export default function FollowthroughApp({
       ...b,
       title: taskLabel(
         taskById.get(b.taskId)?.title || 'Task',
-        state.projects.find((p) => p.id === taskById.get(b.taskId)?.projectId)
-          ?.name,
+        state.projects.find((p) => p.id === taskById.get(b.taskId)?.projectId),
       ),
       source: 'task',
     })),
@@ -687,12 +688,7 @@ export default function FollowthroughApp({
             />
           )}
           <button className="task-body" onClick={() => openTask(task.id)}>
-            <strong>
-              {taskLabel(
-                task.title,
-                state.projects.find((p) => p.id === task.projectId)?.name,
-              )}
-            </strong>
+            <strong>{taskLabel(task.title, project)}</strong>
             <span className="task-meta">
               {project && (
                 <span style={{ color: project.color }}>{project.name}</span>
@@ -1469,7 +1465,7 @@ function TaskEditor({
         <h2>
           {taskLabel(
             initial.title || '',
-            state.projects.find((p) => p.id === projectId)?.name,
+            state.projects.find((p) => p.id === projectId),
           )}
         </h2>
         <p>
@@ -1733,7 +1729,7 @@ function TaskEditor({
                 <label htmlFor={'dep-' + t.id}>
                   {taskLabel(
                     t.title,
-                    state.projects.find((p) => p.id === t.projectId)?.name,
+                    state.projects.find((p) => p.id === t.projectId),
                   )}
                 </label>
               </div>
@@ -1808,6 +1804,11 @@ function ProjectForm({
   onSave: (project: Partial<Project>) => Promise<void>;
 }) {
   const [name, setName] = useState(initial.name || ''),
+    [shortName, setShortName] = useState(
+      initial.name
+        ? projectShortName({ name: initial.name, shortName: initial.shortName })
+        : '',
+    ),
     [color, setColor] = useState(initial.color || COLORS[0]),
     [aliases, setAliases] = useState(initial.aliases?.join(', ') || ''),
     [error, setError] = useState('');
@@ -1819,6 +1820,7 @@ function ProjectForm({
         setError('');
         void onSave({
           name,
+          shortName,
           color,
           aliases: aliases
             .split(',')
@@ -1834,6 +1836,24 @@ function ProjectForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
+      </Field>
+      <Field
+        label="Short name"
+        hint="Used before task titles and calendar events. Leave blank to generate an abbreviation."
+      >
+        <Input
+          maxLength={100}
+          value={shortName}
+          aria-label="Short name"
+          placeholder={suggestProjectShortName(name) || 'e.g. BTF'}
+          onChange={(e) => setShortName(e.target.value)}
+        />
+        {name.trim() && (
+          <small>
+            Task preview: ⚡️ {shortName.trim() || suggestProjectShortName(name)}
+            : Task title
+          </small>
+        )}
       </Field>
       <Field label="Project color">
         <span className="project-color-field">

@@ -289,7 +289,7 @@ export async function reconcileGoogle(
       id,
       summary: taskLabel(
         task.title,
-        projects.find((p) => p.id === task.projectId)?.name,
+        projects.find((p) => p.id === task.projectId),
       ),
       colorId: '8',
       description: await calendarDescription(task, actionLinks),

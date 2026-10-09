@@ -18,7 +18,7 @@ import {
   restoreMovedGoogleMetadata,
   calendarDescription,
 } from '../lib/google-calendar';
-import { initialWorkspace } from '../lib/model';
+import { initialWorkspace, type Project } from '../lib/model';
 import { applyAction } from '../lib/actions';
 import { plan } from '../lib/scheduler';
 import type { PendingCalendarMove } from '../lib/calendar-model';
@@ -265,6 +265,66 @@ void test('Google calendar listing follows pagination', async (t) => {
   assert.equal((await googleCalendars('test')).length, 2);
   assert.match(urls[1], /pageToken=next/);
 });
+void test('changing a project short name updates the existing calendar event without changing the task', async (t) => {
+  const workspace = applyAction(initialWorkspace(), {
+    action: 'create_task',
+    task: {
+      title: 'Build client outreach automation',
+      projectId: 'project-1',
+      source: 'Exact original input.',
+      estimateMinutes: 30,
+    },
+  }).workspace;
+  const project: Project = {
+    ...workspace.projects[0],
+    name: 'Behind The Film',
+    shortName: 'BTF',
+  };
+  const taskBefore = structuredClone(workspace.tasks[0]);
+  const blocks = plan(workspace, Date.parse('2026-09-09T14:00:00Z')).blocks;
+  const events = new Map<string, Record<string, unknown>>();
+  const methods: string[] = [];
+  t.mock.method(
+    globalThis,
+    'fetch',
+    async (_url: string, init: RequestInit = {}) => {
+      if (!init.method || init.method === 'GET')
+        return Response.json({ items: [...events.values()] });
+      methods.push(init.method);
+      const body = JSON.parse(init.body as string);
+      events.set(body.id, body);
+      return Response.json(body);
+    },
+  );
+  const sync = () =>
+    reconcileGoogle(
+      'test',
+      'primary',
+      'owner-marker',
+      blocks,
+      workspace.tasks,
+      undefined,
+      undefined,
+      [project],
+    );
+  await sync();
+  const eventId = [...events.keys()][0];
+  assert.equal(
+    events.get(eventId)?.summary,
+    '⚡️ BTF: Build client outreach automation',
+  );
+  project.shortName = 'Film';
+  await sync();
+  await sync();
+  assert.equal(events.size, 1);
+  assert.equal(
+    events.get(eventId)?.summary,
+    '⚡️ Film: Build client outreach automation',
+  );
+  assert.deepEqual(methods, ['POST', 'PUT']);
+  assert.deepEqual(workspace.tasks[0], taskBefore);
+});
+
 void test('calendar sync creates one stable event, retries without duplication, and removes only owned stale blocks', async (t) => {
   const workspace = applyAction(initialWorkspace(), {
     action: 'create_task',
