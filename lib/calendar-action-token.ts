@@ -1,10 +1,6 @@
 // Created by Cory McCabe
 import { hmac } from './calendar-security';
-import type { CalendarTaskAction } from './calendar-actions';
-
-const actions: CalendarTaskAction[] = [
-  'complete', 'postpone', 'delete', 'priority_low', 'priority_medium', 'priority_high', 'priority_top', 'push_next_week',
-];
+import { CALENDAR_TASK_ACTIONS, type CalendarTaskAction } from './calendar-actions';
 const encoder = (bytes: Uint8Array) =>
   btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 const decoder = (value: string) =>
@@ -33,7 +29,7 @@ export async function calendarActionToken(
   body.set(hex(ownerHandle), 1);
   body[13] = capture ? 1 : 2;
   body.set(id, 14);
-  body[14 + id.length] = actions.indexOf(action);
+  body[14 + id.length] = CALENDAR_TASK_ACTIONS.indexOf(action);
   new DataView(body.buffer).setBigUint64(body.length - 8, BigInt(time));
   const mac = hex((await hmac(toHex(body), secret)).slice(0, 32));
   return encoder(Uint8Array.from([...body, ...mac]));
@@ -55,7 +51,7 @@ export async function decodeCalendarActionToken(token: string, secret: string): 
   let difference = 0;
   for (let i = 0; i < 16; i++) difference |= expected[i] ^ bytes[body.length + i];
   if (difference) return null;
-  const action = actions[bytes[14 + idLength]];
+  const action = CALENDAR_TASK_ACTIONS[bytes[14 + idLength]];
   if (!action) return null;
   const timestamp = new DataView(body.buffer, body.byteOffset, body.byteLength).getBigUint64(body.length - 8);
   if (timestamp > BigInt(Number.MAX_SAFE_INTEGER)) return null;

@@ -246,7 +246,7 @@ function calendarActionInput_(parameters) {
     signature: String(parameters.signature || ''),
   };
   if (
-    !/^(complete|postpone|push_next_week|delete|priority_(low|medium|high|top))$/.test(action) ||
+    !/^(complete|add_more_time|postpone|push_next_week|delete|priority_(low|medium|high|top))$/.test(action) ||
     !/^[A-Za-z0-9_-]{1,100}$/.test(input.task) ||
     !/^[0-9TZ:._+-]{10,40}$/.test(input.stamp) ||
     !/^[a-f0-9]{64}$/.test(input.signature)

@@ -4,6 +4,7 @@ import { authenticateScheduler } from '@/lib/calendar-background';
 import { resolveActionTask } from '@/lib/calendar-action-owner';
 import {
   CALENDAR_TASK_ACTIONS,
+  addMoreTimeMutation,
   postponeUntil,
   nextWeekUntil,
   verifyCalendarTaskAction,
@@ -13,6 +14,7 @@ import { decodeCalendarActionToken } from '@/lib/calendar-action-token';
 import { syncCalendars } from '@/lib/calendar-sync';
 import { calendarConfig } from '@/lib/calendar-store';
 import { readWorkspace, mutate } from '@/lib/store';
+import { minutesLabel } from '@/lib/model';
 import { jsonBody } from '@/lib/http';
 import { InputError, object, text } from '@/lib/validation';
 
@@ -78,6 +80,9 @@ export async function POST(request: Request) {
     if (action === 'complete') {
       mutation = { action: 'complete_task', id: task.id };
       message = 'Task completed.';
+    } else if (action === 'add_more_time') {
+      mutation = addMoreTimeMutation(task);
+      message = `Added 1 hour. This task now has ${minutesLabel(task.remainingMinutes + 60)} remaining.`;
     } else if (action === 'delete') {
       mutation = { action: 'delete_task', id: task.id };
       message = 'Task moved to Trash.';

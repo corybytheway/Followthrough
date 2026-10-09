@@ -4,6 +4,8 @@ import { hmac } from './calendar-security';
 import { localDay, nextWorkDay } from './scheduler';
 import { InputError } from './validation';
 
+// Compact links store the action's index. Append new actions so existing links
+// keep their original meaning.
 export const CALENDAR_TASK_ACTIONS = [
   'complete',
   'postpone',
@@ -13,8 +15,23 @@ export const CALENDAR_TASK_ACTIONS = [
   'priority_high',
   'priority_top',
   'push_next_week',
+  'add_more_time',
 ] as const;
 export type CalendarTaskAction = (typeof CALENDAR_TASK_ACTIONS)[number];
+
+export function addMoreTimeMutation(task: Task) {
+  if (task.deletedAt || task.status === 'done' || task.status === 'archived')
+    throw new InputError('Reopen this task before adding more time.');
+  return {
+    action: 'update_task',
+    id: task.id,
+    task: {
+      estimateMinutes: task.estimateMinutes + 60,
+      remainingMinutes: task.remainingMinutes + 60,
+      expectedUpdatedAt: task.updatedAt,
+    },
+  };
+}
 
 const payload = (taskId: string, action: CalendarTaskAction, stamp: string) =>
   `${taskId}\n${action}\n${stamp}`;

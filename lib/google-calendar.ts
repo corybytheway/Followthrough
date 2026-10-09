@@ -412,6 +412,7 @@ export async function calendarDescription(
         },
       taskLinks = await Promise.all([
         link('complete', 'Complete'),
+        link('add_more_time', 'Add more time'),
         link('postpone', 'Postpone 1 day'),
         link('push_next_week', 'Push to next week'),
         link('delete', 'Delete'),
