@@ -148,10 +148,10 @@ p {
   padding: 0 5px;
 }
 .urgent {
-  color: #b65c24;
+  color: #8a7400;
 }
 .urgent[data-priority='top'] {
-  color: #b42318;
+  color: #e00000;
 }
 .small-note {
   font-size: 13px;
