@@ -149,6 +149,7 @@ p {
 }
 .urgent {
   color: #8a7400;
+  font-weight: 700;
 }
 .urgent[data-priority='top'] {
   color: #e00000;
