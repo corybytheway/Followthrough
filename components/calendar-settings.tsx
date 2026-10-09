@@ -14,18 +14,25 @@ export default function CalendarSettings() {
     [notice, setNotice] = useState('');
   const [email, setEmail] = useState(''),
     [password, setPassword] = useState('');
+  const [zohoEmail, setZohoEmail] = useState(''),
+    [zohoPassword, setZohoPassword] = useState(''),
+    [zohoServer, setZohoServer] = useState('calendar.zoho.com');
   const [googleClientId, setGoogleClientId] = useState(''),
     [googleClientSecret, setGoogleClientSecret] = useState('');
   const [selectedGoogle, setGoogle] = useState<string[]>([]),
     [selectedIcloud, setIcloud] = useState<string[]>([]),
+    [selectedZoho, setZoho] = useState<string[]>([]),
     [ignoreAllDayGoogle, setIgnoreAllDayGoogle] = useState<string[]>([]),
-    [ignoreAllDayIcloud, setIgnoreAllDayIcloud] = useState<string[]>([]);
+    [ignoreAllDayIcloud, setIgnoreAllDayIcloud] = useState<string[]>([]),
+    [ignoreAllDayZoho, setIgnoreAllDayZoho] = useState<string[]>([]);
   const accept = (next: CalendarStatus) => {
     setStatus(next);
     setGoogle(next.selectedGoogle);
     setIcloud(next.selectedIcloud);
+    setZoho(next.selectedZoho || []);
     setIgnoreAllDayGoogle(next.ignoreAllDayGoogle || []);
     setIgnoreAllDayIcloud(next.ignoreAllDayIcloud || []);
+    setIgnoreAllDayZoho(next.ignoreAllDayZoho || []);
   };
   useEffect(() => {
     let live = true;
@@ -77,13 +84,22 @@ export default function CalendarSettings() {
     }
   }
   const select = (
-    provider: 'google' | 'icloud',
+    provider: 'google' | 'icloud' | 'zoho',
     id: string,
     checked: boolean,
   ) => {
-    const update = provider === 'google' ? setGoogle : setIcloud;
+    const update =
+      provider === 'google'
+        ? setGoogle
+        : provider === 'icloud'
+          ? setIcloud
+          : setZoho;
     const updateIgnore =
-      provider === 'google' ? setIgnoreAllDayGoogle : setIgnoreAllDayIcloud;
+      provider === 'google'
+        ? setIgnoreAllDayGoogle
+        : provider === 'icloud'
+          ? setIgnoreAllDayIcloud
+          : setIgnoreAllDayZoho;
     update((values) =>
       checked ? [...values, id] : values.filter((value) => value !== id),
     );
@@ -91,12 +107,16 @@ export default function CalendarSettings() {
       updateIgnore((values) => values.filter((value) => value !== id));
   };
   const setIgnoreAllDay = (
-    provider: 'google' | 'icloud',
+    provider: 'google' | 'icloud' | 'zoho',
     id: string,
     checked: boolean,
   ) => {
     const update =
-      provider === 'google' ? setIgnoreAllDayGoogle : setIgnoreAllDayIcloud;
+      provider === 'google'
+        ? setIgnoreAllDayGoogle
+        : provider === 'icloud'
+          ? setIgnoreAllDayIcloud
+          : setIgnoreAllDayZoho;
     update((values) =>
       checked ? [...values, id] : values.filter((value) => value !== id),
     );
@@ -106,10 +126,14 @@ export default function CalendarSettings() {
     (JSON.stringify(selectedGoogle) !== JSON.stringify(status.selectedGoogle) ||
       JSON.stringify(selectedIcloud) !==
         JSON.stringify(status.selectedIcloud) ||
+      JSON.stringify(selectedZoho) !==
+        JSON.stringify(status.selectedZoho || []) ||
       JSON.stringify(ignoreAllDayGoogle) !==
         JSON.stringify(status.ignoreAllDayGoogle || []) ||
       JSON.stringify(ignoreAllDayIcloud) !==
-        JSON.stringify(status.ignoreAllDayIcloud || []));
+        JSON.stringify(status.ignoreAllDayIcloud || []) ||
+      JSON.stringify(ignoreAllDayZoho) !==
+        JSON.stringify(status.ignoreAllDayZoho || []));
   const googleAccount = status?.googleConnected
     ? status.googleCalendars.find((calendar) => calendar.primary)?.id
     : undefined;
@@ -121,7 +145,7 @@ export default function CalendarSettings() {
       <CalendarDays />
       <h2 id="calendar-heading">Calendar connections</h2>
       <p>
-        Use Google and iCloud busy times to plan your day. Task blocks go
+        Use Google, iCloud, and Zoho busy times to plan your day. Task blocks go
         directly on your primary Google calendar alongside your appointments.
       </p>
       {error && (
@@ -418,7 +442,113 @@ export default function CalendarSettings() {
               </Button>
             )}
           </div>
-          {(status.googleConnected || status.icloudConnected) && (
+          <div className="calendar-provider">
+            <div className="calendar-provider-heading">
+              <h3>Zoho Calendar</h3>
+              <span className="status-label">
+                {status.zohoConnected ? 'Connected' : 'Not connected'}
+              </span>
+            </div>
+            {!status.zohoConnected ? (
+              <form
+                className="editor-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void run(async () => {
+                    try {
+                      await action({
+                        action: 'connect_zoho',
+                        email: zohoEmail,
+                        password: zohoPassword,
+                        server: zohoServer,
+                      });
+                    } finally {
+                      setZohoPassword('');
+                    }
+                  }, 'Zoho connected. Select the calendars that should block task time.');
+                }}
+              >
+                <p className="muted">
+                  Connect the Zoho account you use in Apple Calendar or
+                  Fantastical. Followthrough reads its busy times without
+                  changing your Zoho events.
+                </p>
+                <label className="field" htmlFor="zoho-email">
+                  <span>Zoho email</span>
+                  <Input
+                    id="zoho-email"
+                    type="email"
+                    autoComplete="username"
+                    required
+                    value={zohoEmail}
+                    onChange={(e) => setZohoEmail(e.target.value)}
+                  />
+                </label>
+                <label className="field" htmlFor="zoho-password">
+                  <span>Password</span>
+                  <Input
+                    id="zoho-password"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    value={zohoPassword}
+                    onChange={(e) => setZohoPassword(e.target.value)}
+                  />
+                </label>
+                <small>
+                  With two-factor authentication, use a{' '}
+                  <a
+                    href="https://accounts.zoho.com/home#security/app_password"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Zoho app password
+                  </a>
+                  . Your password is encrypted when saved.
+                </small>
+                <details>
+                  <summary>Calendar server</summary>
+                  <label className="field" htmlFor="zoho-server">
+                    <span>Server</span>
+                    <Input
+                      id="zoho-server"
+                      required
+                      value={zohoServer}
+                      onChange={(e) => setZohoServer(e.target.value)}
+                    />
+                  </label>
+                  <small>
+                    The default is calendar.zoho.com. For another Zoho region,
+                    enter its calendar server. You can also paste the full Zoho
+                    CalDAV address. HTTPS and port 443 are automatic; no account
+                    path is required.
+                  </small>
+                </details>
+                <Button type="submit" disabled={working || !status.available}>
+                  Connect Zoho
+                </Button>
+              </form>
+            ) : (
+              <>
+                <p>{status.zohoAccount}</p>
+                <Button
+                  variant="outline"
+                  disabled={working}
+                  onClick={() =>
+                    void run(
+                      () => action({ action: 'disconnect_zoho' }),
+                      'Zoho disconnected. Sync is paused; existing Google task blocks remain.',
+                    )
+                  }
+                >
+                  Disconnect Zoho
+                </Button>
+              </>
+            )}
+          </div>
+          {(status.googleConnected ||
+            status.icloudConnected ||
+            status.zohoConnected) && (
             <>
               <div className="calendar-selection">
                 <h3>Calendars that block task time</h3>
@@ -428,30 +558,48 @@ export default function CalendarSettings() {
                   Appointments on your task calendar are always checked;
                   Followthrough ignores its own blocks.
                 </p>
-                {(['google', 'icloud'] as const).map((provider) => {
+                {(['google', 'icloud', 'zoho'] as const).map((provider) => {
                   const choices = (
                     provider === 'google'
                       ? status.googleCalendars
-                      : status.icloudCalendars
+                      : provider === 'icloud'
+                        ? status.icloudCalendars
+                        : status.zohoCalendars || []
                   ).filter(
                     (c) =>
                       status.outputOnPrimary ||
                       c.id !== status.outputCalendarId,
                   );
                   const selected =
-                    provider === 'google' ? selectedGoogle : selectedIcloud;
+                    provider === 'google'
+                      ? selectedGoogle
+                      : provider === 'icloud'
+                        ? selectedIcloud
+                        : selectedZoho;
                   const ignored =
                     provider === 'google'
                       ? ignoreAllDayGoogle
-                      : ignoreAllDayIcloud;
+                      : provider === 'icloud'
+                        ? ignoreAllDayIcloud
+                        : ignoreAllDayZoho;
                   return choices.length ? (
                     <fieldset key={provider}>
                       <legend>
-                        {provider === 'google' ? 'Google' : 'iCloud'}
+                        {provider === 'google'
+                          ? 'Google'
+                          : provider === 'icloud'
+                            ? 'iCloud'
+                            : 'Zoho'}
                         {provider === 'google' && googleAccount && (
                           <span className="calendar-account">
                             {' '}
                             ({googleAccount})
+                          </span>
+                        )}
+                        {provider === 'zoho' && status.zohoAccount && (
+                          <span className="calendar-account">
+                            {' '}
+                            ({status.zohoAccount})
                           </span>
                         )}
                       </legend>
@@ -510,8 +658,10 @@ export default function CalendarSettings() {
                           action: 'save_selection',
                           selectedGoogle,
                           selectedIcloud,
+                          selectedZoho,
                           ignoreAllDayGoogle,
                           ignoreAllDayIcloud,
+                          ignoreAllDayZoho,
                         });
                         if (status.syncEnabled)
                           await action({ action: 'sync' });

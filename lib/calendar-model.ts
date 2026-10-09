@@ -13,16 +13,20 @@ export type CalendarCredentials = {
     scopes?: string[];
   };
   icloud?: { username: string; password: string };
+  zoho?: { username: string; password: string; serverUrl: string };
   oauth?: { stateHash: string; verifier: string; expiresAt: number };
 };
 export type CalendarConnection = {
   marker: string;
   googleCalendars: CalendarChoice[];
   icloudCalendars: CalendarChoice[];
+  zohoCalendars: CalendarChoice[];
   selectedGoogle: string[];
   selectedIcloud: string[];
+  selectedZoho: string[];
   ignoreAllDayGoogle: string[];
   ignoreAllDayIcloud: string[];
+  ignoreAllDayZoho: string[];
   outputCalendarId: string | null;
   outputOnPrimary?: boolean;
   outputCalendarName?: string;
@@ -43,6 +47,8 @@ export type CalendarStatus = CalendarConnection & {
   googleAppManaged: boolean;
   googleConnected: boolean;
   icloudConnected: boolean;
+  zohoConnected: boolean;
+  zohoAccount?: string;
   callbackUrl: string;
 };
 export function emptyCalendarConnection(): CalendarConnection {
@@ -50,10 +56,13 @@ export function emptyCalendarConnection(): CalendarConnection {
     marker: crypto.randomUUID(),
     googleCalendars: [],
     icloudCalendars: [],
+    zohoCalendars: [],
     selectedGoogle: [],
     selectedIcloud: [],
+    selectedZoho: [],
     ignoreAllDayGoogle: [],
     ignoreAllDayIcloud: [],
+    ignoreAllDayZoho: [],
     outputCalendarId: null,
     syncEnabled: false,
     lastSync: null,

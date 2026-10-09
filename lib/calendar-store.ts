@@ -44,6 +44,9 @@ export async function readCalendar(owner: string): Promise<{
     ? {
         connection: {
           ...stored!,
+          zohoCalendars: stored!.zohoCalendars || [],
+          selectedZoho: stored!.selectedZoho || [],
+          ignoreAllDayZoho: stored!.ignoreAllDayZoho || [],
           ignoreAllDayGoogle: stored!.ignoreAllDayGoogle || [],
           ignoreAllDayIcloud: stored!.ignoreAllDayIcloud || [],
         },
@@ -87,6 +90,8 @@ export async function calendarStatus(owner: string): Promise<CalendarStatus> {
     googleAppManaged: !!sharedApp,
     googleConnected: !!credentials.google?.refreshToken,
     icloudConnected: !!credentials.icloud,
+    zohoConnected: !!credentials.zoho,
+    zohoAccount: credentials.zoho?.username,
     callbackUrl: callbackUrl(),
   };
 }
@@ -102,6 +107,7 @@ export async function calendarFlags(owner: string) {
   return {
     google: !!connection?.googleCalendars.length,
     icloud: !!connection?.icloudCalendars.length,
+    zoho: !!connection?.zohoCalendars?.length,
     background:
       !!connection?.syncEnabled &&
       backgroundConfigured(calendarConfig(), owner) &&

@@ -10,6 +10,7 @@ import {
   restoreMovedGoogleMetadata,
 } from './google-calendar';
 import { icloudBusy } from './icloud-calendar';
+import { zohoBusy } from './zoho-calendar';
 import {
   calendarConfig,
   readCalendar,
@@ -78,7 +79,11 @@ export async function syncCalendars(
         throw new InputError(
           'Reconnect iCloud before syncing selected calendars.',
         );
-      // Both providers must succeed before availability is replaced or task events move.
+      if (connection.selectedZoho.length && !credentials.zoho)
+        throw new InputError(
+          'Reconnect Zoho before syncing selected calendars.',
+        );
+      // Every selected provider must succeed before availability or task events move.
       const google = access
         ? await googleBusy(
             access,
@@ -113,6 +118,16 @@ export async function syncCalendars(
             end,
             initial.workspace.settings.timeZone,
             new Set(connection.ignoreAllDayIcloud),
+          )
+        : [];
+      const zoho = credentials.zoho
+        ? await zohoBusy(
+            credentials.zoho,
+            connection.selectedZoho,
+            start,
+            end,
+            initial.workspace.settings.timeZone,
+            new Set(connection.ignoreAllDayZoho),
           )
         : [];
       if (
@@ -175,6 +190,7 @@ export async function syncCalendars(
       const saved = await saveCalendarAvailability(owner, [
         ...google,
         ...icloud,
+        ...zoho,
       ]);
       let written = 0;
       if (access && connection.outputCalendarId) {
@@ -215,7 +231,10 @@ export async function syncCalendars(
         connection.lastBackgroundSync = connection.lastSync;
       connection.lastError = null;
       await saveCalendar(owner, connection, credentials);
-      return { written, busyPeriods: google.length + icloud.length };
+      return {
+        written,
+        busyPeriods: google.length + icloud.length + zoho.length,
+      };
     } catch (error) {
       connection.lastError =
         error instanceof InputError

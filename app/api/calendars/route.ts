@@ -16,6 +16,7 @@ import {
   GOOGLE_SCOPES,
 } from '@/lib/google-calendar';
 import { icloudCalendars } from '@/lib/icloud-calendar';
+import { zohoCalendars, zohoServer } from '@/lib/zoho-calendar';
 import { randomToken, hash, pkceChallenge } from '@/lib/calendar-security';
 import { readWorkspace, saveCalendarAvailability } from '@/lib/store';
 import { syncCalendars } from '@/lib/calendar-sync';
@@ -120,6 +121,35 @@ export async function POST(request: Request) {
           connection.syncEnabled = false;
           break;
         }
+        case 'connect_zoho': {
+          const username = text(input.email, 'Zoho email', 300, true);
+          text(input.password, 'Zoho password', 300, true);
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username))
+            throw new InputError('Enter your Zoho account email.');
+          const secret = {
+            username,
+            password: input.password as string,
+            serverUrl: zohoServer(
+              text(
+                input.server || 'calendar.zoho.com',
+                'Zoho calendar server',
+                2000,
+                true,
+              ),
+            ),
+          };
+          const calendars = await zohoCalendars(secret);
+          if (!calendars.length)
+            throw new InputError(
+              'No Zoho calendars were found. Enable them in Zoho Calendar → Settings → Synchronize → CalDAV.',
+            );
+          connection.zohoCalendars = calendars;
+          credentials.zoho = secret;
+          connection.selectedZoho = [];
+          connection.ignoreAllDayZoho = [];
+          connection.lastSync = null;
+          break;
+        }
         case 'refresh_calendars': {
           if (credentials.google?.refreshToken)
             connection.googleCalendars = calendarChoices(
@@ -129,6 +159,8 @@ export async function POST(request: Request) {
             connection.icloudCalendars = await icloudCalendars(
               credentials.icloud,
             );
+          if (credentials.zoho)
+            connection.zohoCalendars = await zohoCalendars(credentials.zoho);
           connection.ignoreAllDayGoogle = connection.ignoreAllDayGoogle.filter(
             (id) =>
               connection.googleCalendars.some((calendar) => calendar.id === id),
@@ -137,14 +169,23 @@ export async function POST(request: Request) {
             (id) =>
               connection.icloudCalendars.some((calendar) => calendar.id === id),
           );
+          connection.ignoreAllDayZoho = connection.ignoreAllDayZoho.filter(
+            (id) =>
+              connection.zohoCalendars.some((calendar) => calendar.id === id),
+          );
           break;
         }
         case 'save_selection': {
           for (const [key, choices, max] of [
             ['selectedGoogle', connection.googleCalendars, 50],
             ['selectedIcloud', connection.icloudCalendars, 20],
+            ['selectedZoho', connection.zohoCalendars, 20],
           ] as const) {
-            const value = input[key];
+            // Older clients must preserve selections for the newly added provider.
+            const value =
+              key === 'selectedZoho' && input[key] === undefined
+                ? connection[key]
+                : input[key];
             if (
               !Array.isArray(value) ||
               value.length > max ||
@@ -172,6 +213,7 @@ export async function POST(request: Request) {
           for (const [key, selected] of [
             ['ignoreAllDayGoogle', connection.selectedGoogle],
             ['ignoreAllDayIcloud', connection.selectedIcloud],
+            ['ignoreAllDayZoho', connection.selectedZoho],
           ] as const) {
             const value =
               input[key] === undefined
@@ -208,9 +250,14 @@ export async function POST(request: Request) {
           connection.syncEnabled = false;
           break;
         case 'disconnect_google':
-        case 'disconnect_icloud': {
+        case 'disconnect_icloud':
+        case 'disconnect_zoho': {
           const provider =
-            input.action === 'disconnect_google' ? 'google' : 'icloud';
+            input.action === 'disconnect_google'
+              ? 'google'
+              : input.action === 'disconnect_icloud'
+                ? 'icloud'
+                : 'zoho';
           connection.syncEnabled = false;
           if (provider === 'google') {
             delete credentials.google;
@@ -218,11 +265,16 @@ export async function POST(request: Request) {
             connection.googleCalendars = [];
             connection.selectedGoogle = [];
             connection.ignoreAllDayGoogle = [];
-          } else {
+          } else if (provider === 'icloud') {
             delete credentials.icloud;
             connection.icloudCalendars = [];
             connection.selectedIcloud = [];
             connection.ignoreAllDayIcloud = [];
+          } else {
+            delete credentials.zoho;
+            connection.zohoCalendars = [];
+            connection.selectedZoho = [];
+            connection.ignoreAllDayZoho = [];
           }
           await saveCalendarAvailability(
             owner,

@@ -96,6 +96,7 @@ const empty: Snapshot = {
     ai: false,
     google: false,
     icloud: false,
+    zoho: false,
     background: false,
     email: { connected: false, address: '', allowedSenders: [] },
     emailSetupAvailable: false,
@@ -1040,7 +1041,9 @@ export default function FollowthroughApp({
                   Block busy time
                 </Button>
                 <p className="calendar-note">
-                  {state.integrations.google || state.integrations.icloud
+                  {state.integrations.google ||
+                  state.integrations.icloud ||
+                  state.integrations.zoho
                     ? 'Manage selected calendars and sync status in Settings.'
                     : 'Connect calendars to avoid appointments automatically.'}
                 </p>

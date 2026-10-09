@@ -78,7 +78,7 @@ export type BusyEvent = {
   title: string;
   start: string;
   end: string;
-  source: 'manual' | 'google' | 'icloud';
+  source: 'manual' | 'google' | 'icloud' | 'zoho';
 };
 export type Block = {
   id: string;
@@ -119,6 +119,7 @@ export type Snapshot = Workspace & {
     ai: boolean;
     google: boolean;
     icloud: boolean;
+    zoho: boolean;
     background: boolean;
     email: {
       connected: boolean;
