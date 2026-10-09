@@ -80,9 +80,8 @@ export function plan(
   };
   const ranks = { top: 0, high: 1, medium: 2, low: 3 };
   const compareTasks = (a: Task, b: Task) =>
-    Number(b.priority === 'top') - Number(a.priority === 'top') ||
-    (a.dueDate || '9999').localeCompare(b.dueDate || '9999') ||
     ranks[a.priority] - ranks[b.priority] ||
+    (a.dueDate || '9999').localeCompare(b.dueDate || '9999') ||
     a.createdAt.localeCompare(b.createdAt) ||
     a.id.localeCompare(b.id);
   const highestRankedTaskId = w.tasks

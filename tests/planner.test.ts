@@ -273,6 +273,40 @@ await test('priority resolves ordering when deadlines are equal', () => {
   );
   assert.equal(plan(w, NOW).blocks[0].taskId, w.tasks[1].id);
 });
+void test('priority takes precedence over earlier deadlines across all four levels', () => {
+  const w = example(30);
+  const low = w.tasks[0];
+  low.priority = 'low';
+  low.dueDate = '2026-09-01';
+  const medium = taskInput({ title: 'Normal dated task', estimateMinutes: 30, priority: 'medium', dueDate: '2026-09-08' }, w);
+  const high = taskInput({ title: 'High undated task', estimateMinutes: 30, priority: 'high' }, w);
+  const top = taskInput({ title: 'Top undated task', estimateMinutes: 30, priority: 'top' }, w);
+  w.tasks.push(medium, high, top);
+  assert.deepEqual(plan(w, NOW).blocks.map((block) => block.taskId), [top.id, high.id, medium.id, low.id]);
+});
+void test('deadlines determine order within the same priority', () => {
+  const w = example(30);
+  const undated = w.tasks[0];
+  undated.priority = 'high';
+  const later = taskInput({ title: 'Later high task', estimateMinutes: 30, priority: 'high', dueDate: '2026-09-10' }, w);
+  const earlier = taskInput({ title: 'Earlier high task', estimateMinutes: 30, priority: 'high', dueDate: '2026-09-08' }, w);
+  w.tasks.push(later, earlier);
+  assert.deepEqual(plan(w, NOW).blocks.map((block) => block.taskId), [earlier.id, later.id, undated.id]);
+});
+void test('promoting an undated task preempts a normal task already in progress', () => {
+  const w = example(60);
+  const normal = w.tasks[0];
+  normal.dueDate = '2026-09-08';
+  const promoted = taskInput({ title: 'Newly promoted task', estimateMinutes: 30, priority: 'low' }, w);
+  w.tasks.push(promoted);
+  w.blocks = plan(w, NOW).blocks;
+  const during = Date.parse(w.blocks[0].start) + 60_000;
+  const changed = applyAction(w, { action: 'update_task', id: promoted.id, task: { priority: 'high' } }).workspace;
+  const updated = plan(changed, during);
+  assert.equal(updated.blocks[0].taskId, promoted.id);
+  assert.ok(updated.blocks[0].start > w.blocks[0].start);
+  assert.equal(normal.remainingMinutes, 60);
+});
 await test('DST and excluded work days use the selected local time zone', () => {
   const w = example(60);
   w.settings.workDays = [1];

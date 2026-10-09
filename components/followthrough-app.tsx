@@ -64,6 +64,7 @@ import {
   type Task,
 } from '@/lib/model';
 import { localDay } from '@/lib/scheduler';
+import { createPlanRefresh, PLAN_REFRESH_INTERVAL } from '@/lib/plan-refresh';
 import {
   completedTaskComparator,
   scheduledTaskComparator,
@@ -216,15 +217,16 @@ export default function FollowthroughApp({
     });
   }, []);
   const accept = useCallback((next: Snapshot) => {
-    flushSync(() => setState(next));
+    if (next.revision < stateRef.current.revision) return;
     stateRef.current = next;
+    flushSync(() => setState(next));
   }, []);
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (canAccept: () => boolean = () => true) => {
     const response = await fetch('/api/workspace', { cache: 'no-store' }),
       data = (await response.json()) as Snapshot & { error?: string };
     if (!response.ok)
       throw new Error(data.error || 'Could not load your plan.');
-    accept(data);
+    if (canAccept()) accept(data);
     return data as Snapshot;
   }, [accept]);
   const commit = useCallback<Commit>(
@@ -234,6 +236,7 @@ export default function FollowthroughApp({
       busyRef.current = true;
       setSaving(true);
       setError('');
+      let changed = false;
       try {
         const requestId =
           typeof action.requestId === 'string'
@@ -256,6 +259,7 @@ export default function FollowthroughApp({
           };
           if (response.ok) {
             accept(data.state);
+            changed = true;
             return data.result;
           }
           if (response.status === 409 && attempt < 2) {
@@ -271,6 +275,8 @@ export default function FollowthroughApp({
       } finally {
         busyRef.current = false;
         setSaving(false);
+        if (changed)
+          window.dispatchEvent(new Event('followthrough-workspace-change'));
       }
     },
     [accept, refresh],
@@ -278,7 +284,7 @@ export default function FollowthroughApp({
   useEffect(() => {
     let live = true;
     refresh()
-      .then(async (next) => {
+      .then((next) => {
         if (!live) return;
         const location = new URL(window.location.href),
           calendarResult = location.searchParams.get('calendar'),
@@ -316,7 +322,6 @@ export default function FollowthroughApp({
 
         setDay(localDay(Date.now(), next.settings.timeZone));
         setLoaded(true);
-        if (next.tasks.length) await commit({ action: 'replan' });
       })
       .catch((e) => {
         if (live) setError(e.message);
@@ -324,7 +329,7 @@ export default function FollowthroughApp({
     return () => {
       live = false;
     };
-  }, [refresh, commit]);
+  }, [refresh]);
   useEffect(() => {
     if (!loaded) return;
     const location = new URL(window.location.href);
@@ -379,50 +384,56 @@ export default function FollowthroughApp({
   }, [loaded, navigateToTab]);
   useEffect(() => {
     if (!loaded) return;
-    const update = () => {
-      if (document.hidden || busyRef.current) return;
-      void fetch('/api/calendars', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'sync' }),
-      })
-        .then(async (response) => {
-          if (response.status === 409) return null;
-          if (!response.ok) {
-            const data = (await response.json()) as { error?: string };
-            setError(
-              data.error || 'Calendar sync needs attention in Settings.',
-            );
-            return null;
-          }
-          return refresh();
-        })
-        .then((next) => {
-          if (
-            next &&
-            !busyRef.current &&
-            next.tasks.some((task) => task.status === 'ready')
-          )
-            return commit({ action: 'replan' });
-        })
-        .catch(() => {});
+    let live = true;
+    const canRun = () =>
+      live &&
+      !document.hidden &&
+      !busyRef.current &&
+      completingRef.current.size === 0;
+    const updates = createPlanRefresh({
+      canRun,
+      refresh: () => refresh(canRun),
+      syncCalendars: async () => {
+        const response = await fetch('/api/calendars', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'sync' }),
+        });
+        // An existing background sync will publish its result; keep reading
+        // the workspace even while that operation holds the calendar lock.
+        if (response.status === 409) return;
+        if (!response.ok) {
+          const data = (await response.json()) as { error?: string };
+          throw new Error(
+            data.error || 'Calendar sync needs attention in Settings.',
+          );
+        }
+      },
+      onError: (error) =>
+        setError(
+          error instanceof Error ? error.message : 'Could not update your plan.',
+        ),
+    });
+    const changed = () => updates.changed();
+    const visible = () => {
+      if (!document.hidden) updates.changed();
     };
-    const afterCalendarChange = () => {
-      void refresh().catch(() => {});
-    };
-    window.addEventListener('followthrough-calendar-sync', afterCalendarChange);
-    update();
-    const timer = setInterval(update, 60_000);
-    window.addEventListener('focus', update);
+    window.addEventListener('followthrough-calendar-sync', changed);
+    window.addEventListener('followthrough-workspace-change', changed);
+    window.addEventListener('focus', changed);
+    document.addEventListener('visibilitychange', visible);
+    updates.tick();
+    const timer = setInterval(() => updates.tick(), PLAN_REFRESH_INTERVAL);
     return () => {
+      live = false;
+      updates.stop();
       clearInterval(timer);
-      window.removeEventListener('focus', update);
-      window.removeEventListener(
-        'followthrough-calendar-sync',
-        afterCalendarChange,
-      );
+      window.removeEventListener('followthrough-calendar-sync', changed);
+      window.removeEventListener('followthrough-workspace-change', changed);
+      window.removeEventListener('focus', changed);
+      document.removeEventListener('visibilitychange', visible);
     };
-  }, [loaded, commit, refresh]);
+  }, [loaded, refresh]);
   useEffect(() => {
     const context = (
       document as Document & {
@@ -921,27 +932,14 @@ export default function FollowthroughApp({
                 )}
                 <p className="small-note">
                   {state.integrations.background
-                    ? 'Unfinished tasks are replanned every minute, even when Followthrough is closed.'
-                    : 'The plan updates every minute while Followthrough is open.'}
-                  Check off completed work or adjust its remaining time.
+                    ? 'Your plan updates automatically. Calendar changes are checked every minute, even when Followthrough is closed.'
+                    : 'Your plan updates automatically while Followthrough is open.'}
+                  {' '}Check off completed work or adjust its remaining time.
                 </p>
               </section>
               <aside className="schedule-panel">
                 <div className="section-heading">
                   <h2>Your day</h2>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Replan tasks"
-                    disabled={saving}
-                    onClick={() =>
-                      void commit({ action: 'replan' })
-                        .then(() => setNotice('Your plan is up to date.'))
-                        .catch(() => {})
-                    }
-                  >
-                    <RotateCcw />
-                  </Button>
                 </div>
                 <div className="day-picker">
                   <Button
@@ -1393,6 +1391,7 @@ function TaskEditor({
     [localError, setLocalError] = useState('');
   const [regeneratingTitle, setRegeneratingTitle] = useState(false),
     [titleNotice, setTitleNotice] = useState('');
+  const [expectedUpdatedAt] = useState(initial.updatedAt);
 
   async function regenerateTitle() {
     if (!initial.id || !initial.source?.trim()) return;
@@ -1451,7 +1450,7 @@ function TaskEditor({
           notBefore: start || null,
           splittable,
           blockers,
-          expectedUpdatedAt: initial.updatedAt,
+          expectedUpdatedAt,
         },
         saveId,
       );
