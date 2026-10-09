@@ -198,6 +198,72 @@ void test('Zoho reads fail closed on authentication errors and keep private cred
   await assert.rejects(unseal(sealed, 'e'.repeat(64), 'owner-b'));
 });
 
+void test('Zoho discovers a non-redirecting endpoint and reads event references without treating the collection as an event', async (t) => {
+  const reads: string[] = [];
+  let denyEventRead = false;
+  const meeting = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\n${event('check-in', 'DTSTART;TZID=America/Chicago:20261009T170000\r\nDTEND;TZID=America/Chicago:20261009T173000')}\r\nEND:VCALENDAR`;
+  t.mock.method(globalThis, 'fetch', async (url: URL, init: RequestInit) => {
+    assert.equal(url.origin, server);
+    assert.match(
+      new Headers(init.headers).get('authorization') || '',
+      /^Basic /,
+    );
+    const body = String(init.body || '');
+    if (url.pathname === '/')
+      throw new Error('The Zoho web-app root does not support CalDAV');
+    if ((init.method || 'GET') === 'GET' && url.pathname.endsWith('meeting.ics')) {
+      reads.push(url.href);
+      return new Response(meeting, {
+        status: denyEventRead ? 401 : 200,
+        headers: { 'Content-Type': 'text/calendar' },
+      });
+    }
+    if (url.pathname === '/.well-known/caldav') {
+      if (!body.includes('current-user-principal'))
+        return new Response('<html/>');
+      return xml(
+        '/.well-known/caldav',
+        '<d:current-user-principal><d:href>/caldav/account/user/</d:href></d:current-user-principal>',
+      );
+    }
+    if (body.includes('calendar-home-set'))
+      return xml(
+        '/caldav/account/user/',
+        '<c:calendar-home-set><d:href>/caldav/account/</d:href></c:calendar-home-set>',
+      );
+    if (body.includes('supported-report-set'))
+      return xml(
+        '/caldav/account/events/',
+        '<d:supported-report-set><d:supported-report><d:report><c:calendar-query/></d:report></d:supported-report></d:supported-report-set>',
+      );
+    if (init.method === 'REPORT')
+      return new Response(
+        `<d:multistatus xmlns:d="DAV:"><d:response><d:href>/caldav/account/events/</d:href><d:propstat><d:prop/><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response><d:response><d:href>/caldav/account/events/meeting.ics</d:href><d:propstat><d:prop><d:getetag>v1</d:getetag></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`,
+        { status: 207, headers: { 'Content-Type': 'application/xml' } },
+      );
+    return xml(
+      '/caldav/account/events/',
+      '<d:displayname>TGS</d:displayname><d:resourcetype><d:collection/><c:calendar/></d:resourcetype><c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>',
+    );
+  });
+  const busy = await zohoBusy(
+    secret,
+    [calendarId],
+    start,
+    end,
+    'America/Chicago',
+  );
+  assert.equal(busy.length, 1);
+  assert.equal(busy[0].start, '2026-10-09T22:00:00.000Z');
+  assert.equal(busy[0].end, '2026-10-09T22:30:00.000Z');
+  assert.deepEqual(reads, [calendarId + 'meeting.ics']);
+  denyEventRead = true;
+  await assert.rejects(
+    zohoBusy(secret, [calendarId], start, end, 'America/Chicago'),
+    /Zoho could not sign in/,
+  );
+});
+
 void test('Zoho all-day filtering preserves timed bookings and date boundaries across daylight saving', async () => {
   const data = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\n${event('day', 'DTSTART;VALUE=DATE:20261101\r\nDTEND;VALUE=DATE:20261102')}\r\n${event('expanded-repeat', 'RECURRENCE-ID:20261102T160000Z\r\nDTSTART:20261102T160000Z\r\nDTEND:20261102T170000Z')}\r\nEND:VCALENDAR`;
   const args = [

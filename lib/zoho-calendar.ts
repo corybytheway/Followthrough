@@ -1,5 +1,5 @@
 // Created by Cory McCabe
-import { createDAVClient } from 'tsdav';
+import { createDAVClient, getBasicAuthHeaders } from 'tsdav';
 import type { CalendarChoice, CalendarCredentials } from './calendar-model';
 import type { BusyEvent } from './model';
 import { expandedCaldavBusy } from './caldav-events';
@@ -84,8 +84,12 @@ export function zohoFetch(serverUrl: string): typeof fetch {
 }
 type Secret = NonNullable<CalendarCredentials['zoho']>;
 async function zohoClient(secret: Secret) {
+  const server = zohoUrl(secret.serverUrl);
+  // Zoho serves principal discovery at this endpoint without an HTTP redirect.
+  // Its web-app root does not implement PROPFIND.
+  if (server.pathname === '/') server.pathname = '/.well-known/caldav';
   return createDAVClient({
-    serverUrl: zohoUrl(secret.serverUrl).href,
+    serverUrl: server.href,
     credentials: { username: secret.username, password: secret.password },
     authMethod: 'Basic',
     defaultAccountType: 'caldav',
@@ -127,16 +131,36 @@ export async function zohoBusy(
       timeRange: { start, end },
       expand: true,
       useMultiGet: false,
-      urlFilter: () => true,
+      // Zoho also returns the calendar collection itself in query results.
+      urlFilter: (url) => zohoUrl(url, origin).href !== id,
     });
+    if (objects.length > 2000)
+      throw new InputError(
+        'This Zoho calendar has too many events to sync safely.',
+      );
     for (const object of objects) {
-      if (typeof object.data !== 'string')
+      let data = object.data;
+      // Zoho may return only an href and etag, even when calendar-data is
+      // requested. Read that resource rather than treating it as free time.
+      if (data === undefined) {
+        const response = await zohoFetch(secret.serverUrl)(
+          zohoUrl(object.url, origin),
+          {
+            headers: {
+              ...getBasicAuthHeaders(secret),
+              Accept: 'text/calendar',
+            },
+          },
+        );
+        data = await response.text();
+      }
+      if (typeof data !== 'string')
         throw new InputError(
           'Zoho returned an unreadable event. Sync stopped.',
         );
       busy.push(
         ...(await expandedCaldavBusy(
-          object.data,
+          data,
           id,
           start,
           end,
