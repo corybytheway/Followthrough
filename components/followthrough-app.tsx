@@ -899,7 +899,7 @@ export default function FollowthroughApp({
                   </div>
                 </div>
                 <div className="section-heading">
-                  <h2>These are your tasks prioritized</h2>
+                  <h2>Followthrough on these first</h2>
                   <span>
                     {availableToday.length}{' '}
                     {availableToday.length === 1 ? 'task' : 'tasks'}
