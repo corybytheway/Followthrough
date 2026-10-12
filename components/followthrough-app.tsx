@@ -854,7 +854,6 @@ export default function FollowthroughApp({
                 <p className="eyebrow">
                   {state.currentDate ? dayLabel(state.currentDate) : ''}
                 </p>
-                <h1>Your next move.</h1>
               </div>
               <span className="date-label">
                 {state.settings.timeZone.replace('_', ' ')}
@@ -879,13 +878,13 @@ export default function FollowthroughApp({
             <div className="workspace-grid">
               <section>
                 <div className="capture-panel">
-                  <label htmlFor="capture">What needs doing?</label>
+                  <label htmlFor="capture">What do you need to do?</label>
                   <textarea
                     id="capture"
                     maxLength={8000}
                     value={source}
                     onChange={(e) => setSource(e.target.value)}
-                    placeholder="Fix the booking button, check it on mobile, and publish by Friday."
+                    placeholder="I need to reply to Samuel's email, edit a view that'll take 4 hours, but the top priority is fix the faucet leak downstairs which should take about 1.5 hours."
                   />
                   <div className="capture-footer">
                     <span>One request. Every independent outcome.</span>
@@ -900,7 +899,7 @@ export default function FollowthroughApp({
                   </div>
                 </div>
                 <div className="section-heading">
-                  <h2>Ready when you are</h2>
+                  <h2>These are your tasks prioritized</h2>
                   <span>
                     {availableToday.length}{' '}
                     {availableToday.length === 1 ? 'task' : 'tasks'}
