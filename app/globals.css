@@ -450,6 +450,9 @@ a:focus-visible {
   .capture-panel {
     padding: 20px;
   }
+  .capture-panel textarea {
+    min-height: 192px;
+  }
   .capture-footer > span {
     max-width: 130px;
   }
