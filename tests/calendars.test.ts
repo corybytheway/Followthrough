@@ -559,6 +559,50 @@ void test('calendar descriptions bind action URLs to a private owner handle', as
   assert.ok(!description.includes('owner_id='));
 });
 
+void test('long email input leaves all calendar actions visible without changing the original', async () => {
+  const source = 'Email subject: Review the proposal\n' + 'Previous email history.\n'.repeat(400);
+  const task = {
+    id: 'capture_' + 'b'.repeat(64),
+    updatedAt: '2026-10-13T12:00:00.000Z',
+    priority: 'high' as const,
+    source,
+    steps: [{ id: 'review', title: 'Review the proposal', done: false }],
+  };
+  for (const handle of [undefined, 'a'.repeat(24)]) {
+    const description = await calendarDescription(task, {
+      baseUrl: 'https://followthrough-actions.corybytheway.chatgpt.site/action',
+      secret: 'c'.repeat(64), handle,
+    });
+    assert.ok(description.length < 6000);
+    assert.ok(description.includes('Original input: Email subject: Review the proposal<br>'));
+    assert.ok(description.includes('Shortened for calendar. Full original input is in Followthrough.'));
+    for (const label of ['Complete', 'Add more time', 'Postpone 1 day', 'Push to next week', 'Delete', 'Low', 'Medium', 'High', 'Top'])
+      assert.ok(description.includes(`>${label}</a>`));
+    assert.ok(description.endsWith('>Manage task and follow through</a>'));
+    assert.equal(task.source, source);
+  }
+});
+
+void test('calendar input previews safely bound escaped text, line breaks, and emoji', async () => {
+  for (const source of ['&<>"\n'.repeat(2000), '\n'.repeat(10000), 'x'.repeat(1199) + '🚀' + 'history'.repeat(300)]) {
+    const description = await calendarDescription({
+      id: 'task-1', updatedAt: '2026-10-13T12:00:00.000Z', priority: 'medium', source, steps: [],
+    });
+    assert.ok(description.length < 2500);
+    assert.ok(description.includes('Shortened for calendar. Full original input is in Followthrough.'));
+    assert.ok(description.endsWith('>Manage task and follow through</a>'));
+    assert.ok(!description.includes('\uD83D'));
+    const original = description.split('Original input: ')[1].split('…<br><i>')[0];
+    assert.ok(!/&(?:amp|lt|gt|quot)?$/.test(original));
+  }
+  const source = 'x'.repeat(1200);
+  const description = await calendarDescription({
+    id: 'task-1', updatedAt: '2026-10-13T12:00:00.000Z', priority: 'medium', source, steps: [],
+  });
+  assert.ok(description.includes('Original input: ' + source));
+  assert.ok(!description.includes('Shortened for calendar.'));
+});
+
 void test('short task references resolve uniquely while old full links still work', () => {
   const workspace = initialWorkspace();
   const task = applyAction(workspace, { action: 'create_task', task: { title: 'Write brief' } }).workspace.tasks[0];

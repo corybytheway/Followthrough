@@ -378,6 +378,18 @@ export async function calendarDescription(
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  // Calendar clients can cut off long descriptions. Bound both the excerpt
+  // and its HTML expansion so email history leaves room for every action.
+  const source = (task.source || '').replace(/\r\n/g, '\n');
+  let originalInput = '', sourceLength = 0;
+  for (const character of source) {
+    const html = character === '\n' ? '<br>' : escape(character);
+    if (sourceLength + character.length > 1200 || originalInput.length + html.length > 2000) break;
+    originalInput += html;
+    sourceLength += character.length;
+  }
+  if (sourceLength < source.length)
+    originalInput += '…<br><i>Shortened for calendar. Full original input is in Followthrough.</i>';
   const steps = task.steps.slice(0, 5);
   const suggested = steps.length
     ? '<br>' +
@@ -429,7 +441,7 @@ export async function calendarDescription(
     '<b>Suggested steps</b>' +
     suggested +
     '<br><br>Original input: ' +
-    escape(task.source || '').replace(/\r?\n/g, '<br>') +
+    originalInput +
     actions +
     `<a href="https://followthrough.corybytheway.chatgpt.site/tasks?task=${encodeURIComponent(taskReference(task.id))}">Manage task and follow through</a>`
   );
