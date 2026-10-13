@@ -17,6 +17,7 @@ import { readWorkspace, mutate } from '@/lib/store';
 import { minutesLabel } from '@/lib/model';
 import { jsonBody } from '@/lib/http';
 import { InputError, object, text } from '@/lib/validation';
+import { codexHandoff } from '@/lib/codex-handoff';
 
 export const dynamic = 'force-dynamic';
 const responseHeaders = { 'Cache-Control': 'no-store' };
@@ -75,6 +76,9 @@ export async function POST(request: Request) {
         ),
         { status: 409 },
       );
+
+    if (action === 'send_codex')
+      return Response.json({ ok: true, handoff: codexHandoff(current.workspace, task) }, { headers: responseHeaders });
 
     let mutation: Record<string, unknown>, message: string;
     if (action === 'complete') {

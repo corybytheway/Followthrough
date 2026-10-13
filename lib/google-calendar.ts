@@ -423,6 +423,7 @@ export async function calendarDescription(
           return `<a href="${baseUrl}?${query}">${label}</a>`;
         },
       taskLinks = await Promise.all([
+        link('send_codex', 'Send to Codex'),
         link('complete', 'Complete'),
         link('add_more_time', 'Add more time'),
         link('postpone', 'Postpone 1 day'),

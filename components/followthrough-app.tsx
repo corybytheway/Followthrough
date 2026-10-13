@@ -1394,6 +1394,29 @@ function TaskEditor({
   const [regeneratingTitle, setRegeneratingTitle] = useState(false),
     [titleNotice, setTitleNotice] = useState('');
   const [expectedUpdatedAt] = useState(initial.updatedAt);
+  const [preparingCodex, setPreparingCodex] = useState(false);
+  async function sendToCodex() {
+    const current = [title, projectId, notes, steps, estimate, remaining, priority, status, due, start, splittable, blockers];
+    const saved = [initial.title || '', initial.projectId || '', initial.notes || '', initial.steps || [], initial.estimateMinutes || 30, initial.remainingMinutes || initial.estimateMinutes || 30, initial.priority || 'medium', initial.status || 'ready', initial.dueDate || '', initial.notBefore || '', initial.splittable !== false, initial.blockers || []];
+    if (JSON.stringify(current) !== JSON.stringify(saved)) {
+      setLocalError('Save your changes before sending this task to Codex.');
+      return;
+    }
+    setPreparingCodex(true);
+    setLocalError('');
+    try {
+      const response = await fetch('/api/codex/handoff', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: initial.id, expectedUpdatedAt }),
+      });
+      const result = (await response.json()) as { error?: string; handoffUrl?: string };
+      if (!response.ok || !result.handoffUrl) throw new Error(result.error || 'Could not prepare the Codex handoff.');
+      window.location.assign(result.handoffUrl);
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : 'Could not send to Codex.');
+      setPreparingCodex(false);
+    }
+  }
 
   async function regenerateTitle() {
     if (!initial.id || !initial.source?.trim()) return;
@@ -1497,6 +1520,13 @@ function TaskEditor({
           onClick={(e) => void submit(e, status === 'done' ? 'ready' : 'done')}
         >
           <Check /> {status === 'done' ? 'Reopen task' : 'Mark complete'}
+        </Button>
+      )}
+      {initial.id && status !== 'done' && status !== 'archived' && (
+        <Button type="button" variant="outline" disabled={saving || preparingCodex}
+          onClick={() => void sendToCodex()}>
+          {preparingCodex ? <Loader2 className="spin" /> : <ArrowUpRight />}
+          {preparingCodex ? 'Preparing Codex…' : 'Send to Codex'}
         </Button>
       )}
       {((initial.captureMode === 'basic' && initial.estimateProvisional) ||

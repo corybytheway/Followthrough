@@ -512,7 +512,9 @@ void test('calendar descriptions show concise signed actions, original input, an
     ),
   );
   assert.ok(!description.includes('>https://'));
-  assert.equal((description.match(/signature=[a-f0-9]{64}/g) || []).length, 9);
+  assert.equal((description.match(/signature=[a-f0-9]{64}/g) || []).length, 10);
+  assert.ok(description.includes('<b>Task actions</b><br><a href='));
+  assert.ok(description.indexOf('>Send to Codex</a>') < description.indexOf('>Complete</a>'));
   assert.ok(
     (
       await calendarDescription({
@@ -544,15 +546,16 @@ void test('calendar descriptions bind action URLs to a private owner handle', as
   assert.ok(!description.includes('task=u'));
   assert.ok(description.includes('<b>Change priority (currently Top)</b><br>'));
   const links = [...description.matchAll(/\?k=([A-Za-z0-9_-]+)/g)].map((match) => match[1]);
-  assert.equal(links.length, 9);
+  assert.equal(links.length, 10);
   assert.ok(links.every((token) => token.length < 100));
   assert.deepEqual(await decodeCalendarActionToken(links[0], 'c'.repeat(64)), {
     signedTaskId: `u${'a'.repeat(24)}_capture_${'b'.repeat(64)}`,
-    action: 'complete',
+    action: 'send_codex',
     stamp: '2026-09-25T12:00:00.000Z',
   });
-  assert.equal((await decodeCalendarActionToken(links[1], 'c'.repeat(64)))?.action, 'add_more_time');
-  assert.equal((await decodeCalendarActionToken(links[3], 'c'.repeat(64)))?.action, 'push_next_week');
+  assert.equal((await decodeCalendarActionToken(links[1], 'c'.repeat(64)))?.action, 'complete');
+  assert.equal((await decodeCalendarActionToken(links[2], 'c'.repeat(64)))?.action, 'add_more_time');
+  assert.equal((await decodeCalendarActionToken(links[4], 'c'.repeat(64)))?.action, 'push_next_week');
   assert.equal(await decodeCalendarActionToken(links[0].slice(0, -1) + (links[0].endsWith('A') ? 'B' : 'A'), 'c'.repeat(64)), null);
   assert.equal(await decodeCalendarActionToken(links[0], 'd'.repeat(64)), null);
   assert.ok(description.includes(`?task=c${'b'.repeat(24)}`));
@@ -576,7 +579,7 @@ void test('long email input leaves all calendar actions visible without changing
     assert.ok(description.length < 6000);
     assert.ok(description.includes('Original input: Email subject: Review the proposal<br>'));
     assert.ok(description.includes('Shortened for calendar. Full original input is in Followthrough.'));
-    for (const label of ['Complete', 'Add more time', 'Postpone 1 day', 'Push to next week', 'Delete', 'Low', 'Medium', 'High', 'Top'])
+    for (const label of ['Send to Codex', 'Complete', 'Add more time', 'Postpone 1 day', 'Push to next week', 'Delete', 'Low', 'Medium', 'High', 'Top'])
       assert.ok(description.includes(`>${label}</a>`));
     assert.ok(description.endsWith('>Manage task and follow through</a>'));
     assert.equal(task.source, source);

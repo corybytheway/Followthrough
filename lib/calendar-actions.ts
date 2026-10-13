@@ -16,6 +16,7 @@ export const CALENDAR_TASK_ACTIONS = [
   'priority_top',
   'push_next_week',
   'add_more_time',
+  'send_codex',
 ] as const;
 export type CalendarTaskAction = (typeof CALENDAR_TASK_ACTIONS)[number];
 
