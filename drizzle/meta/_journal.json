@@ -43,6 +43,13 @@
       "when": 1790366090226,
       "tag": "0005_serious_madelyne_pryor",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791886948490,
+      "tag": "0006_marvelous_squirrel_girl",
+      "breakpoints": true
     }
   ]
 }

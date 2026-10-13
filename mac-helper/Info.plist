@@ -5,8 +5,8 @@
 <key>CFBundleIdentifier</key><string>com.corymccabe.followthrough-codex</string>
 <key>CFBundleName</key><string>Followthrough Codex</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>1</string>
-<key>CFBundleShortVersionString</key><string>1.0.0</string>
+<key>CFBundleVersion</key><string>2</string>
+<key>CFBundleShortVersionString</key><string>2.0.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>Followthrough Codex handoff</string><key>CFBundleURLSchemes</key><array><string>followthrough-codex</string></array></dict></array>
 </dict></plist>

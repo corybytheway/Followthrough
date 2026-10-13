@@ -4,7 +4,10 @@ import {
   primaryKey,
   sqliteTable,
   text,
+  index,
+  uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
 // Atomic personal planning document, protected by a revision check on every write.
 export const workspaces = sqliteTable('workspaces', {
@@ -67,3 +70,35 @@ export const emailConnections = sqliteTable('email_connections', {
   credentials: text('credentials').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
+
+// One active Mac per owner. Pairing codes expire; only hashed device keys are stored.
+export const codexDevices = sqliteTable('codex_devices', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id'),
+  keyHash: text('key_hash').notNull().unique(),
+  pairHash: text('pair_hash').unique(),
+  name: text('name').notNull(),
+  setupBucket: text('setup_bucket').notNull(),
+  setupExpires: integer('setup_expires').notNull(),
+  createdAt: integer('created_at').notNull(),
+  lastSeen: integer('last_seen').notNull().default(0),
+  revokedAt: integer('revoked_at'),
+}, table => [uniqueIndex('codex_devices_active_owner').on(table.ownerId).where(sql`${table.revokedAt} IS NULL AND ${table.ownerId} IS NOT NULL`)]);
+
+// Task snapshots are encrypted for their owner and deduplicated by task version.
+export const codexJobs = sqliteTable('codex_jobs', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull(),
+  taskId: text('task_id').notNull(),
+  taskStamp: text('task_stamp').notNull(),
+  title: text('title').notNull(),
+  payload: text('payload').notNull(),
+  state: text('state').notNull(),
+  deviceId: text('device_id'),
+  threadId: text('thread_id'),
+  message: text('message').notNull().default(''),
+  createdAt: integer('created_at').notNull(),
+}, table => [
+  uniqueIndex('codex_jobs_task_version').on(table.ownerId, table.taskId, table.taskStamp),
+  index('codex_jobs_owner_state').on(table.ownerId, table.state, table.createdAt),
+]);

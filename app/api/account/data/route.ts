@@ -61,6 +61,8 @@ export async function DELETE(request: Request) {
           owner,
         ),
         env.DB.prepare('DELETE FROM ai_usage WHERE owner_id = ?').bind(owner),
+        env.DB.prepare('DELETE FROM codex_jobs WHERE owner_id = ?').bind(owner),
+        env.DB.prepare('DELETE FROM codex_devices WHERE owner_id = ?').bind(owner),
       ]);
     });
     return Response.json(

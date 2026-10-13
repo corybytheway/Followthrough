@@ -18,6 +18,7 @@ final class CodexConnection: @unchecked Sendable {
     private var pending: [Int: CheckedContinuation<[String: Any], Error>] = [:]
     var notification: (([String: Any]) -> Void)?
     var approval: (([String: Any], @escaping ([String: Any]) -> Void) -> Void)?
+    var closed: (() -> Void)?
 
     func start() throws {
         guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") else {
@@ -41,6 +42,7 @@ final class CodexConnection: @unchecked Sendable {
                 guard let self else { return }
                 for continuation in self.pending.values { continuation.resume(throwing: BridgeError(message: "Codex closed its connection. Reopen the task in Codex to continue.")) }
                 self.pending.removeAll()
+                DispatchQueue.main.async { [weak self] in self?.closed?() }
             }
         }
         try process.run()
@@ -90,7 +92,7 @@ final class CodexConnection: @unchecked Sendable {
     func notify(_ method: String) { queue.async { self.write(["jsonrpc": "2.0", "method": method, "params": [:]]) } }
 }
 
-final class BridgeDelegate: NSObject, NSApplicationDelegate {
+@MainActor final class BridgeDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
     let status = NSTextField(wrappingLabelWithString: "Ready. Use Send to Codex in Followthrough or your calendar.")
     let detail = NSTextView()
@@ -99,9 +101,13 @@ final class BridgeDelegate: NSObject, NSApplicationDelegate {
     var latestThread: String?
     static let configuration = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Followthrough Codex/projects.json")
     let preferences = UserDefaults.standard
+    var queueClient: MacQueueClient?
+    var queueTimer: Timer?
+    var processingQueueJob = false
+    var pollingQueue = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 440), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 560), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Followthrough → Codex"
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -121,12 +127,21 @@ final class BridgeDelegate: NSObject, NSApplicationDelegate {
         let open = NSButton(title: "Open task in Codex", target: self, action: #selector(openTask))
         stack.addArrangedSubview(open)
         stack.addArrangedSubview(NSButton(title: "Check Codex connection", target: self, action: #selector(checkConnection)))
+        stack.addArrangedSubview(NSButton(title: "Connect Followthrough", target: self, action: #selector(connectFollowthrough)))
         window.contentView = stack
         scroll.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -44), scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 280)])
         window.center()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if !preferences.bool(forKey: "queueConnected") {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        startQueueReceiver()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows { window.makeKeyAndOrderFront(nil) }
+        return true
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -264,7 +279,7 @@ final class BridgeDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main struct FollowthroughCodex {
-    static func main() throws {
+    @MainActor static func main() throws {
         if CommandLine.arguments.contains("--configure-projects") {
             let data = FileHandle.standardInput.readDataToEndOfFile()
             guard let projects = try JSONSerialization.jsonObject(with: data) as? [[String: String]], projects.allSatisfy({ ($0["path"] ?? "").hasPrefix("/") && $0["name"] != nil }) else { throw BridgeError(message: "Invalid project mapping.") }

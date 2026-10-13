@@ -76,6 +76,7 @@ import CalendarSettings from '@/components/calendar-settings';
 import OpenAISettings from '@/components/openai-settings';
 import EmailCaptureSettings from '@/components/email-capture-settings';
 import AccountDataSettings from '@/components/account-data-settings';
+import CodexSettings from '@/components/codex-settings';
 
 type Draft = Partial<Task> & {
   rationale?: string;
@@ -2151,6 +2152,7 @@ function SettingsPanel({
       </form>
       <div className="connections">
         <CalendarSettings />
+        <CodexSettings />
         <OpenAISettings />
         {state.integrations.emailSetupAvailable && <EmailCaptureSettings />}
         <div className="settings-card">
