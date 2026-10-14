@@ -1,8 +1,8 @@
 // Created by Cory McCabe
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialWorkspace, type Task } from '../lib/model';
-import { tasksAvailableToday } from '../lib/task-availability';
+import { initialWorkspace, type Task, type Block } from '../lib/model';
+import { tasksAvailableToday, tasksScheduledToday } from '../lib/task-availability';
 
 function task(id: string, changes: Partial<Task> = {}): Task {
   const base = initialWorkspace().tasks[0];
@@ -44,4 +44,16 @@ void test('a blocked task becomes available after its prerequisite is done', () 
     ),
     ['blocked'],
   );
+});
+
+void test('Today uses work sessions in the workspace timezone and omits tomorrow and unscheduled tasks', () => {
+  const tasks = [task('today'), task('tomorrow'), task('unscheduled'), task('blocked', { blockers: ['today'] })];
+  const blocks: Block[] = [
+    { id: 'a', kind: 'task', taskId: 'today', start: '2026-09-24T01:00:00Z', end: '2026-09-24T02:00:00Z' },
+    { id: 'b', kind: 'task', taskId: 'today', start: '2026-09-23T15:00:00Z', end: '2026-09-23T16:00:00Z' },
+    { id: 'c', kind: 'task', taskId: 'tomorrow', start: '2026-09-24T14:00:00Z', end: '2026-09-24T15:00:00Z' },
+    { id: 'd', kind: 'task', taskId: 'blocked', start: '2026-09-23T17:00:00Z', end: '2026-09-23T18:00:00Z' },
+  ];
+  assert.deepEqual(tasksScheduledToday(tasks, blocks, '2026-09-23', 'America/Chicago').map(t => t.id), ['today']);
+  assert.deepEqual(tasksScheduledToday(tasks, blocks, '2026-09-25', 'America/Chicago'), []);
 });

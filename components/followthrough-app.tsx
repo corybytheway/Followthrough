@@ -68,7 +68,7 @@ import {
   completedTaskComparator,
   scheduledTaskComparator,
 } from '@/lib/task-order';
-import { tasksAvailableToday } from '@/lib/task-availability';
+import { tasksScheduledToday } from '@/lib/task-availability';
 import { TOOL_DEFINITIONS, toolAction } from '@/lib/tools';
 import ShortcutSettings from '@/components/shortcut-settings';
 import CalendarSettings from '@/components/calendar-settings';
@@ -538,7 +538,7 @@ export default function FollowthroughApp({
   const active = state.tasks.filter((t) =>
     ['ready', 'waiting'].includes(t.status),
   );
-  const availableToday = tasksAvailableToday(state.tasks, state.currentDate);
+  const availableToday = tasksScheduledToday(state.tasks, state.blocks, state.currentDate, state.settings.timeZone);
   const projectsAlphabetically = [...state.projects].sort(
     compareProjectsByName,
   );
@@ -899,37 +899,20 @@ export default function FollowthroughApp({
                   </div>
                 </div>
                 <div className="section-heading">
-                  <h2>Followthrough on these first</h2>
-                  <span>
+                  <h2>{availableToday.length ? 'Followthrough on these first' : "That’s it for today!"}</h2>
+                  {availableToday.length > 0 && <span>
                     {availableToday.length}{' '}
                     {availableToday.length === 1 ? 'task' : 'tasks'}
-                  </span>
+                  </span>}
                 </div>
-                {availableToday.length ? (
+                {availableToday.length > 0 && (
                   <div className="task-list">
-                    {[...availableToday]
-                      .sort(compareBySchedule)
-                      .slice(0, 8)
-                      .map(taskRow)}
-                  </div>
-                ) : (
-                  <div className="empty-panel">
-                    <span className="empty-icon">
-                      <ListTodo size={24} />
-                    </span>
-                    <h3>Start with what’s on your mind.</h3>
-                    <p>
-                      Capture an outcome above. Its steps stay together, even
-                      when the work spans a few days.
-                    </p>
+                    {[...availableToday].sort(compareBySchedule).map(taskRow)}
                   </div>
                 )}
-                {availableToday.length > 8 && (
-                  <Button variant="link" onClick={() => navigateToTab('tasks')}>
-                    View all {availableToday.length} available tasks{' '}
-                    <ArrowRight />
-                  </Button>
-                )}
+                <Button variant="link" onClick={() => navigateToTab('tasks')}>
+                  View all available tasks <ArrowRight />
+                </Button>
                 <p className="small-note">
                   {state.integrations.background
                     ? 'Your plan updates automatically. Calendar changes are checked every minute, even when Followthrough is closed.'
