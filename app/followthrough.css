@@ -882,3 +882,7 @@ summary {
   background: #f3f5f9;
   border-color: #cbd5e1;
 }
+
+.app-shell [data-slot='button'].view-all-tasks-link {
+  padding-inline: 0;
+}

@@ -910,8 +910,8 @@ export default function FollowthroughApp({
                     {[...availableToday].sort(compareBySchedule).map(taskRow)}
                   </div>
                 )}
-                <Button variant="link" onClick={() => navigateToTab('tasks')}>
-                  View all tasks <ArrowRight />
+                <Button variant="link" className="view-all-tasks-link" onClick={() => navigateToTab('tasks')}>
+                  View all tasks →
                 </Button>
                 <p className="small-note">
                   {state.integrations.background
