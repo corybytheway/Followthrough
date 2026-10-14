@@ -313,10 +313,12 @@ await test('DST and excluded work days use the selected local time zone', () => 
   const output = plan(w, Date.parse('2026-11-01T06:00:00Z'));
   assert.equal(output.blocks[0].start, '2026-11-02T15:00:00.000Z');
 });
-await test('work breaks leave time after five hours', () => {
+await test('work breaks follow the longest work session', () => {
   const w = example(360);
   const blocks = plan(w, NOW).blocks;
-  assert.equal(blocks.at(-1)!.start, '2026-09-08T19:30:00.000Z');
+  assert.equal(blocks.at(-1)!.start, '2026-09-08T20:00:00.000Z');
+  for (let i = 1; i < blocks.length; i++)
+    assert.equal(Date.parse(blocks[i].start) - Date.parse(blocks[i - 1].end), 30 * 60_000);
 });
 await test('single-session tasks that cannot fit are reported', () => {
   const w = example(900);
@@ -441,4 +443,16 @@ void test('deleting and restoring a task preserves its content and original stat
   assert.equal(restored.notes, original.notes);
   assert.equal(restored.source, original.source);
   assert.deepEqual(restored.steps, original.steps);
+});
+
+void test('break timing follows the longest session even for existing settings with a different break interval', () => {
+  const w = example(180);
+  w.settings = { ...w.settings, timeZone: 'UTC', workStart: '09:00', workEnd: '17:00', maxBlockMinutes: 60, breakEveryMinutes: 300, breakMinutes: 30 };
+  const now = Date.parse('2026-09-08T09:00:00Z');
+  const starts = (workspace: typeof w) => plan(workspace, now).blocks.map(block => block.start);
+  assert.deepEqual(starts(w), ['2026-09-08T09:00:00.000Z', '2026-09-08T10:30:00.000Z', '2026-09-08T12:00:00.000Z']);
+  const saved = settingsInput({ maxBlockMinutes: 45, breakEveryMinutes: 300 }, w.settings);
+  assert.equal(saved.breakEveryMinutes, 45);
+  w.settings.breakMinutes = 0;
+  assert.deepEqual(starts(w), ['2026-09-08T09:00:00.000Z', '2026-09-08T10:00:00.000Z', '2026-09-08T11:00:00.000Z']);
 });

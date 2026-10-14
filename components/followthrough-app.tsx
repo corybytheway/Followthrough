@@ -2006,34 +2006,18 @@ function SettingsPanel({
             ))}
           </NativeSelect>
         </Field>
-        <div className="field-row">
-          <Field label="Break after">
-            <NativeSelect
-              value={settings.breakEveryMinutes}
-              onChange={(e) =>
-                update('breakEveryMinutes', Number(e.target.value))
-              }
-            >
-              {[60, 90, 120, 180, 240, 300].map((n) => (
-                <option key={n} value={n}>
-                  {minutesLabel(n)} of work
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field label="Break length">
-            <NativeSelect
-              value={settings.breakMinutes}
-              onChange={(e) => update('breakMinutes', Number(e.target.value))}
-            >
-              {[0, 15, 30, 45, 60].map((n) => (
-                <option key={n} value={n}>
-                  {n === 0 ? 'No break' : minutesLabel(n)}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-        </div>
+        <Field label="Break length">
+          <NativeSelect
+            value={settings.breakMinutes}
+            onChange={(e) => update('breakMinutes', Number(e.target.value))}
+          >
+            {[0, 15, 30, 45, 60].map((n) => (
+              <option key={n} value={n}>
+                {n === 0 ? 'No break' : minutesLabel(n)}
+              </option>
+            ))}
+          </NativeSelect>
+        </Field>
         {error && (
           <p className="form-error" role="alert">
             {error}

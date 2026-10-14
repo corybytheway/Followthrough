@@ -185,9 +185,9 @@ export function plan(
         : left;
       if (minutes + duration > endMinute) continue;
       const amount = worked.get(day) || 0,
-        cycle = s.breakEveryMinutes + s.breakMinutes,
+        cycle = s.maxBlockMinutes + s.breakMinutes,
         phase = amount % cycle;
-      if (s.breakMinutes && phase >= s.breakEveryMinutes) {
+      if (s.breakMinutes && phase >= s.maxBlockMinutes) {
         const gap = cycle - phase,
           end = start + gap * MINUTE;
         if (
@@ -200,7 +200,7 @@ export function plan(
         continue;
       }
       if (t.splittable && s.breakMinutes)
-        duration = Math.min(duration, s.breakEveryMinutes - phase);
+        duration = Math.min(duration, s.maxBlockMinutes - phase);
       const conflict = occupied
         .filter((o) =>
           overlaps(start, start + duration * MINUTE, o.start, o.end),

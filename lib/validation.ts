@@ -280,11 +280,12 @@ export function settingsInput(input: unknown, existing: Settings): Settings {
   }
   for (const [key, min, max] of [
     ['maxBlockMinutes', 15, 480],
-    ['breakEveryMinutes', 30, 600],
     ['breakMinutes', 0, 120],
   ] as const)
     if (v[key] !== undefined) s[key] = integer(v[key], key, min, max);
-  if (s.maxBlockMinutes % 15 || s.breakEveryMinutes % 15 || s.breakMinutes % 15)
+  // Retain the legacy stored field for compatibility; the session limit owns break timing.
+  s.breakEveryMinutes = s.maxBlockMinutes;
+  if (s.maxBlockMinutes % 15 || s.breakMinutes % 15)
     throw new InputError('Use 15-minute increments for sessions and breaks.');
   return s;
 }

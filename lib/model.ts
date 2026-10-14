@@ -93,6 +93,7 @@ export type Settings = {
   workEnd: string;
   workDays: number[];
   maxBlockMinutes: number;
+  /** Legacy storage field; break timing follows maxBlockMinutes. */
   breakEveryMinutes: number;
   breakMinutes: number;
 };
@@ -186,7 +187,7 @@ export function initialWorkspace(): Workspace {
       workEnd: '19:30',
       workDays: [0, 1, 2, 3, 4, 5, 6],
       maxBlockMinutes: 90,
-      breakEveryMinutes: 300,
+      breakEveryMinutes: 90,
       breakMinutes: 30,
     },
   };
@@ -209,7 +210,7 @@ export function newAccountWorkspace(): Workspace {
       workEnd: '17:00',
       workDays: [1, 2, 3, 4, 5],
       maxBlockMinutes: 90,
-      breakEveryMinutes: 300,
+      breakEveryMinutes: 90,
       breakMinutes: 30,
     },
   };
