@@ -848,16 +848,6 @@ export default function FollowthroughApp({
           </TabsList>
           <div className="feedback-layer">{feedbackMessages}</div>
           <TabsContent value="today">
-            <div className="page-heading">
-              <div>
-                <p className="eyebrow">
-                  {state.currentDate ? dayLabel(state.currentDate) : ''}
-                </p>
-              </div>
-              <span className="date-label">
-                {state.settings.timeZone.replace('_', ' ')}
-              </span>
-            </div>
             {state.projects.length === 0 && state.tasks.length === 0 && (
               <div className="empty-panel beta-welcome">
                 <h2>Set up your workspace</h2>
@@ -1115,7 +1105,6 @@ export default function FollowthroughApp({
           <TabsContent value="projects">
             <div className="page-heading">
               <div>
-                <p className="eyebrow">Apps, clients, and meaningful work</p>
                 <h1>Your projects.</h1>
               </div>
               <Button
