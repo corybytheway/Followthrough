@@ -911,7 +911,7 @@ export default function FollowthroughApp({
                   </div>
                 )}
                 <Button variant="link" onClick={() => navigateToTab('tasks')}>
-                  View all available tasks <ArrowRight />
+                  View all tasks <ArrowRight />
                 </Button>
                 <p className="small-note">
                   {state.integrations.background
