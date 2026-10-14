@@ -882,3 +882,10 @@ summary {
   outline: 3px solid #b9a1f0;
   outline-offset: 3px;
 }
+
+/* Keep task fields distinct from the white drawer without adding more panels. */
+.task-sheet [data-slot='input'],
+.task-sheet [data-slot='textarea'],
+.task-sheet [data-slot='native-select'] {
+  background: #f3f5f9 !important;
+}

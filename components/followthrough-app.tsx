@@ -1206,13 +1206,13 @@ export default function FollowthroughApp({
                   ? `Review task ${captureIndex + 1} of ${captureDrafts.length}`
                   : 'Review your task'}
             </SheetTitle>
-            <SheetDescription>
-              {selected
-                ? 'One outcome, with every step kept together.'
-                : captureDrafts.length > 1
+            {!selected && (
+              <SheetDescription>
+                {captureDrafts.length > 1
                   ? 'Each independent outcome will become its own task. Nothing is saved until you finish reviewing the group.'
                   : 'Check the outcome, estimate, and steps before saving.'}
-            </SheetDescription>
+              </SheetDescription>
+            )}
           </SheetHeader>
           {(draft || captureDraft || selected) && (
             <TaskEditor
@@ -1585,8 +1585,8 @@ function TaskEditor({
       </div>
       <div className="field-row">
         <Field
-          label="Deadline (optional)"
-          hint="Leave empty for automatic planning. Planned times can move; a deadline is a commitment."
+          label="Deadline"
+          hint="Leave empty for automatic planning."
         >
           <Input
             type="date"
@@ -1594,7 +1594,7 @@ function TaskEditor({
             onChange={(e) => setDue(e.target.value)}
           />
         </Field>
-        <Field label="Start on or after" hint="Leave empty for automatic planning.">
+        <Field label="Start on or after">
           <Input
             type="date"
             value={start}
@@ -1610,12 +1610,10 @@ function TaskEditor({
         />
         <label htmlFor="multiple-sessions">
           Allow multiple work sessions
-          <small>Still one task, even across several days.</small>
         </label>
       </div>
       <Field
         label="Task notes"
-        hint="Suggested or added context for this task. The exact original input is preserved separately below."
       >
         <Textarea
           rows={3}
@@ -1632,9 +1630,6 @@ function TaskEditor({
             {steps.filter((s) => s.done).length}/{steps.length}
           </span>
         </div>
-        <p className="secondary-text">
-          Supporting actions stay here as a checklist.
-        </p>
         <div className="steps-list">
           {steps.map((step, i) => (
             <div className="step-row" key={step.id}>
@@ -1733,10 +1728,10 @@ function TaskEditor({
         </div>
       </div>
       {initial.source && (
-        <details className="original-request" open>
-          <summary>Original input (verbatim)</summary>
+        <section className="editor-section original-request">
+          <h2>Original input</h2>
           <p>{initial.source}</p>
-        </details>
+        </section>
       )}
       {localError && (
         <p className="form-error" role="alert">
