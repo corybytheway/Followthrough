@@ -1625,16 +1625,16 @@ function TaskEditor({
       </Field>
       <div className="editor-section">
         <div className="section-heading">
-          <h2>Calendar suggested steps</h2>
+          <h2>Suggested steps</h2>
           <span>
             {steps.filter((s) => s.done).length}/{steps.length}
           </span>
         </div>
         <div className="steps-list">
-          {steps.map((step, i) => (
-            <div className="step-row" key={step.id}>
+          {steps.map((step) => (
+            <div className="check-field" key={step.id}>
               <Checkbox
-                aria-label={'Complete step ' + (i + 1)}
+                id={'step-' + step.id}
                 checked={step.done}
                 onCheckedChange={(done) =>
                   setSteps(
@@ -1642,45 +1642,10 @@ function TaskEditor({
                   )
                 }
               />
-              <Input
-                aria-label={'Step ' + (i + 1)}
-                required
-                maxLength={500}
-                value={step.title}
-                onChange={(e) =>
-                  setSteps(
-                    steps.map((s) =>
-                      s.id === step.id ? { ...s, title: e.target.value } : s,
-                    ),
-                  )
-                }
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={'Remove step ' + (i + 1)}
-                onClick={() => setSteps(steps.filter((s) => s.id !== step.id))}
-              >
-                <X />
-              </Button>
+              <label htmlFor={'step-' + step.id}>{step.title}</label>
             </div>
           ))}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={steps.length >= 50}
-          onClick={() =>
-            setSteps([
-              ...steps,
-              { id: crypto.randomUUID(), title: '', done: false },
-            ])
-          }
-        >
-          <Plus />
-          Add step
-        </Button>
       </div>
       <div className="field">
         <span>Prerequisites</span>

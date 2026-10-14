@@ -494,19 +494,6 @@ p {
   flex-direction: column;
   gap: 10px;
 }
-.step-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.step-row > [data-slot='checkbox'] {
-  width: 18px;
-  height: 18px;
-}
-.step-row [data-slot='input'] {
-  flex: 1;
-  min-width: 0;
-}
 .dependency-list {
   display: flex;
   flex-direction: column;
@@ -888,4 +875,10 @@ summary {
 .task-sheet [data-slot='textarea'],
 .task-sheet [data-slot='native-select'] {
   background: #f3f5f9 !important;
+}
+
+.task-sheet .steps-list [data-slot='checkbox']:not([data-checked]),
+.task-sheet .dependency-list [data-slot='checkbox']:not([data-checked]) {
+  background: #f3f5f9;
+  border-color: #cbd5e1;
 }
