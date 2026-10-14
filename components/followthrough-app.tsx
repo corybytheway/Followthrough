@@ -36,7 +36,6 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetDescription,
 } from '@/components/ui/sheet';
 import {
   Dialog,
@@ -76,11 +75,6 @@ import OpenAISettings from '@/components/openai-settings';
 import EmailCaptureSettings from '@/components/email-capture-settings';
 import AccountDataSettings from '@/components/account-data-settings';
 
-type Draft = Partial<Task> & {
-  rationale?: string;
-  mode?: string;
-  steps?: Task['steps'];
-};
 type Action = Record<string, unknown>;
 
 const COMPLETION_CHECK_SETTLE_MS = 340;
@@ -134,15 +128,6 @@ function todayHeading(day: string) {
   const part = (type: string) => parts.find((p) => p.type === type)?.value;
   return `${part('weekday')}, ${part('month')}. ${part('day')}`;
 }
-function randomCaptureId() {
-  return (
-    'capture_' +
-    Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
-      byte.toString(16).padStart(2, '0'),
-    ).join('')
-  );
-}
-
 export type WorkspaceTab = 'today' | 'projects' | 'tasks' | 'settings';
 
 const TAB_PATHS: Record<WorkspaceTab, string> = {
@@ -177,10 +162,6 @@ export default function FollowthroughApp({
     [notice, setNotice] = useState('');
   const [tab, setTab] = useState<WorkspaceTab>(initialTab),
     [source, setSource] = useState(''),
-    [draft, setDraft] = useState<Draft | null>(null),
-    [captureDrafts, setCaptureDrafts] = useState<Draft[]>([]),
-    [captureIndex, setCaptureIndex] = useState(0),
-    [captureGroupId, setCaptureGroupId] = useState(''),
     [editing, setEditing] = useState<string | null>(null);
   const [projectDialog, setProjectDialog] = useState(false),
     [editingProject, setEditingProject] = useState<Project | null>(null),
@@ -194,6 +175,7 @@ export default function FollowthroughApp({
     >({}),
     stateRef = useRef(state),
     busyRef = useRef(false),
+    captureRequestRef = useRef<{ source: string; requestId: string } | null>(null),
     completingRef = useRef(new Set<string>());
   const navigateToTab = useCallback(
     (nextTab: WorkspaceTab, mode: 'push' | 'replace' = 'push') => {
@@ -496,41 +478,36 @@ export default function FollowthroughApp({
   }, [loaded, commit, refresh, navigateToTab]);
   async function capture() {
     if (busyRef.current || !source.trim()) return;
+    const submittedSource = source;
+    if (captureRequestRef.current?.source !== submittedSource) {
+      captureRequestRef.current = { source: submittedSource, requestId: crypto.randomUUID() };
+    }
     setError('');
     setSaving(true);
     busyRef.current = true;
     try {
-      const response = await fetch('/api/capture', {
+      const response = await fetch('/api/inbox', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source }),
+          body: JSON.stringify(captureRequestRef.current),
         }),
         data = (await response.json()) as {
-          drafts?: Array<
-            Omit<Draft, 'steps'> & {
-              steps: string[];
-            }
-          >;
+          state: Snapshot;
+          result?: { tasks?: Task[] };
           error?: string;
         };
-      if (!response.ok) throw new Error(data.error);
-      if (!data.drafts?.length)
-        throw new Error('The capture did not return any tasks.');
-      setDraft(null);
-      setCaptureDrafts(
-        data.drafts.map((item) => ({
-          ...item,
-          steps: (item.steps || []).map((title: string) => ({
-            id: crypto.randomUUID(),
-            title,
-            done: false,
-          })),
-        })),
-      );
-      setCaptureIndex(0);
-      setCaptureGroupId(randomCaptureId());
+      if (!response.ok) throw new Error(data.error || 'Could not save your task.');
+      accept(data.state);
+      captureRequestRef.current = null;
+      // Keep anything typed while the previous request was being saved.
+      setSource((current) => current === submittedSource ? '' : current);
+      const count = data.result?.tasks?.length;
+      setNotice(count && count > 1 ? `${count} tasks added to your plan.` : 'Added to your plan.');
+      window.dispatchEvent(new Event('followthrough-workspace-change'));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not prepare a draft.');
+      // Preserve both the input and request ID so a retry cannot duplicate a
+      // capture whose save succeeded but whose response was interrupted.
+      setError(e instanceof Error ? e.message : 'Could not save your task.');
     } finally {
       setSaving(false);
       busyRef.current = false;
@@ -581,12 +558,7 @@ export default function FollowthroughApp({
   const selected = editing
     ? state.tasks.find((t) => t.id === editing)
     : undefined;
-  const captureDraft = captureDrafts[captureIndex];
   function closeTaskEditor() {
-    setDraft(null);
-    setCaptureDrafts([]);
-    setCaptureIndex(0);
-    setCaptureGroupId('');
     setEditing(null);
   }
   function openTask(taskId: string) {
@@ -898,7 +870,7 @@ export default function FollowthroughApp({
                       onClick={() => void capture()}
                     >
                       {saving ? <Loader2 className="spin" /> : <ArrowUpRight />}
-                      Review plan
+                      {saving ? 'Adding…' : 'Add to plan'}
                     </Button>
                   </div>
                 </div>
@@ -1179,44 +1151,21 @@ export default function FollowthroughApp({
         </Tabs>
       )}
       <Sheet
-        open={!!draft || !!captureDraft || !!selected}
+        open={!!selected}
         onOpenChange={(open) => {
           if (!open && !saving) closeTaskEditor();
         }}
       >
         <SheetContent className="task-sheet">
           <SheetHeader>
-            <SheetTitle>
-              {selected
-                ? 'Task details'
-                : captureDrafts.length > 1
-                  ? `Review task ${captureIndex + 1} of ${captureDrafts.length}`
-                  : 'Review your task'}
-            </SheetTitle>
-            {!selected && (
-              <SheetDescription>
-                {captureDrafts.length > 1
-                  ? 'Each independent outcome will become its own task. Nothing is saved until you finish reviewing the group.'
-                  : 'Check the outcome, estimate, and steps before saving.'}
-              </SheetDescription>
-            )}
+            <SheetTitle>Task details</SheetTitle>
           </SheetHeader>
-          {(draft || captureDraft || selected) && (
+          {selected && (
             <TaskEditor
-              key={
-                selected?.id ||
-                (captureDraft ? `capture-${captureIndex}` : 'draft')
-              }
-              initial={selected || captureDraft || draft!}
+              key={selected.id}
+              initial={selected}
               state={state}
               saving={saving}
-              saveLabel={
-                captureDrafts.length > 1
-                  ? captureIndex < captureDrafts.length - 1
-                    ? 'Review next task'
-                    : `Save ${captureDrafts.length} tasks`
-                  : undefined
-              }
               onDelete={async () => {
                 if (!selected) return;
                 await commit({ action: 'delete_task', id: selected.id });
@@ -1232,52 +1181,14 @@ export default function FollowthroughApp({
                 setNotice('Task restored.');
               }}
               onSave={async (task, requestId) => {
-                if (selected) {
-                  await commit({
-                    action: 'update_task',
-                    id: selected.id,
-                    task,
-                    requestId,
-                  });
-                  closeTaskEditor();
-                  setNotice('Task updated.');
-                  return;
-                }
-                if (captureDraft) {
-                  const reviewed = captureDrafts.map((item, index) =>
-                    index === captureIndex ? { ...item, ...task } : item,
-                  );
-                  if (captureIndex < reviewed.length - 1) {
-                    setCaptureDrafts(reviewed);
-                    setCaptureIndex(captureIndex + 1);
-                    return;
-                  }
-                  if (!captureGroupId)
-                    throw new Error('The capture group is missing. Try again.');
-                  await commit({
-                    action: 'capture_tasks',
-                    captureGroupId,
-                    captures: reviewed.map((item, index) => ({
-                      captureId:
-                        index === 0 ? captureGroupId : randomCaptureId(),
-                      task: item,
-                    })),
-                    requestId: captureGroupId,
-                  });
-                  const count = reviewed.length;
-                  closeTaskEditor();
-                  setSource('');
-                  setNotice(
-                    count === 1
-                      ? 'Task saved and added to your plan.'
-                      : `${count} tasks saved and added to your plan.`,
-                  );
-                  return;
-                }
-                await commit({ action: 'create_task', task, requestId });
+                await commit({
+                  action: 'update_task',
+                  id: selected.id,
+                  task,
+                  requestId,
+                });
                 closeTaskEditor();
-                setSource('');
-                setNotice('Task saved and added to your plan.');
+                setNotice('Task updated.');
               }}
             />
           )}
@@ -1351,15 +1262,13 @@ function TaskEditor({
   onSave,
   onDelete,
   onRestore,
-  saveLabel,
 }: {
-  initial: Draft;
+  initial: Task;
   state: Snapshot;
   saving: boolean;
   onSave: (task: Action, requestId: string) => Promise<void>;
   onDelete: () => Promise<void>;
   onRestore: () => Promise<void>;
-  saveLabel?: string;
 }) {
   const [saveId] = useState(() => crypto.randomUUID());
   const [title, setTitle] = useState(initial.title || ''),
@@ -1494,17 +1403,10 @@ function TaskEditor({
           </Button>
         )
       )}
-      {((initial.captureMode === 'basic' && initial.estimateProvisional) ||
-        initial.rationale) && (
+      {initial.captureMode === 'basic' && initial.estimateProvisional && (
         <div className="draft-note">
-          <strong>
-            {initial.captureMode === 'ai' ? 'Suggested plan' : 'Basic capture'}
-          </strong>
-          <p>
-            {initial.captureMode === 'basic'
-              ? BASIC_CAPTURE_NOTICE
-              : initial.rationale}
-          </p>
+          <strong>Basic capture</strong>
+          <p>{BASIC_CAPTURE_NOTICE}</p>
         </div>
       )}
       <Field label="Task name">
@@ -1712,7 +1614,7 @@ function TaskEditor({
           disabled={saving || !title.trim()}
         >
           {saving ? <Loader2 className="spin" /> : <Check />}
-          {initial.id ? 'Save changes' : saveLabel || 'Create task'}
+          Save changes
         </Button>
         {initial.id && (
           <Button

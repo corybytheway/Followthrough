@@ -21,7 +21,7 @@ The locally runnable SwiftUI iPhone and Mac apps are in [`native/`](native/READM
 - Authenticated stateless Streamable HTTP MCP endpoint at /mcp.
 - Authenticated JSON backup and calendar snapshot downloads.
 - Direct Talk or Type capture from a signed Apple Shortcut, with a server-confirmed save and no browser opening. One-time pairing in Settings creates a revocable, create-only connection.
-- Captures become Ready and are scheduled automatically without requiring a deadline. Without an AI-generated plan, a labeled temporary 30-minute estimate reserves time. User-entered deadlines remain separate from flexible planned calendar times.
+- Captures become Ready and are scheduled automatically without requiring a deadline. Enter or Add to plan saves directly without a review dialog; users can open task details afterward. Without an AI-generated plan, a labeled temporary 30-minute estimate reserves time. User-entered deadlines remain separate from flexible planned calendar times.
 - Durable capture identifiers prevent duplicate requests even after the ordinary request cache expires. The old URL capture path remains supported.
 
 ## One-person beta
