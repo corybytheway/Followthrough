@@ -9,12 +9,13 @@ import {
 import { seal, unseal } from './calendar-security';
 import { InputError } from './validation';
 import { backgroundConfigured, backgroundHealthy } from './calendar-background';
+import { APP_ORIGIN } from './app-origin';
 type Row = { credentials: string; document: string };
 export const calendarConfig = () => env as unknown as Record<string, string>;
 const secret = () => calendarConfig().CALENDAR_ENCRYPTION_KEY || '';
 export const calendarOrigin = () =>
   calendarConfig().CALENDAR_APP_ORIGIN ||
-  'https://followthrough.corybytheway.chatgpt.site';
+  APP_ORIGIN;
 export const callbackUrl = () =>
   `${calendarOrigin()}/api/calendars/google/callback`;
 // The original owner keeps their existing OAuth registration. Invitees use

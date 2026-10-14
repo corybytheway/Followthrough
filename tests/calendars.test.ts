@@ -508,7 +508,7 @@ void test('calendar descriptions show concise signed actions, original input, an
   assert.ok(description.includes('>MANAGE TASK</a><br><br>Original input: '));
   assert.ok(
     description.includes(
-      'href="https://followthrough.corybytheway.chatgpt.site/tasks?task=task-safe-id"',
+      'href="https://followthrough.corymccabe.com/tasks?task=task-safe-id"',
     ),
   );
   assert.ok(!description.includes('>https://'));

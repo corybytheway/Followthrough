@@ -18,6 +18,7 @@ import {
 import { actionTaskId } from './calendar-action-owner';
 import { calendarActionToken } from './calendar-action-token';
 import { taskReference } from './task-reference';
+import { APP_ORIGIN } from './app-origin';
 export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
   'https://www.googleapis.com/auth/calendar.events.freebusy',
@@ -434,7 +435,7 @@ export async function calendarDescription(
     '<b>Suggested steps</b>' +
     suggested +
     actions +
-    `<a href="https://followthrough.corybytheway.chatgpt.site/tasks?task=${encodeURIComponent(taskReference(task.id))}">MANAGE TASK</a>` +
+    `<a href="${APP_ORIGIN}/tasks?task=${encodeURIComponent(taskReference(task.id))}">MANAGE TASK</a>` +
     '<br><br>Original input: ' + originalInput
   );
 }
