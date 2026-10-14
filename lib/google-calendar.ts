@@ -378,18 +378,10 @@ export async function calendarDescription(
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
-  // Calendar clients can cut off long descriptions. Bound both the excerpt
-  // and its HTML expansion so email history leaves room for every action.
+  // Put the complete source last so a calendar client's display cutoff cannot
+  // hide the action links. Keep the saved original input unchanged.
   const source = (task.source || '').replace(/\r\n/g, '\n');
-  let originalInput = '', sourceLength = 0;
-  for (const character of source) {
-    const html = character === '\n' ? '<br>' : escape(character);
-    if (sourceLength + character.length > 1200 || originalInput.length + html.length > 2000) break;
-    originalInput += html;
-    sourceLength += character.length;
-  }
-  if (sourceLength < source.length)
-    originalInput += '…<br><i>Shortened for calendar. Full original input is in Followthrough.</i>';
+  const originalInput = escape(source).replace(/\n/g, '<br>');
   const steps = task.steps.slice(0, 5);
   const suggested = steps.length
     ? '<br>' +
@@ -425,26 +417,25 @@ export async function calendarDescription(
       taskLinks = await Promise.all([
         link('send_codex', 'Send to Codex'),
         link('complete', 'Complete'),
-        link('add_more_time', 'Add more time'),
         link('postpone', 'Postpone 1 day'),
         link('push_next_week', 'Push to next week'),
+        link('add_more_time', 'Add more time'),
         link('delete', 'Delete'),
       ]),
       priorityLinks = await Promise.all(
-        (['low', 'medium', 'high', 'top'] as const).map((priority) =>
+        (['top', 'high', 'medium', 'low'] as const).map((priority) =>
           link(`priority_${priority}`, priority[0].toUpperCase() + priority.slice(1))),
       );
-    actions = '<br><br><b>Task actions</b><br>' + taskLinks.join('<br>') +
-      `<br><br><b>Change priority (currently ${task.priority[0].toUpperCase()}${task.priority.slice(1)})</b><br>` +
+    actions = '<br><br><b>TASK ACTIONS</b><br>' + taskLinks.join('<br>') +
+      `<br><br><b>SET PRIORITY (currently ${task.priority[0].toUpperCase()}${task.priority.slice(1)})</b><br>` +
       priorityLinks.join('<br>') + '<br><br>';
   } else actions = '<br><br>';
   return (
     '<b>Suggested steps</b>' +
     suggested +
-    '<br><br>Original input: ' +
-    originalInput +
     actions +
-    `<a href="https://followthrough.corybytheway.chatgpt.site/tasks?task=${encodeURIComponent(taskReference(task.id))}">Manage task and follow through</a>`
+    `<a href="https://followthrough.corybytheway.chatgpt.site/tasks?task=${encodeURIComponent(taskReference(task.id))}">MANAGE TASK</a>` +
+    '<br><br>Original input: ' + originalInput
   );
 }
 

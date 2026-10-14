@@ -503,9 +503,9 @@ void test('calendar descriptions show concise signed actions, original input, an
   assert.ok(description.includes('>Postpone 1 day</a><br>'));
   assert.ok(description.includes('>Push to next week</a><br>'));
   assert.ok(description.includes('>Delete</a><br>'));
-  assert.ok(description.includes('<b>Change priority (currently Low)</b><br>'));
-  assert.ok(description.includes('>Top</a><br><br>'));
-  assert.ok(description.includes('>Manage task and follow through</a>'));
+  assert.ok(description.includes('<b>SET PRIORITY (currently Low)</b><br>'));
+  assert.ok(description.includes('>Low</a><br><br>'));
+  assert.ok(description.includes('>MANAGE TASK</a><br><br>Original input: '));
   assert.ok(
     description.includes(
       'href="https://followthrough.corybytheway.chatgpt.site/tasks?task=task-safe-id"',
@@ -513,8 +513,12 @@ void test('calendar descriptions show concise signed actions, original input, an
   );
   assert.ok(!description.includes('>https://'));
   assert.equal((description.match(/signature=[a-f0-9]{64}/g) || []).length, 10);
-  assert.ok(description.includes('<b>Task actions</b><br><a href='));
+  assert.ok(description.includes('<b>TASK ACTIONS</b><br><a href='));
   assert.ok(description.indexOf('>Send to Codex</a>') < description.indexOf('>Complete</a>'));
+  assert.deepEqual([...description.matchAll(/>([^<>]+)<\/a>/g)].map(match => match[1]), [
+    'Send to Codex', 'Complete', 'Postpone 1 day', 'Push to next week', 'Add more time', 'Delete',
+    'Top', 'High', 'Medium', 'Low', 'MANAGE TASK',
+  ]);
   assert.ok(
     (
       await calendarDescription({
@@ -544,7 +548,7 @@ void test('calendar descriptions bind action URLs to a private owner handle', as
     },
   );
   assert.ok(!description.includes('task=u'));
-  assert.ok(description.includes('<b>Change priority (currently Top)</b><br>'));
+  assert.ok(description.includes('<b>SET PRIORITY (currently Top)</b><br>'));
   const links = [...description.matchAll(/\?k=([A-Za-z0-9_-]+)/g)].map((match) => match[1]);
   assert.equal(links.length, 10);
   assert.ok(links.every((token) => token.length < 100));
@@ -554,8 +558,10 @@ void test('calendar descriptions bind action URLs to a private owner handle', as
     stamp: '2026-09-25T12:00:00.000Z',
   });
   assert.equal((await decodeCalendarActionToken(links[1], 'c'.repeat(64)))?.action, 'complete');
-  assert.equal((await decodeCalendarActionToken(links[2], 'c'.repeat(64)))?.action, 'add_more_time');
-  assert.equal((await decodeCalendarActionToken(links[4], 'c'.repeat(64)))?.action, 'push_next_week');
+  assert.deepEqual(await Promise.all(links.map(async token => (await decodeCalendarActionToken(token, 'c'.repeat(64)))?.action)), [
+    'send_codex', 'complete', 'postpone', 'push_next_week', 'add_more_time', 'delete',
+    'priority_top', 'priority_high', 'priority_medium', 'priority_low',
+  ]);
   assert.equal(await decodeCalendarActionToken(links[0].slice(0, -1) + (links[0].endsWith('A') ? 'B' : 'A'), 'c'.repeat(64)), null);
   assert.equal(await decodeCalendarActionToken(links[0], 'd'.repeat(64)), null);
   assert.ok(description.includes(`?task=c${'b'.repeat(24)}`));
@@ -576,27 +582,28 @@ void test('long email input leaves all calendar actions visible without changing
       baseUrl: 'https://followthrough-actions.corybytheway.chatgpt.site/action',
       secret: 'c'.repeat(64), handle,
     });
-    assert.ok(description.length < 6000);
     assert.ok(description.includes('Original input: Email subject: Review the proposal<br>'));
-    assert.ok(description.includes('Shortened for calendar. Full original input is in Followthrough.'));
+    assert.ok(!description.includes('Shortened for calendar.'));
     for (const label of ['Send to Codex', 'Complete', 'Add more time', 'Postpone 1 day', 'Push to next week', 'Delete', 'Low', 'Medium', 'High', 'Top'])
       assert.ok(description.includes(`>${label}</a>`));
-    assert.ok(description.endsWith('>Manage task and follow through</a>'));
+    assert.ok(description.endsWith(source.replace(/\n/g, '<br>')));
+    assert.ok(description.indexOf('Original input: ') > description.indexOf('>MANAGE TASK</a>'));
+    const beforeSource = description.split('Original input: ')[0];
+    for (const label of ['Send to Codex', 'Complete', 'Postpone 1 day', 'Push to next week', 'Add more time', 'Delete', 'Top', 'High', 'Medium', 'Low', 'MANAGE TASK'])
+      assert.ok(beforeSource.includes(`>${label}</a>`), 'calendar display cutoff after the source heading must retain ' + label);
     assert.equal(task.source, source);
   }
 });
 
-void test('calendar input previews safely bound escaped text, line breaks, and emoji', async () => {
+void test('calendar original input is last, uncut and safely escapes HTML, line breaks and emoji', async () => {
   for (const source of ['&<>"\n'.repeat(2000), '\n'.repeat(10000), 'x'.repeat(1199) + '🚀' + 'history'.repeat(300)]) {
     const description = await calendarDescription({
       id: 'task-1', updatedAt: '2026-10-13T12:00:00.000Z', priority: 'medium', source, steps: [],
     });
-    assert.ok(description.length < 2500);
-    assert.ok(description.includes('Shortened for calendar. Full original input is in Followthrough.'));
-    assert.ok(description.endsWith('>Manage task and follow through</a>'));
-    assert.ok(!description.includes('\uD83D'));
-    const original = description.split('Original input: ')[1].split('…<br><i>')[0];
-    assert.ok(!/&(?:amp|lt|gt|quot)?$/.test(original));
+    const expected = source.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
+    assert.ok(description.endsWith('>MANAGE TASK</a><br><br>Original input: ' + expected));
+    assert.ok(!description.includes('Shortened for calendar.'));
+    if (source.includes('🚀')) assert.ok(description.includes('🚀history'));
   }
   const source = 'x'.repeat(1200);
   const description = await calendarDescription({
