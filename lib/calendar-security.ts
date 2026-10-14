@@ -109,3 +109,13 @@ export function icloudUrl(value: string | URL): URL {
     throw new InputError('iCloud returned an unsupported calendar address.');
   return url;
 }
+
+export function icloudObjectUrl(value: string, calendarId: string): URL {
+  const calendar = icloudUrl(calendarId), url = icloudUrl(value);
+  const prefix = calendar.pathname.replace(/\/?$/, '/');
+  const filename = decodeURIComponent(url.pathname.slice(prefix.length));
+  if (url.origin !== calendar.origin || !url.pathname.startsWith(prefix) ||
+      url.search || url.hash || !filename || /[/\\]/.test(filename) || filename === '.' || filename === '..')
+    throw new InputError('Apple Calendar returned an event outside the selected task calendar. Sync stopped.');
+  return url;
+}

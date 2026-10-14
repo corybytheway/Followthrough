@@ -5,6 +5,10 @@ export async function requireOwner(
   request: Request,
   write = false,
 ): Promise<string> {
+  if (new URL(request.url).pathname.startsWith('/api/native/')) {
+    const { nativeOwner } = await import('./native-auth');
+    return nativeOwner(request);
+  }
   const user = await getChatGPTUser();
   if (!user)
     throw Object.assign(

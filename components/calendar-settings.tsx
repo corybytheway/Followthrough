@@ -687,8 +687,17 @@ export default function CalendarSettings() {
               </div>
               <div className="calendar-sync-status">
                 <h3>Task blocks</h3>
+                <label className="field">Task destination
+                  <select value={status.outputProvider === 'icloud' ? status.icloudOutputCalendarId || '' : 'google'} disabled={working} onChange={event => {
+                    const value = event.target.value;
+                    void run(async () => { await action({ action: 'set_output', provider: value === 'google' ? 'google' : 'icloud', calendarId: value }); if (status.syncEnabled) await action({ action: 'sync' }); }, 'Task destination saved.');
+                  }}>
+                    <option value="google" disabled={!status.googleConnected}>Google Calendar</option>
+                    {status.icloudCalendars.map(calendar => <option key={calendar.id} value={calendar.id}>Apple · {calendar.name}</option>)}
+                  </select>
+                </label>
                 <p>
-                  {status.outputCalendarId
+                  {status.outputProvider === 'icloud' ? 'Task blocks use your selected Apple calendar.' : status.outputCalendarId
                     ? `Your task blocks use ${status.outputCalendarName || 'the Followthrough calendar'}.`
                     : 'Connect Google to put task blocks on your primary calendar.'}
                 </p>
@@ -725,7 +734,7 @@ export default function CalendarSettings() {
                   {!status.syncEnabled ? (
                     <Button
                       disabled={
-                        working || !status.googleConnected || selectionChanged
+                        working || !(status.outputProvider === 'icloud' ? status.icloudConnected : status.googleConnected) || selectionChanged
                       }
                       onClick={() =>
                         void run(async () => {

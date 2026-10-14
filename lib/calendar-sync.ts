@@ -9,7 +9,7 @@ import {
   moveOwnedGoogleEvents,
   restoreMovedGoogleMetadata,
 } from './google-calendar';
-import { icloudBusy } from './icloud-calendar';
+import { icloudBusy, reconcileIcloud } from './icloud-calendar';
 import { zohoBusy } from './zoho-calendar';
 import {
   calendarConfig,
@@ -45,6 +45,9 @@ export async function syncCalendars(
     }
     try {
       const initial = await readWorkspace(owner);
+      const appleOutput = connection.outputProvider === 'icloud';
+      if (appleOutput && (!credentials.icloud || !connection.icloudOutputCalendarId)) throw new InputError('Reconnect Apple Calendar and choose a task destination.');
+      if (!appleOutput && (!credentials.google?.refreshToken || !connection.outputCalendarId)) throw new InputError('Reconnect Google before publishing task blocks.');
       const ensureTime = async () => {
         if (Date.now() - started > 240_000)
           throw new InputError(
@@ -113,11 +116,12 @@ export async function syncCalendars(
       const icloud = credentials.icloud
         ? await icloudBusy(
             credentials.icloud,
-            connection.selectedIcloud,
+            [...new Set([...connection.selectedIcloud, ...(appleOutput && connection.icloudOutputCalendarId ? [connection.icloudOutputCalendarId] : []), ...(connection.previousOutput?.provider === 'icloud' ? [connection.previousOutput.id] : [])])],
             start,
             end,
             initial.workspace.settings.timeZone,
             new Set(connection.ignoreAllDayIcloud),
+            connection.marker,
           )
         : [];
       const zoho = credentials.zoho
@@ -192,8 +196,30 @@ export async function syncCalendars(
         ...icloud,
         ...zoho,
       ]);
+      const stillCurrent = async () => {
+        if (Date.now() - started > 240_000) throw new InputError('Calendar sync needs another pass to finish.');
+        if ((await readWorkspace(owner)).revision !== saved.revision) throw new InputError('Your plan changed during sync. Sync again to publish the latest schedule.');
+      };
+      const actionLinks = calendarConfig().CALENDAR_ACTION_URL && calendarConfig().CALENDAR_ACTION_SECRET ? {
+        baseUrl: calendarConfig().CALENDAR_ACTION_URL, secret: calendarConfig().CALENDAR_ACTION_SECRET, handle: await actionHandle(owner),
+      } : undefined;
       let written = 0;
-      if (access && connection.outputCalendarId) {
+      // Remove only our marked events from the previous destination, after all
+      // selected availability has succeeded. Retain this checkpoint on failure.
+      if (connection.previousOutput) {
+        const previous = connection.previousOutput;
+        if (previous.provider === 'icloud') {
+          if (!credentials.icloud) throw new InputError('Reconnect Apple Calendar to finish moving task blocks.');
+          await reconcileIcloud(credentials.icloud, previous.id, connection.marker, [], [], stillCurrent);
+        } else {
+          if (!access) throw new InputError('Reconnect Google to finish moving task blocks.');
+          await reconcileGoogle(access, previous.id, connection.marker, [], [], stillCurrent);
+        }
+        connection.previousOutput = null; await saveCalendar(owner, connection, credentials);
+      }
+      if (appleOutput) {
+        written = await reconcileIcloud(credentials.icloud!, connection.icloudOutputCalendarId!, connection.marker, saved.workspace.blocks, saved.workspace.tasks, stillCurrent, saved.workspace.projects, actionLinks);
+      } else if (access && connection.outputCalendarId) {
         written = await reconcileGoogle(
           access,
           connection.outputCalendarId,

@@ -63,6 +63,7 @@ export async function expandedCaldavBusy(
   timeZone: string,
   ignoreAllDay = false,
   provider: 'icloud' | 'zoho' = 'icloud',
+  ownMarker?: string,
 ): Promise<BusyEvent[]> {
   if (data.length > 2_000_000)
     throw new InputError(
@@ -71,6 +72,7 @@ export async function expandedCaldavBusy(
   const root = new ICAL.Component(ICAL.parse(data));
   const busy: BusyEvent[] = [];
   for (const component of root.getAllSubcomponents('vevent')) {
+    if (ownMarker && component.getFirstPropertyValue('x-followthrough-owner') === ownMarker && /^ft[a-f0-9]{64}@followthrough$/.test(String(component.getFirstPropertyValue('uid')))) continue;
     if (
       component.getFirstPropertyValue('status') === 'CANCELLED' ||
       component.getFirstPropertyValue('transp') === 'TRANSPARENT'

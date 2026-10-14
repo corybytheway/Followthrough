@@ -41,3 +41,11 @@ next-env.d.ts
 .dev.vars*
 !.env.example
 *.tsbuildinfo
+/native/.build/
+/native/DerivedData/
+/native/local-session.json
+xcuserdata/
+
+native/*-runtime.log
+native/local-validation.json
+native/local-session-ios.json

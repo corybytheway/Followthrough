@@ -4,6 +4,8 @@ Created by Cory McCabe.
 
 A private, invite-only planner built with React, vinext, shadcn, and Cloudflare D1 on Sites.
 
+The locally runnable SwiftUI iPhone and Mac apps are in [`native/`](native/README.md). Their development API uses this server's existing workspace, capture, and scheduling logic. Native setup and validation are separate from deployment or TestFlight.
+
 ## Working in this version
 
 - Persistent projects, tasks, estimates, dates, priorities, notes, and checklist completion.
@@ -26,7 +28,7 @@ A private, invite-only planner built with React, vinext, shadcn, and Cloudflare 
 
 Sites access remains restricted to the owner until an invitee is chosen. Each authenticated user gets an independent D1 workspace, calendar connection, Shortcut key, and AI usage counter. New users start with no projects or tasks and choose their own work hours. The existing owner's saved workspace is unchanged. Invitees may use the owner's Followthrough Google OAuth application and the app-held OpenAI connection without receiving either credential. Their Google refresh token and iCloud password, if connected, are encrypted under their own user ID. AI calls are limited to 100 requests per user per UTC day.
 
-The one-minute private scheduler discovers enabled calendar connections, processes two due accounts per invocation, and keeps the existing owner-bound email relay. Calendar action links include an opaque account handle inside the signed task parameter; old owner links remain valid. The app offers export and an invitee-only data erasure control. Email capture remains available to the original owner and is hidden for invitees. The beta data notice is at `/privacy`.
+The one-minute private scheduler discovers enabled calendar connections, processes up to twenty due accounts per invocation with four concurrent workers, and keeps the existing owner-bound email relay. Calendar action links include an opaque account handle inside the signed task parameter; old owner links remain valid. The app offers export and an invitee-only data erasure control. Email capture remains available to the original owner and is hidden for invitees. The beta data notice is at `/privacy`.
 
 To invite someone later, confirm their Google OAuth access in the Google app configuration if required, then add their ChatGPT sign-in email to the Site's custom access allowlist. Keep the Site in custom access mode. Test that they see an empty workspace, can connect their own Google Calendar and Shortcut, and cannot see the owner's tasks. Do not add their email until they are ready to join.
 

@@ -6,7 +6,7 @@ export type BackgroundRow = { owner_id: string; document: string };
 export function dueCalendarOwners(
   rows: BackgroundRow[],
   now = Date.now(),
-  limit = 2,
+  limit = 20,
 ): string[] {
   return rows
     .flatMap((row) => {

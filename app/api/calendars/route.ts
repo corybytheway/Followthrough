@@ -234,7 +234,27 @@ export async function POST(request: Request) {
           connection.lastSync = null;
           break;
         }
+        case 'set_output': {
+          const provider = input.provider;
+          if (provider !== 'google' && provider !== 'icloud') throw new InputError('Choose Google or Apple Calendar.');
+          if (connection.previousOutput) throw new InputError('Finish syncing the previous calendar move before choosing another destination.');
+          const id = provider === 'google' ? connection.outputCalendarId : text(input.calendarId, 'Task calendar', 2000, true);
+          if (provider === 'google' && (!credentials.google?.refreshToken || !id)) throw new InputError('Connect Google first.');
+          if (provider === 'icloud' && (!credentials.icloud || !connection.icloudCalendars.some(c => c.id === id))) throw new InputError('Choose an Apple calendar from your connected account.');
+          const oldProvider = connection.outputProvider || 'google';
+          const oldId = oldProvider === 'icloud' ? connection.icloudOutputCalendarId : connection.outputCalendarId;
+          if (oldId && connection.lastSync && (provider !== oldProvider || id !== oldId)) connection.previousOutput = { provider: oldProvider, id: oldId };
+          connection.outputProvider = provider;
+          if (provider === 'icloud') connection.icloudOutputCalendarId = id;
+          connection.lastSync = null;
+          break;
+        }
         case 'start_sync': {
+          if (connection.outputProvider === 'icloud') {
+            if (!credentials.icloud || !connection.icloudOutputCalendarId) throw new InputError('Connect Apple Calendar and choose a task destination.');
+            connection.syncEnabled = true;
+            break;
+          }
           if (!credentials.google?.refreshToken)
             throw new InputError(
               'Connect Google to schedule tasks on your primary calendar.',
@@ -258,6 +278,7 @@ export async function POST(request: Request) {
               : input.action === 'disconnect_icloud'
                 ? 'icloud'
                 : 'zoho';
+          if (connection.previousOutput?.provider === provider) throw new InputError('Finish moving task blocks before disconnecting this calendar.');
           connection.syncEnabled = false;
           if (provider === 'google') {
             delete credentials.google;

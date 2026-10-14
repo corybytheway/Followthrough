@@ -4,11 +4,11 @@ import type { Task, Workspace } from './model';
 import { InputError } from './validation';
 import { APP_ORIGIN } from './app-origin';
 
-export function codexHandoff(workspace: Workspace, task: Task) {
+export function codexHandoff(workspace: Workspace, task: Task, origin = APP_ORIGIN) {
   if (task.deletedAt || task.status === 'done' || task.status === 'archived')
     throw new InputError('Reopen this task before sending it to Codex.');
   const project = workspace.projects.find((candidate) => candidate.id === task.projectId);
-  const url = `${APP_ORIGIN}/tasks?task=${encodeURIComponent(taskReference(task.id))}`;
+  const url = `${origin}/tasks?task=${encodeURIComponent(taskReference(task.id))}`;
   const prerequisites = task.blockers.map((id) => workspace.tasks.find((candidate) => candidate.id === id)).filter((candidate): candidate is Task => Boolean(candidate));
   const sections = [
     `Complete this Followthrough task: ${task.title}`,

@@ -1,4 +1,5 @@
 // Created by Cory McCabe
+import { boundedWorkers } from '@/lib/bounded-workers';
 import { env } from 'cloudflare:workers';
 import { authenticateScheduler } from '@/lib/calendar-background';
 import {
@@ -21,15 +22,14 @@ export async function POST(request: Request) {
       'SELECT owner_id, document FROM calendar_connections',
     ).all<BackgroundRow>();
     const owners = dueCalendarOwners(rows.results || []);
-    const results = [];
-    for (const owner of owners) {
+    const results = await boundedWorkers(owners, 4, async owner => {
       try {
         const result = await syncCalendars(owner, 'background');
-        results.push({ ok: true, skipped: !!result.skipped });
+        return { ok: true, skipped: !!result.skipped };
       } catch {
-        results.push({ ok: false });
+        return { ok: false };
       }
-    }
+    });
     return Response.json(
       {
         ok: results.every((result) => result.ok),

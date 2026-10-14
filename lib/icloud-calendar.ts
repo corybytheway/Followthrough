@@ -2,9 +2,10 @@
 import { createDAVClient } from 'tsdav';
 import type { CalendarChoice, CalendarCredentials } from './calendar-model';
 import type { BusyEvent } from './model';
-import { icloudUrl } from './calendar-security';
+import { icloudUrl, icloudObjectUrl } from './calendar-security';
 import { InputError } from './validation';
 import { expandedCaldavBusy as expandedIcloudBusy } from './caldav-events';
+import { reconcileIcloudObjects } from './icloud-publication';
 export {
   calendarInstant,
   expandedCaldavBusy as expandedIcloudBusy,
@@ -66,6 +67,7 @@ export async function icloudBusy(
   end: string,
   timeZone: string,
   ignoreAllDayIds: ReadonlySet<string> = new Set(),
+  ownMarker?: string,
 ): Promise<BusyEvent[]> {
   if (!ids.length) return [];
   if (ids.length > 20)
@@ -99,9 +101,30 @@ export async function icloudBusy(
           end,
           timeZone,
           ignoreAllDayIds.has(id),
+          'icloud',
+          ownMarker,
         )),
       );
     }
   }
   return busy;
+}
+
+export async function reconcileIcloud(
+  secret: NonNullable<CalendarCredentials['icloud']>, calendarId: string,
+  ...args: Parameters<typeof reconcileIcloudObjects> extends [unknown, ...infer Rest] ? Rest : never
+) {
+  const client = await appleClient(secret);
+  const calendar = (await client.fetchCalendars()).find(c => icloudUrl(c.url).href === calendarId);
+  if (!calendar) throw new InputError('The Apple task calendar is no longer available. Choose a destination again.');
+  return reconcileIcloudObjects({
+    list: async () => {
+      const objects = await client.fetchCalendarObjects({ calendar, useMultiGet: false, urlFilter: () => true });
+      for (const object of objects) icloudObjectUrl(object.url, calendarId);
+      return objects;
+    },
+    create: async (filename, data) => { await client.createCalendarObject({ calendar, filename, iCalString: data, headers: { 'If-None-Match': '*' } }); },
+    update: async (object, data) => { icloudObjectUrl(object.url, calendarId); await client.updateCalendarObject({ calendarObject: { ...object, data }, headers: { 'If-Match': object.etag! } }); },
+    remove: async object => { icloudObjectUrl(object.url, calendarId); await client.deleteCalendarObject({ calendarObject: object, headers: { 'If-Match': object.etag! } }); },
+  }, ...args);
 }

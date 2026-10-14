@@ -28,6 +28,9 @@ export type CalendarConnection = {
   ignoreAllDayIcloud: string[];
   ignoreAllDayZoho: string[];
   outputCalendarId: string | null;
+  outputProvider?: 'google' | 'icloud';
+  icloudOutputCalendarId?: string | null;
+  previousOutput?: { provider: 'google' | 'icloud'; id: string } | null;
   outputOnPrimary?: boolean;
   outputCalendarName?: string;
   migrationSourceCalendarId?: string | null;
