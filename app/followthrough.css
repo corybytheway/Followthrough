@@ -655,6 +655,9 @@ summary {
   font-size: 14px;
   color: var(--blue);
 }
+.account-privacy-link {
+  padding-right: 15px;
+}
 .connections details {
   font-size: 14px;
   color: var(--subtle);

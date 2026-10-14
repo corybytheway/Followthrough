@@ -2056,7 +2056,9 @@ function SettingsPanel({
             Your projects, tasks, work hours, and calendar connections are
             separate from other users’ workspaces.
           </p>
-          <Link href="/privacy">Beta data & privacy</Link>
+          <Link className="account-privacy-link" href="/privacy">
+            Beta data & privacy
+          </Link>
           <Link
             download
             prefetch={false}
