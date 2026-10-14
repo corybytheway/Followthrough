@@ -514,9 +514,9 @@ void test('calendar descriptions show concise signed actions, original input, an
   assert.ok(!description.includes('>https://'));
   assert.equal((description.match(/signature=[a-f0-9]{64}/g) || []).length, 10);
   assert.ok(description.includes('<b>TASK ACTIONS</b><br><a href='));
-  assert.ok(description.indexOf('>Send to Codex</a>') < description.indexOf('>Complete</a>'));
+  assert.ok(description.indexOf('>Do this for me</a>') < description.indexOf('>Complete</a>'));
   assert.deepEqual([...description.matchAll(/>([^<>]+)<\/a>/g)].map(match => match[1]), [
-    'Send to Codex', 'Complete', 'Postpone 1 day', 'Push to next week', 'Add more time', 'Delete',
+    'Do this for me', 'Complete', 'Postpone 1 day', 'Push to next week', 'Add more time', 'Delete',
     'Top', 'High', 'Medium', 'Low', 'MANAGE TASK',
   ]);
   assert.ok(
@@ -584,12 +584,12 @@ void test('long email input leaves all calendar actions visible without changing
     });
     assert.ok(description.includes('Original input: Email subject: Review the proposal<br>'));
     assert.ok(!description.includes('Shortened for calendar.'));
-    for (const label of ['Send to Codex', 'Complete', 'Add more time', 'Postpone 1 day', 'Push to next week', 'Delete', 'Low', 'Medium', 'High', 'Top'])
+    for (const label of ['Do this for me', 'Complete', 'Add more time', 'Postpone 1 day', 'Push to next week', 'Delete', 'Low', 'Medium', 'High', 'Top'])
       assert.ok(description.includes(`>${label}</a>`));
     assert.ok(description.endsWith(source.replace(/\n/g, '<br>')));
     assert.ok(description.indexOf('Original input: ') > description.indexOf('>MANAGE TASK</a>'));
     const beforeSource = description.split('Original input: ')[0];
-    for (const label of ['Send to Codex', 'Complete', 'Postpone 1 day', 'Push to next week', 'Add more time', 'Delete', 'Top', 'High', 'Medium', 'Low', 'MANAGE TASK'])
+    for (const label of ['Do this for me', 'Complete', 'Postpone 1 day', 'Push to next week', 'Add more time', 'Delete', 'Top', 'High', 'Medium', 'Low', 'MANAGE TASK'])
       assert.ok(beforeSource.includes(`>${label}</a>`), 'calendar display cutoff after the source heading must retain ' + label);
     assert.equal(task.source, source);
   }

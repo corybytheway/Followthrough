@@ -1413,7 +1413,7 @@ function TaskEditor({
       if (!response.ok || !result.handoffUrl) throw new Error(result.error || 'Could not prepare the Codex handoff.');
       window.location.assign(result.handoffUrl);
     } catch (error) {
-      setLocalError(error instanceof Error ? error.message : 'Could not send to Codex.');
+      setLocalError(error instanceof Error ? error.message : 'Could not prepare this task.');
       setPreparingCodex(false);
     }
   }
@@ -1523,10 +1523,10 @@ function TaskEditor({
         </Button>
       )}
       {initial.id && status !== 'done' && status !== 'archived' && (
-        <Button type="button" variant="outline" disabled={saving || preparingCodex}
+        <Button type="button" className="do-task-button" disabled={saving || preparingCodex}
           onClick={() => void sendToCodex()}>
           {preparingCodex ? <Loader2 className="spin" /> : <ArrowUpRight />}
-          {preparingCodex ? 'Preparing Codex…' : 'Send to Codex'}
+          {preparingCodex ? 'Preparing task…' : 'Do this for me'}
         </Button>
       )}
       {((initial.captureMode === 'basic' && initial.estimateProvisional) ||

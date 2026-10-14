@@ -876,3 +876,19 @@ summary {
 .beta-data-notice p {
   line-height: 1.6;
 }
+
+/* Distinct task handoff action across task-detail layouts. */
+.editor-form .do-task-button {
+  background: #7040d6;
+  border-color: #7040d6;
+  color: #fff;
+  font-weight: 600;
+}
+.editor-form .do-task-button:hover:not(:disabled) {
+  background: #5d2dbd;
+  border-color: #5d2dbd;
+}
+.editor-form .do-task-button:focus-visible {
+  outline: 3px solid #b9a1f0;
+  outline-offset: 3px;
+}
