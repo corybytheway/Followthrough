@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { BASIC_CAPTURE_NOTICE } from '@/lib/capture-status';
+import { handleCaptureKeyDown } from '@/lib/capture-keyboard';
 import { resolveTaskReference, taskReference } from '@/lib/task-reference';
 import {
   Sheet,
@@ -495,6 +496,7 @@ export default function FollowthroughApp({
     return () => lifecycle.abort();
   }, [loaded, commit, refresh, navigateToTab]);
   async function capture() {
+    if (busyRef.current || !source.trim()) return;
     setError('');
     setSaving(true);
     busyRef.current = true;
@@ -884,6 +886,9 @@ export default function FollowthroughApp({
                     maxLength={8000}
                     value={source}
                     onChange={(e) => setSource(e.target.value)}
+                    onKeyDown={(event) =>
+                      handleCaptureKeyDown(event, () => void capture())
+                    }
                     placeholder="I need to reply to Samuel's email, edit a view that'll take 4 hours, but the top priority is fix the faucet leak downstairs which should take about 1.5 hours."
                   />
                   <div className="capture-footer">
