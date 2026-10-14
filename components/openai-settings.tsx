@@ -61,43 +61,6 @@ export default function OpenAISettings() {
       setBusy(false);
     }
   }
-  async function rename() {
-    setBusy(true);
-    setError('');
-    setMessage('');
-    let changed = 0,
-      failed = 0;
-    try {
-      const response = await fetch('/api/openai/rename', { cache: 'no-store' });
-      const data = (await response.json()) as {
-        error?: string;
-        exampleTitle: string;
-        ids: string[];
-      };
-      if (!response.ok) throw new Error(data.error);
-      for (const id of data.ids as string[]) {
-        setMessage(
-          `Regenerating active task names: ${changed + failed} of ${data.ids.length} processed…`,
-        );
-        const result = await fetch('/api/openai/rename', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id }),
-        });
-        if (result.ok) changed++;
-        else failed++;
-      }
-      setMessage(
-        `Regenerated ${changed} active task name${changed === 1 ? '' : 's'}.${failed ? ` ${failed} could not be updated; retry to finish.` : ''}`,
-      );
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : 'Could not regenerate task names.',
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
     <section className="settings-card">
       <h2>AI task planning</h2>
@@ -140,17 +103,6 @@ export default function OpenAISettings() {
             {busy ? 'Testing connection…' : 'Connect OpenAI'}
           </Button>
         </form>
-      )}
-      {connected && (
-        <>
-          <p>
-            Regenerate active task names from their original input. Existing
-            scheduling, completion, and checklist details are preserved.
-          </p>
-          <Button onClick={rename} disabled={busy}>
-            {busy ? 'Regenerating…' : 'Regenerate active task names'}
-          </Button>
-        </>
       )}
       {message && <output>{message}</output>}
       {error && (

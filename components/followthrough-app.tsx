@@ -24,7 +24,6 @@ import {
   Link2,
   Loader2,
   X,
-  RotateCcw,
   Download,
   Search,
   MessageSquare,
@@ -1391,8 +1390,6 @@ function TaskEditor({
     [splittable, setSplittable] = useState(initial.splittable !== false),
     [blockers, setBlockers] = useState(initial.blockers || []),
     [localError, setLocalError] = useState('');
-  const [regeneratingTitle, setRegeneratingTitle] = useState(false),
-    [titleNotice, setTitleNotice] = useState('');
   const [expectedUpdatedAt] = useState(initial.updatedAt);
   const [preparingCodex, setPreparingCodex] = useState(false);
   async function sendToCodex() {
@@ -1415,40 +1412,6 @@ function TaskEditor({
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : 'Could not prepare this task.');
       setPreparingCodex(false);
-    }
-  }
-
-  async function regenerateTitle() {
-    if (!initial.id || !initial.source?.trim()) return;
-    setLocalError('');
-    setTitleNotice('');
-    setRegeneratingTitle(true);
-    try {
-      const response = await fetch('/api/openai/rename', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: initial.id, preview: true }),
-        }),
-        result = (await response.json()) as {
-          error?: unknown;
-          title?: unknown;
-        };
-      if (!response.ok)
-        throw new Error(
-          typeof result.error === 'string'
-            ? result.error
-            : 'Could not regenerate the task name.',
-        );
-      if (typeof result.title !== 'string' || !result.title.trim())
-        throw new Error('OpenAI did not return a task name.');
-      setTitle(result.title);
-      setTitleNotice('New name generated. Save changes to keep it.');
-    } catch (e) {
-      setLocalError(
-        e instanceof Error ? e.message : 'Could not regenerate the task name.',
-      );
-    } finally {
-      setRegeneratingTitle(false);
     }
   }
 
@@ -1551,23 +1514,6 @@ function TaskEditor({
           placeholder="A focused outcome"
         />
       </Field>
-      {initial.id && initial.source?.trim() && (
-        <div className="task-name-actions">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={saving || regeneratingTitle}
-            aria-label="Regenerate task name from original input"
-            onClick={() => void regenerateTitle()}
-          >
-            {regeneratingTitle ? <Loader2 className="spin" /> : <RotateCcw />}
-            {regeneratingTitle ? 'Regenerating…' : 'Regenerate name'}
-          </Button>
-          {titleNotice && (
-            <output className="secondary-text">{titleNotice}</output>
-          )}
-        </div>
-      )}
       <Field label="Project">
         <NativeSelect
           value={projectId}
@@ -1648,7 +1594,7 @@ function TaskEditor({
             onChange={(e) => setDue(e.target.value)}
           />
         </Field>
-        <Field label="Start on or after">
+        <Field label="Start on or after" hint="Leave empty for automatic planning.">
           <Input
             type="date"
             value={start}
@@ -1667,9 +1613,21 @@ function TaskEditor({
           <small>Still one task, even across several days.</small>
         </label>
       </div>
+      <Field
+        label="Task notes"
+        hint="Suggested or added context for this task. The exact original input is preserved separately below."
+      >
+        <Textarea
+          rows={3}
+          maxLength={10000}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Details, links, or a definition of done"
+        />
+      </Field>
       <div className="editor-section">
         <div className="section-heading">
-          <h2>Steps to complete it</h2>
+          <h2>Calendar suggested steps</h2>
           <span>
             {steps.filter((s) => s.done).length}/{steps.length}
           </span>
@@ -1774,20 +1732,8 @@ function TaskEditor({
           ) && <p className="secondary-text">No unfinished tasks available.</p>}
         </div>
       </div>
-      <Field
-        label="Task notes"
-        hint="Suggested or added context for this task. The exact original input is preserved separately below."
-      >
-        <Textarea
-          rows={3}
-          maxLength={10000}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Details, links, or a definition of done"
-        />
-      </Field>
       {initial.source && (
-        <details className="original-request">
+        <details className="original-request" open>
           <summary>Original input (verbatim)</summary>
           <p>{initial.source}</p>
         </details>
