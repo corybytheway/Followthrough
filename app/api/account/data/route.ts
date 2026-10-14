@@ -44,6 +44,8 @@ export async function DELETE(request: Request) {
         }
       }
       await env.DB.batch([
+        env.DB.prepare('DELETE FROM native_sessions WHERE owner_id = ?').bind(owner),
+        env.DB.prepare('DELETE FROM native_codes WHERE owner_id = ?').bind(owner),
         env.DB.prepare('DELETE FROM workspaces WHERE owner_id = ?').bind(owner),
         env.DB.prepare(
           'DELETE FROM shortcut_connections WHERE owner_id = ?',

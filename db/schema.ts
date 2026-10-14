@@ -9,6 +9,17 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
+export const nativeCodes = sqliteTable('native_codes', {
+  codeHash: text('code_hash').primaryKey(), ownerId: text('owner_id').notNull(),
+  challenge: text('challenge').notNull(), expiresAt: integer('expires_at').notNull(),
+});
+export const nativeSessions = sqliteTable('native_sessions', {
+  id: text('id').primaryKey(), ownerId: text('owner_id').notNull(),
+  deviceName: text('device_name').notNull(), accessHash: text('access_hash').notNull().unique(),
+  refreshHash: text('refresh_hash').notNull().unique(), accessExpires: integer('access_expires').notNull(),
+  refreshExpires: integer('refresh_expires').notNull(), createdAt: integer('created_at').notNull(), revokedAt: integer('revoked_at'),
+}, table => [index('native_sessions_owner').on(table.ownerId)]);
+
 // Atomic personal planning document, protected by a revision check on every write.
 export const workspaces = sqliteTable('workspaces', {
   ownerId: text('owner_id').primaryKey(),

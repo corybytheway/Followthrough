@@ -22,6 +22,7 @@ export function applyAction(
     case 'delete_task': {
       const task = w.tasks.find((t) => t.id === v.id);
       if (!task) throw new InputError('Task not found.');
+      if (v.expectedUpdatedAt !== undefined && v.expectedUpdatedAt !== task.updatedAt) throw Object.assign(new InputError('This task changed. Review it before deleting.'), { status: 409 });
       if (!task.deletedAt) {
         task.statusBeforeDelete = task.status;
         task.status = 'archived';
