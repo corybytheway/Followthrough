@@ -6,7 +6,7 @@ import { actionHandle, resolveActionTask } from '@/lib/calendar-action-owner';
 import { calendarActionToken, decodeCalendarActionToken } from '@/lib/calendar-action-token';
 import { resolveTaskReference } from '@/lib/task-reference';
 import { readWorkspace } from '@/lib/store';
-import { codexHandoff } from '@/lib/codex-handoff';
+import { codexDraftUrl, codexHandoff } from '@/lib/codex-handoff';
 
 export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
@@ -39,6 +39,7 @@ export async function POST(request: Request) {
     }
     return Response.json({ ok: true, handoff, k: token,
       handoffUrl: `https://followthrough-actions.corybytheway.chatgpt.site/action?k=${token}`,
+      chatgptUrl: codexDraftUrl(handoff, token),
     }, { headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' } });
   } catch (error) { return fail(error); }
 }

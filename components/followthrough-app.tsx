@@ -47,7 +47,7 @@ import {
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { NativeSelect } from '@/components/ui/native-select';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -1378,28 +1378,30 @@ function TaskEditor({
     [blockers, setBlockers] = useState(initial.blockers || []),
     [localError, setLocalError] = useState('');
   const [expectedUpdatedAt] = useState(initial.updatedAt);
-  const [preparingCodex, setPreparingCodex] = useState(false);
-  async function sendToCodex() {
+  const [codexDraft, setCodexDraft] = useState<{ taskVersion: string; url: string } | null>(null);
+  const [codexDraftError, setCodexDraftError] = useState(false);
+  const [codexDraftRetry, setCodexDraftRetry] = useState(0);
+  const taskVersion = `${initial.id}:${initial.updatedAt}`;
+  useEffect(() => {
+    if (!initial.id || initial.deletedAt || initial.status === 'done' || initial.status === 'archived') return;
+    const controller = new AbortController();
+    setCodexDraft(null);
+    setCodexDraftError(false);
+    void fetch('/api/codex/handoff', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: initial.id, expectedUpdatedAt: initial.updatedAt }),
+      signal: controller.signal,
+    }).then(async (response) => {
+      const result = (await response.json()) as { chatgptUrl?: string };
+      if (!response.ok || !result.chatgptUrl) throw new Error('Handoff unavailable');
+      setCodexDraft({ taskVersion, url: result.chatgptUrl });
+    }).catch(() => { if (!controller.signal.aborted) setCodexDraftError(true); });
+    return () => controller.abort();
+  }, [initial.id, initial.updatedAt, initial.deletedAt, initial.status, taskVersion, codexDraftRetry]);
+  function hasUnsavedChanges() {
     const current = [title, projectId, notes, steps, estimate, remaining, priority, status, due, start, splittable, blockers];
     const saved = [initial.title || '', initial.projectId || '', initial.notes || '', initial.steps || [], initial.estimateMinutes || 30, initial.remainingMinutes || initial.estimateMinutes || 30, initial.priority || 'medium', initial.status || 'ready', initial.dueDate || '', initial.notBefore || '', initial.splittable !== false, initial.blockers || []];
-    if (JSON.stringify(current) !== JSON.stringify(saved)) {
-      setLocalError('Save your changes before sending this task to Codex.');
-      return;
-    }
-    setPreparingCodex(true);
-    setLocalError('');
-    try {
-      const response = await fetch('/api/codex/handoff', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: initial.id, expectedUpdatedAt }),
-      });
-      const result = (await response.json()) as { error?: string; handoffUrl?: string };
-      if (!response.ok || !result.handoffUrl) throw new Error(result.error || 'Could not prepare the Codex handoff.');
-      window.location.assign(result.handoffUrl);
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : 'Could not prepare this task.');
-      setPreparingCodex(false);
-    }
+    return JSON.stringify(current) !== JSON.stringify(saved);
   }
 
   async function submit(
@@ -1473,11 +1475,24 @@ function TaskEditor({
         </Button>
       )}
       {initial.id && status !== 'done' && status !== 'archived' && (
-        <Button type="button" className="do-task-button" disabled={saving || preparingCodex}
-          onClick={() => void sendToCodex()}>
-          {preparingCodex ? <Loader2 className="spin" /> : <ArrowUpRight />}
-          {preparingCodex ? 'Preparing task…' : 'Do this for me'}
-        </Button>
+        codexDraft?.taskVersion === taskVersion ? (
+          <a href={codexDraft.url} target="_blank" rel="noopener noreferrer"
+            className={buttonVariants({ className: 'do-task-button' })}
+            onClick={(event) => {
+              if (saving || hasUnsavedChanges()) {
+                event.preventDefault();
+                setLocalError('Save your changes before sending this task to Codex.');
+              }
+            }}>
+            <ArrowUpRight /> Do this for me
+          </a>
+        ) : (
+          <Button type="button" className="do-task-button" disabled={!codexDraftError}
+            onClick={() => setCodexDraftRetry((value) => value + 1)}>
+            {codexDraftError ? <ArrowUpRight /> : <Loader2 className="spin" />}
+            {codexDraftError ? 'Retry handoff' : 'Preparing task…'}
+          </Button>
+        )
       )}
       {((initial.captureMode === 'basic' && initial.estimateProvisional) ||
         initial.rationale) && (

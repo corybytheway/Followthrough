@@ -1,7 +1,7 @@
 // Created by Cory McCabe
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { codexHandoff } from '../lib/codex-handoff';
+import { codexDraftUrl, codexHandoff } from '../lib/codex-handoff';
 import { initialWorkspace } from '../lib/model';
 import { applyAction } from '../lib/actions';
 
@@ -20,18 +20,25 @@ void test('Codex receives the full source, project, notes, progress, timing and 
   const task = workspace.tasks.at(-1)!;
   const handoff = codexHandoff(workspace, task);
   assert.equal(handoff.projectName, 'Orbit');
+  assert.ok(handoff.prompt.includes('First propose a plan for my review before making changes.'));
   for (const detail of ['Keep the same PR.', '[x] Research layout', '[ ] Implement export', 'Remaining: 75 minutes', '2026-11-07', '2026-11-04', 'Finish prerequisite', 'Resolve the design first.'])
     assert.ok(handoff.prompt.includes(detail));
   assert.ok(handoff.prompt.endsWith(source));
   assert.equal(task.source, source);
   assert.ok(handoff.taskUrl.includes('task='));
+  const linkedPrompt = new URL(codexDraftUrl(handoff, 'signed-token')).searchParams.get('prompt') || '';
+  assert.ok(linkedPrompt.startsWith('/plan Complete this Followthrough task: Update timesheet export'));
+  assert.ok(linkedPrompt.includes('/codex/context?k=signed-token'));
+  assert.ok(!linkedPrompt.includes(source));
 });
 
 void test('Codex handoff rejects deleted and completed tasks and does not include unrelated tasks', () => {
   const workspace = applyAction(initialWorkspace(), { action: 'create_task', task: { title: 'Write brief' } }).workspace;
   const task = workspace.tasks[0];
   workspace.tasks.push({ ...task, id: 'unrelated', title: 'Unrelated private task', source: 'Unrelated source' });
-  assert.ok(!codexHandoff(workspace, task).prompt.includes('Unrelated private task'));
+  const handoff = codexHandoff(workspace, task);
+  assert.ok(!handoff.prompt.includes('Unrelated private task'));
+  assert.equal(new URL(codexDraftUrl(handoff, 'signed-token')).searchParams.get('prompt'), `/plan ${handoff.prompt}`);
   for (const changed of [{ status: 'done' as const }, { status: 'archived' as const }, { deletedAt: '2026-10-13' }])
     assert.throws(() => codexHandoff(workspace, { ...task, ...changed }));
 });
