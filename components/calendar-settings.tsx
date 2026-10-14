@@ -365,7 +365,7 @@ export default function CalendarSettings() {
           </div>
           <div className="calendar-provider">
             <div className="calendar-provider-heading">
-              <h3>iCloud Calendar</h3>
+              <h3>Apple Calendar</h3>
               <span className="status-label">
                 {status.icloudConnected ? 'Connected' : 'Not connected'}
               </span>
@@ -551,7 +551,7 @@ export default function CalendarSettings() {
             status.zohoConnected) && (
             <>
               <div className="calendar-selection">
-                <h3>Calendars that block task time</h3>
+                <h3>Calendars that block your tasks</h3>
                 <p>
                   Select appointments, bookings, and personal commitments. Leave
                   calendars containing other flexible task blocks unchecked.
