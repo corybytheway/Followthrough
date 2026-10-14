@@ -126,6 +126,14 @@ function dayLabel(day: string) {
     day: 'numeric',
   });
 }
+function todayHeading(day: string) {
+  if (!day) return '';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC', weekday: 'long', month: 'short', day: 'numeric',
+  }).formatToParts(new Date(day + 'T12:00:00Z'));
+  const part = (type: string) => parts.find((p) => p.type === type)?.value;
+  return `${part('weekday')}, ${part('month')}. ${part('day')}`;
+}
 function randomCaptureId() {
   return (
     'capture_' +
@@ -848,6 +856,9 @@ export default function FollowthroughApp({
           </TabsList>
           <div className="feedback-layer">{feedbackMessages}</div>
           <TabsContent value="today">
+            <div className="page-heading">
+              <div><h1>{todayHeading(state.currentDate)}</h1></div>
+            </div>
             {state.projects.length === 0 && state.tasks.length === 0 && (
               <div className="empty-panel beta-welcome">
                 <h2>Set up your workspace</h2>
@@ -1047,7 +1058,7 @@ export default function FollowthroughApp({
           <TabsContent value="tasks">
             <div className="page-heading">
               <div>
-                <h1>Your tasks.</h1>
+                <h1>Your tasks</h1>
               </div>
               <Button onClick={navigateToCapture}>
                 <Plus />
@@ -1105,7 +1116,7 @@ export default function FollowthroughApp({
           <TabsContent value="projects">
             <div className="page-heading">
               <div>
-                <h1>Your projects.</h1>
+                <h1>Your projects</h1>
               </div>
               <Button
                 onClick={() => {
@@ -1165,7 +1176,7 @@ export default function FollowthroughApp({
           <TabsContent value="settings">
             <div className="page-heading">
               <div>
-                <h1>Make room for your work.</h1>
+                <h1>Make room for your work</h1>
               </div>
             </div>
             <SettingsPanel
