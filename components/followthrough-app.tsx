@@ -19,7 +19,6 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   Check,
   Link2,
   Loader2,
@@ -2050,30 +2049,6 @@ function SettingsPanel({
           </p>
         </div>
         <ShortcutSettings />
-        <div className="settings-card">
-          <Clock3 />
-          <h2>Automatic replanning</h2>
-          <span className="status-label">
-            {state.integrations.background
-              ? 'Active even when the app is closed'
-              : 'Active while the app is open'}
-          </span>
-          <p>
-            Ready tasks get available time around your calendars, deadlines,
-            priorities, and prerequisites. No deadline is required. Unfinished
-            tasks move into future work hours without being marked complete.
-            Calendar connections shows the status of background updates.
-          </p>
-          <Link
-            download
-            prefetch={false}
-            className="download-link"
-            href="/api/export?format=json"
-          >
-            <Download size={16} />
-            Export your Followthrough data
-          </Link>
-        </div>
         <div className="settings-card">
           <h2>Your account</h2>
           {userEmail && <p>Signed in as {userEmail}</p>}
