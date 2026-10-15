@@ -87,7 +87,9 @@ struct ConnectionView: View {
 }
 struct SidebarView: View {
     @Bindable var store: WorkspaceStore
-    private let sections = [("today","Today","sun.max"),("tasks","Tasks","checklist"),("projects","Projects","folder"),("settings","Settings","slider.horizontal.3")]
+    @State private var editingProject: FTProject?
+    @State private var addingProject = false
+    private let sections = [("today","Today","sun.max"),("tasks","Tasks","checklist"),("settings","Settings","slider.horizontal.3")]
     var body: some View {
         List {
             Label("Followthrough",systemImage:"bolt.fill").font(.title3.bold()).padding(.vertical,14)
@@ -96,19 +98,41 @@ struct SidebarView: View {
                     .buttonStyle(.plain).listRowBackground(store.selectedSection == section.0 ? Color.followBlue.opacity(0.12) : Color.clear)
             }
             if let workspace = store.workspace {
-                Section("Projects") { ForEach(workspace.projects) { project in
-                    Button { store.selectedSection = project.id } label: {
-                        Label {
-                            Text(project.name).foregroundStyle(.primary)
-                        } icon: {
-                            Image(systemName:"circle.fill").font(.system(size:7)).foregroundStyle(Color(hex:project.color))
+                Section {
+                    ForEach(workspace.projects) { project in
+                        Button { store.selectedSection = project.id } label: {
+                            Label {
+                                Text(project.name).foregroundStyle(.primary)
+                            } icon: {
+                                ProjectFolderIcon(color:project.color)
+                            }
+                            .frame(maxWidth:.infinity,alignment:.leading)
+                            .padding(.vertical,4)
                         }
-                        .frame(maxWidth:.infinity,alignment:.leading)
-                        .padding(.vertical,4)
-                    }.buttonStyle(.plain)
-                } }
+                        .buttonStyle(.plain)
+                        .listRowBackground(store.selectedSection == project.id ? Color.followBlue.opacity(0.12) : Color.clear)
+                        .accessibilityIdentifier("sidebarProject_\(project.id)")
+                        .contextMenu {
+                            Button("Edit project",systemImage:"pencil") { editingProject = project }
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("Projects")
+                        Spacer()
+                        Button("New project",systemImage:"plus") { addingProject = true }
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.primary)
+                            .help("New project")
+                            .accessibilityIdentifier("sidebarNewProject")
+                    }
+                }
             }
-        }.navigationSplitViewColumnWidth(min:200,ideal:230,max:300)
+        }
+        .navigationSplitViewColumnWidth(min:200,ideal:230,max:300)
+        .sheet(item:$editingProject) { ProjectEditor(store:store,project:$0) }
+        .sheet(isPresented:$addingProject) { ProjectEditor(store:store,project:nil) }
     }
 }
 struct WorkspaceSection: View {
@@ -120,7 +144,9 @@ struct WorkspaceSection: View {
             if let workspace = store.workspace {
                 switch section {
                 case "today": TodayView(store:store,workspace:workspace)
+                #if !os(macOS)
                 case "projects": ProjectsView(store:store,projects:workspace.projects)
+                #endif
                 case "settings": SettingsView(store:store,settings:workspace.settings)
                 default: TasksView(store:store,workspace:workspace,projectId:section == "tasks" ? nil : section)
                 }
@@ -310,53 +336,258 @@ struct TasksView: View {
     let projectId: String?
     @State private var search = ""
     @State private var includeCompleted = false
+    @State private var editingProject: FTProject?
     var body: some View {
         List {
             Toggle("Show completed",isOn:$includeCompleted)
             ForEach(workspace.tasks.filter { $0.deletedAt == nil && (includeCompleted || $0.active) && (projectId == nil || $0.projectId == projectId) && (search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) || $0.source.localizedCaseInsensitiveContains(search)) }.sorted { $0.priority.rank < $1.priority.rank }) { task in
                 TaskRow(task:task,project:workspace.project(task.projectId),onSelect:{store.selectedTask = task},onComplete:{store.complete(task)}).listRowInsets(EdgeInsets())
             }
-        }.searchable(text:$search,prompt:"Search tasks and original input").navigationTitle(workspace.project(projectId)?.name ?? "Your tasks").refreshable { await store.sync() }
+        }
+        .searchable(text:$search,prompt:"Search tasks and original input")
+        .navigationTitle(workspace.project(projectId)?.name ?? "Your tasks")
+        .refreshable { await store.sync() }
+        .toolbar {
+            if let project = workspace.project(projectId) {
+                ToolbarItem(placement:.primaryAction) {
+                    Button("Project settings",systemImage:"slider.horizontal.3") { editingProject = project }
+                        .accessibilityIdentifier("projectSettings")
+                }
+            }
+        }
+        .sheet(item:$editingProject) { ProjectEditor(store:store,project:$0) }
     }
+}
+private enum ProjectLayout: String {
+    case grid, list
 }
 struct ProjectsView: View {
     @Bindable var store: WorkspaceStore
     let projects: [FTProject]
+    @AppStorage("followthrough.projects.layout") private var layout: ProjectLayout = .grid
     @State private var editing: FTProject?
     @State private var adding = false
+    @State private var taskProject: FTProject?
+    @State private var pendingTaskProject: FTProject?
     var body: some View {
-        List { ForEach(projects) { project in
-            HStack {
-                Image(systemName:"folder").foregroundStyle(.secondary).font(.title2)
-                NavigationLink { if let workspace = store.workspace { TasksView(store:store,workspace:workspace,projectId:project.id) } } label: { VStack(alignment:.leading,spacing:5) { Text(project.name).font(.headline); Text(project.description).font(.callout).foregroundStyle(.secondary) } }
-                Button("Edit") { editing = project }.buttonStyle(.borderless)
-            }.padding(.vertical,8)
-        } }.navigationTitle("Your projects")
-            .toolbar { Button("New project",systemImage:"folder.badge.plus") { adding = true } }
-            .sheet(item:$editing) { ProjectEditor(store:store,project:$0) }
-            .sheet(isPresented:$adding) { ProjectEditor(store:store,project:nil) }
+        Group {
+            if projects.isEmpty {
+                ContentUnavailableView("No projects yet",systemImage:"folder",description:Text("Create a project to keep related tasks together."))
+            } else if layout == .grid {
+                ProjectGrid(projects:projects,onSelect:{ editing = $0 })
+            } else {
+                List(projects) { project in
+                    Button { editing = project } label: {
+                        ProjectListRow(project:project)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("openProject_\(project.id)")
+                    .accessibilityHint("Opens project details")
+                }
+                .listStyle(.inset)
+                .accessibilityIdentifier("projectsList")
+            }
+        }
+        .background(Color.canvas)
+        .navigationTitle("Your projects")
+        .toolbar {
+            ToolbarItemGroup(placement:.primaryAction) {
+                Picker("Project view",selection:$layout) {
+                    Label("Grid",systemImage:"square.grid.2x2").tag(ProjectLayout.grid)
+                    Label("List",systemImage:"list.bullet").tag(ProjectLayout.list)
+                }
+                .pickerStyle(.segmented)
+                .labelStyle(.iconOnly)
+                .frame(width:96)
+                .accessibilityIdentifier("projectLayoutPicker")
+                Button("New project",systemImage:"folder.badge.plus") { adding = true }
+                    .accessibilityIdentifier("newProject")
+            }
+        }
+        .sheet(item:$editing,onDismiss:openProjectTasks) { project in
+            ProjectEditor(store:store,project:project,onViewTasks:{
+                pendingTaskProject = project
+                editing = nil
+            })
+        }
+        .sheet(isPresented:$adding) { ProjectEditor(store:store,project:nil) }
+        .navigationDestination(item:$taskProject) { project in
+            if let workspace = store.workspace {
+                TasksView(store:store,workspace:workspace,projectId:project.id)
+            }
+        }
+    }
+    private func openProjectTasks() {
+        guard let project = pendingTaskProject else { return }
+        pendingTaskProject = nil
+        taskProject = project
+    }
+}
+private struct ProjectGrid: View {
+    let projects: [FTProject]
+    let onSelect: (FTProject) -> Void
+    private var minimumCardWidth: CGFloat {
+        #if os(macOS)
+        240
+        #else
+        155
+        #endif
+    }
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns:[GridItem(.adaptive(minimum:minimumCardWidth),spacing:16)],spacing:16) {
+                ForEach(projects) { project in
+                    Button { onSelect(project) } label: {
+                        ProjectCard(project:project)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("openProject_\(project.id)")
+                    .accessibilityHint("Opens project details")
+                }
+            }
+            .padding(20)
+            .frame(maxWidth:1300)
+            .frame(maxWidth:.infinity)
+        }
+        .accessibilityIdentifier("projectsGrid")
+    }
+}
+private struct ProjectCard: View {
+    let project: FTProject
+    var body: some View {
+        VStack(alignment:.leading,spacing:14) {
+            ProjectFolderIcon(color:project.color).font(.system(size:26,weight:.regular))
+            VStack(alignment:.leading,spacing:8) {
+                Text(project.name).font(.headline).foregroundStyle(.primary)
+                if !project.description.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty {
+                    Text(project.description).font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            .fixedSize(horizontal:false,vertical:true)
+            Spacer(minLength:0)
+        }
+        .padding(20)
+        .frame(maxWidth:.infinity,minHeight:174,maxHeight:.infinity,alignment:.topLeading)
+        .background(Color.card,in:RoundedRectangle(cornerRadius:16))
+        .overlay { RoundedRectangle(cornerRadius:16).strokeBorder(.primary.opacity(0.07),lineWidth:1) }
+        .contentShape(RoundedRectangle(cornerRadius:16))
+    }
+}
+private struct ProjectListRow: View {
+    let project: FTProject
+    var body: some View {
+        HStack(alignment:.center,spacing:14) {
+            ProjectFolderIcon(color:project.color).font(.title2).frame(width:28)
+            VStack(alignment:.leading,spacing:5) {
+                Text(project.name).font(.headline).foregroundStyle(.primary)
+                if !project.description.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty {
+                    Text(project.description).font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            .fixedSize(horizontal:false,vertical:true)
+            Spacer(minLength:0)
+        }
+        .frame(maxWidth:.infinity,alignment:.leading)
+        .padding(.vertical,10)
+        .contentShape(Rectangle())
+    }
+}
+private struct ProjectFolderIcon: View {
+    let color: String
+    var body: some View {
+        Image(systemName:"folder.fill")
+            .foregroundStyle(Color(hex:color))
+            .accessibilityHidden(true)
     }
 }
 struct ProjectEditor: View {
     let store: WorkspaceStore
     let project: FTProject?
+    var onViewTasks: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var shortName = ""
     @State private var detail = ""
+    @State private var confirmingDiscard = false
+    #if os(macOS)
+    @Environment(\.controlActiveState) private var controlActiveState
+    #endif
+    private var hasUnsavedChanges: Bool {
+        name != (project?.name ?? "") || shortName != (project?.shortName ?? "") || detail != (project?.description ?? "")
+    }
+    private var validName: Bool { !name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty }
+    private var saveForeground: Color {
+        guard validName else { return .secondary }
+        #if os(macOS)
+        if controlActiveState == .inactive { return .primary }
+        #endif
+        return .followNavy
+    }
     var body: some View {
         NavigationStack {
-            Form { TextField("Project name",text:$name); TextField("Calendar label",text:$shortName); TextField("Description",text:$detail,axis:.vertical) }
-                .formStyle(.grouped).navigationTitle(project == nil ? "New project" : "Edit project")
-                .toolbar {
-                    ToolbarItem(placement:.cancellationAction) { Button("Cancel") { dismiss() } }
-                    ToolbarItem(placement:.confirmationAction) { Button("Save") {
+            Form {
+                Section {
+                    TextField("Project name",text:$name).accessibilityIdentifier("projectName")
+                    TextField("Calendar label",text:$shortName)
+                    TextField("Description",text:$detail,axis:.vertical).lineLimit(3...6)
+                }
+                if let onViewTasks {
+                    Section {
+                        Button("View tasks",systemImage:"checklist") {
+                            if hasUnsavedChanges { confirmingDiscard = true }
+                            else { onViewTasks() }
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.primary)
+                        .accessibilityIdentifier("viewProjectTasks")
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle(project == nil ? "New project" : "Edit project")
+            .toolbar {
+                ToolbarItem(placement:.cancellationAction) {
+                    #if os(macOS)
+                    Button("Cancel") { dismiss() }
+                        .buttonStyle(.bordered)
+                        .tint(.primary)
+                        .keyboardShortcut(.cancelAction)
+                        .accessibilityIdentifier("cancelProject")
+                    #else
+                    Button("Cancel",systemImage:"xmark") { dismiss() }
+                        .labelStyle(.iconOnly)
+                        .tint(.primary)
+                        .accessibilityLabel("Cancel")
+                        .accessibilityIdentifier("cancelProject")
+                    #endif
+                }
+                ToolbarItem(placement:.confirmationAction) {
+                    Button("Save") {
                         let values: [String:JSONValue] = ["name":.string(name),"shortName":.string(shortName),"description":.string(detail),"color":.string(project?.color ?? "#4266d5"),"aliases":.array((project?.aliases ?? []).map(JSONValue.string))]
                         var fields: [String:JSONValue] = ["project":.object(values)]; if let project { fields["id"] = .string(project.id) }
                         if store.mutate(action:project == nil ? "create_project" : "update_project",title:name,fields:fields) { dismiss() }
-                    }.disabled(name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    #if os(macOS)
+                    .tint(.followLime)
+                    .foregroundStyle(saveForeground)
+                    #else
+                    .tint(.followNavy)
+                    #endif
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!validName)
+                    .accessibilityIdentifier("saveProject")
                 }
-        }.frame(minWidth:320,minHeight:350).onAppear { name = project?.name ?? ""; shortName = project?.shortName ?? ""; detail = project?.description ?? "" }
+            }
+        }
+        #if os(macOS)
+        .frame(width:520,height:380)
+        #endif
+        .confirmationDialog("Discard your changes?",isPresented:$confirmingDiscard,titleVisibility:.visible) {
+            Button("Discard changes and view tasks",role:.destructive) { onViewTasks?() }
+            Button("Keep editing",role:.cancel) {}
+        }
+        .onAppear { name = project?.name ?? ""; shortName = project?.shortName ?? ""; detail = project?.description ?? "" }
     }
 }
 struct CaptureSheet: View {

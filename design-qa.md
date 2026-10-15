@@ -1,92 +1,72 @@
 <!-- Created by Cory McCabe -->
-# Followthrough native design QA
+# Followthrough native project navigation QA
 
 final result: passed
 
-The requested native contrast cleanup is implemented and verified in the rendered Mac app. Project names use semantic primary text with small color dots. Secondary task actions and Cancel use neutral controls; Save uses dark text on lime. The real workspace remained connected through relaunches, and no real task was modified during the visual checks.
+## Scope and decision
 
-Final signed Mac and iPhone simulator builds passed (`/tmp/followthrough-native-inactive-contrast-mac-build.log`, `/tmp/followthrough-native-inactive-contrast-ios-build.log`). The Mac app was relaunched with its existing Keychain account. The iPhone artifact was installed on owned simulator `F2368C08-6127-4D79-A918-A691D4CB6C4D` with local data/session preserved. The latest iPhone styling was build-checked; the final rendered acceptance pass below is Mac-only.
+The latest user direction removes the redundant Projects destination on Mac. Projects now live in the persistent sidebar, with project-colored folder symbols and neutral names. Selecting a folder shows its tasks. The section plus opens New project; the selected project's toolbar control and sidebar context menu open its editor.
 
-Scope: the revised local Mac Today screen and task editor at 1180 × 820 points, dark appearance. The initial pass used the isolated local workspace; the contrast follow-up uses Cory’s existing workspace without editing its tasks. This is a usability cleanup against the existing Followthrough visual language. Actual-account connection is separately verified in `native/ACCOUNT-CONNECTION.md`.
+iPhone retains the Projects tab because it has no persistent sidebar. It starts in grid view and remembers a grid/list selection. Both card and list-row selections open a project sheet, with View tasks available from that sheet. No inline Edit labels remain in the project overview.
 
-## Visual truth and rendered evidence
+This is local native development only. No website deployment, TestFlight, distribution, or account reconnection occurred. Mac checks used Cory's existing connected workspace without saving edits; iPhone checks used the existing isolated local fixture workspace.
 
-- User-provided editor reference: `/var/folders/l3/wwhcs0gd0yv4yhw10vl5z9fm0000gn/T/codex-clipboard-ebcf0d05-5046-48ce-a375-db9f94d289b6.png`, 582 × 840 pixels including outer black canvas.
-- User-provided Today reference: `/var/folders/l3/wwhcs0gd0yv4yhw10vl5z9fm0000gn/T/codex-clipboard-15670233-a6c0-44c5-a63c-ef7d66c207d9.png`, 1292 × 932 pixels including outer black canvas.
-- Before implementation captures: `outputs/design-qa/before-today.png` (1180 × 820) and `outputs/design-qa/before-editor.png` (470 × 728).
-- Final rendered Today: `outputs/design-qa/after-today.png` (1180 × 820).
-- Final rendered editor, full window: `outputs/design-qa/after-editor-full.png` (1180 × 820).
-- Final editor content crop: `outputs/design-qa/after-editor.png` (660 × 686).
-- Final scrolled editor: `outputs/design-qa/after-editor-context-full.png` (1180 × 820).
-- Final Settings: `outputs/design-qa/after-settings.png` (1180 × 820).
+## Visual truth and evidence
 
-All implementation captures are native macOS screenshots at 1 image pixel per logical point. CSS viewport and browser deviceScaleFactor do not apply. No image was downscaled for the saved comparisons. The final editor crop is the visible sheet at `(260, 67)` through `(920, 753)` in the full window. The editor deliberately expands from 470 to 660 points wide; its scrollable content is 620 points high, with native header/actions outside that area. The captured sheet is approximately 686 points tall. The baseline app was inactive and final XCTest screenshots active, so native accent/selection color differences caused by activation are not filed as design drift.
+- User reference: `/var/folders/l3/wwhcs0gd0yv4yhw10vl5z9fm0000gn/T/codex-clipboard-b15eac64-3e71-4ad2-8c9f-7c2e5daf0c91.png` (1292 × 932 pixels, black outer canvas).
+- Before: `outputs/design-qa/projects-2026-10-14/before-projects.png`, 1180 × 820 pixels at 1 pixel per logical point.
+- After: `outputs/design-qa/projects-2026-10-14/mac-sidebar-project.png`, 2360 × 1640 pixels at 2 pixels per logical point, dark appearance and active window.
+- Normalized after: `outputs/design-qa/projects-2026-10-14/mac-sidebar-project-1x.png`, resized to 1180 × 820 for equal logical-scale comparison.
+- Existing project sheet: `outputs/design-qa/projects-2026-10-14/mac-project-editor.png`, 1040 × 890 pixels, 520 × 445 logical points including native sheet chrome.
+- Empty New project sheet: `outputs/design-qa/projects-2026-10-14/mac-new-project.png`, same sheet size, Save disabled.
+- iPhone grid/list: `outputs/design-qa/projects-2026-10-14/ProjectsQA 02 Default grid.png` and `ProjectsQA 03 List layout.png`, 1206 × 2622 pixels, 402 × 874 logical points, iPhone 18 Pro / iOS 27.0, light appearance.
 
-## Combined comparison evidence
+Browser CSS viewport/deviceScaleFactor are not applicable to native captures. Screenshot density is accounted for explicitly. No source pixels were retouched; only labeled margins, crops, and the documented 2× to 1× normalization were used for comparison.
 
-These were generated from the source and revised captures and then opened and inspected together:
+## Combined comparisons
 
-- Full Today comparison: `outputs/design-qa/comparison-today.png` (2408 × 880), both screenshots at exactly 1:1 scale.
-- Full editor comparison: `outputs/design-qa/comparison-editor.png` (1178 × 788), both sheets at exactly 1:1 scale, preserving the intentional width change.
-- Focused title/project/time comparison: `outputs/design-qa/comparison-fields.png` (1090 × 360), equal-density crops showing the original wrapped “Minutes” defect and corrected time controls.
+Created, opened, and visually inspected:
 
-The combined images include only labeled margins; source pixels were not retouched. Earlier comparison files that mistakenly reduced the final screenshot were replaced with these equal-scale versions.
+- `outputs/design-qa/projects-2026-10-14/comparison-mac-projects.png`, 2408 × 880 pixels: before and after at equal 1180 × 820 logical size.
+- `outputs/design-qa/projects-2026-10-14/comparison-sidebar.png`, 512 × 850 pixels: equal-scale sidebar crops.
 
-## Findings and iteration history
+- `outputs/design-qa/projects-2026-10-14/iphone-toolbar-before-after-native-scale.png`, 1206 × 420 pixels: unscaled crops from the initial and corrected iPhone sheet toolbars.
+- Final iPhone sheet: `outputs/design-qa/projects-2026-10-14/ProjectsFinal 03 Project sheet toolbar.png`.
+- Guard and original-name readback: `ProjectsFinal 05 Discard confirmation.png` and `ProjectsFinal 09 Original project name retained.png` in the same evidence directory.
 
-5. **P2 — Blue task actions and rainbow project names remain distracting in the real workspace.** On the user's latest feedback, TaskEditor neutral actions now use standard bordered controls with primary text and a quiet rectangular shape; Save uses the existing lime/dark foreground primary treatment, while purple handoff and red destructive semantics remain. Project names in the sidebar and task metadata use primary text with a small color dot; project-list folder icons are neutral. Native button focus, keyboard activation, and disabled handling remain in the standard controls. Final Today/sidebar, editor top, and scrolled task-action captures were opened and inspected. The source/reference comparison confirms that colored text was removed from the project names and secondary task actions.
-6. **P2 — Save label contrast in an inactive Mac window.** `outputs/design-qa/after-neutral-editor-actions.png` showed that macOS changes the prominent button background to charcoal when the window is inactive, while an explicitly navy label remained dark. Save now uses semantic primary text in an inactive window, semantic secondary text when disabled, and navy text on lime while active. The standard button still owns focus/pressed/disabled behavior. The corrected Mac/iPhone builds and active rendering passed. Distinct inactive rendering remains unconfirmed, as detailed in the final evidence limits below.
+The change from a project overview to the selected project's task list is intentional, following the user's final direction. This is a behavior/layout improvement, not a claim of pixel fidelity to the rejected page. The sidebar comparison verifies removal of the redundant destination, consistent folder placement, neutral labels, and visible selection. The Mac project names—including long names—fit the checked sidebar width.
 
-1. **P1 — Task editor compressed labels and values.** The baseline shows the task name as a small right-aligned value, a duplicate “Minutes” input label wrapping across two lines, and incidental-looking primary actions. Fixed with a wider editor, labels above full-width controls, paired duration fields with fixed `min` suffixes, and two clear primary buttons. The final full and focused editor comparisons show no wrapping or overlap in these controls.
-2. **P2 — Today text and control contrast too weak.** Baseline task title/metadata sizes were difficult to scan and the schedule/list surfaces blended into the window. Increased title/metadata sizes, completion controls, and surface separation while keeping the existing sidebar, blue capture card, lime capture action, priority colors, and calendar layout. Final Today comparison confirms readable hierarchy. The fifth row now extends below the first viewport; this is an intentional consequence of readable row sizing in a scrolling list, not a missing control.
-3. **P2 — First revised editor clipped persistent actions.** Initial render `outputs/design-qa/mac-attachments/F7297CDB-118F-4A25-A09A-858E9A3AD0F1.png` used a 740-point content height; native sheet chrome pushed Save/Cancel below the main window. Reduced content height to 620 points. Final full-window editor capture shows both actions entirely visible. The focused UI test also asserted Save is hittable and its bottom edge is within the window.
-4. **P2 — Destructive action inherited blue tint on iPhone.** The companion device verification reported this. Added explicit red tint to Delete task in shared code. This Mac capture pass does not establish the scrolled Delete color visually; the iPhone verification remains the visual source for that state.
+## Findings and corrections
 
-No remaining actionable P0/P1/P2 visual findings were found in the captured Mac states.
+1. **P2 — Duplicate project navigation and awkward overview alignment.** Removed the Mac Projects destination. Persistent sidebar rows use aligned colored folder symbols and primary text. Existing project task filtering remains the destination. iPhone overview cards use top-aligned content; native List rows center the folder against the title and optional description.
+2. **P2 — Inline Edit links had inconsistent placement.** Removed them. Mac exposes project settings from the toolbar and context menu; iPhone opens a details sheet from the card or row.
+3. **P2 — View tasks could silently discard draft changes.** Added explicit Keep editing / Discard changes and view tasks confirmation. Cancel and navigation do not submit project mutations.
+4. **P2 — First iPhone editor render clipped Cancel and used white text on lime.** Replaced the iPhone Cancel text with the native close symbol and a Cancel accessibility label; iPhone Save uses the dark navy tint with system-managed foreground. Mac's neutral Cancel and active lime/dark Save are unchanged. The corrected iPhone sheet and equal-scale toolbar comparison were opened and inspected; both controls fit and are readable.
 
-## Required fidelity surfaces
+## Interaction verification
 
-- **Fonts and typography:** Native SF system typography is retained. Mac date/title, task title, metadata, and schedule type sizes increase intentionally. Field labels and values have consistent hierarchy. The time-field wrap is removed; source context wraps naturally and stays selectable. Larger accessibility text and VoiceOver are outside this screenshot pass.
-- **Spacing and layout rhythm:** Today keeps the same sidebar/main/schedule hierarchy and 24-point main spacing. Explicit card surfaces make regions readable. The editor uses 24-point outer spacing, 16/18-point control gaps, and paired planning fields. Persistent action bar remains within the window. The narrow-window stacked layout is implemented but not visually certified by this 1180 × 820 pass.
-- **Colors and tokens:** Existing blue/lime capture palette and red/yellow priority semantics remain. Neutral dark cards/fields separate interactive regions. Handoff is visibly purple with white text in the active capture. Native inactive/active tint differences are expected. Light appearance and measured contrast compliance remain untested.
-- **Image quality and assets:** No raster art was introduced. Existing SF Symbols remain native vector icons; no source art was substituted or approximated. The before/after screenshots are sharp, same-density native captures.
-- **Copy and content:** Task title, project, estimated/remaining time, priority, status, dates, checklist, prerequisites, and original input remain available. “Save changes” makes persistence explicit. The local fixture task count and repeated provisional titles are real test data; no data was hidden or rewritten for the screenshots. The actual-account link was separately verified; the contrast follow-up uses the existing real workspace.
+Mac CUA checks passed on the rebuilt app:
 
-## Interactions and validation
+- Main navigation contains Today, Tasks, Settings, then the Projects section.
+- Selecting Orbit opens its two existing active tasks and highlights the folder row.
+- Project settings opens Orbit's draft editor with the original description.
+- Cancel returns without changing the project.
+- Sidebar plus opens an empty New project sheet with Save disabled; Cancel dismisses it.
+- Control-clicking Orbit exposes Edit project; selecting it opens the same editor and Cancel dismisses it.
 
-- Signed Mac build passed: `/tmp/followthrough-design-final-mac-build.log`.
-- Focused read-only native UI test passed with 0 failures in 15.4 seconds: `/tmp/followthrough-design-final-mac-qa.log`.
-- Tested app activation, opening a task from Today, Save visibility/hit target/window containment, scrolling to notes/prerequisites/original input, cancelling without changes, and navigating to Settings.
-- Result bundle: `native/DerivedData/Logs/Test/Test-FollowthroughMac-2026.10.14_18-45-03--0500.xcresult`.
-- Final exported screenshots and accessibility trees: `outputs/design-qa/final-mac-attachments/`.
-- Temporary screenshot-only XCTest was removed after capture. Existing test changes were preserved.
-- Native app runs with `--no-session` and retains the successfully linked real account in Keychain.
+Initial iPhone focused UI check passed with 0 failures in 30.4 seconds: default grid, list switch, layout persistence after relaunch, restored grid, project sheet, unsaved-name Cancel, original-name readback, and View tasks navigation. Evidence/log: `outputs/design-qa/projects-2026-10-14/iphone-functional-pass.log`. The first harness attempt failed on a SwiftUI List container accessibility-ID assertion; the retry checked the selected segment and captured hierarchy instead. Neither attempt saved data.
 
-This is a native app, so browser console checks are not applicable. Build and XCTest logs showed no failing compilation or UI-test assertion in the final run. This does not certify every runtime log, all accessibility states, every window size, or every platform.
+Signed Mac and simulator builds passed: `/tmp/followthrough-native-projects-mac-build.log` and `/tmp/followthrough-native-projects-ios-build.log`. A separate read-only source review checked stable project IDs, draft-only editing until Save, persisted layout, and sheet dismissal before task navigation. Final corrected iPhone toolbar/dirty-draft validation passed with 0 failures in 28.815 seconds: `outputs/design-qa/projects-2026-10-14/iphone-toolbar-guard-pass.log`. The native discard popover was dismissed outside to keep editing (iOS 27 does not display the cancel-role button in this presentation), and the draft text remained. Choosing Discard changes and view tasks then navigated successfully; reopening project settings showed the original name. The first guard harness attempt expected a visible Keep editing button and failed before mutation; the corrected assertion used native outside-dismiss behavior. Temporary screenshot tests were removed after capture.
 
-## Implementation checklist
+## Fidelity surfaces and limits
 
-- [x] Remove broken duplicate minute labels.
-- [x] Improve task editor hierarchy and action prominence.
-- [x] Keep Save/Cancel visible at the normal Mac window size.
-- [x] Make Today list/schedule legible and separated.
-- [x] Preserve original context and optional task editing.
-- [x] Inspect equal-scale combined before/after captures.
-- [x] Connect the real account and preserve it across the rebuilt app launches.
+- **Typography:** Native system fonts, primary project names, secondary descriptions. Current Mac names and the iPhone fixture description fit without overlap. Extreme text size/VoiceOver remain outside this pass.
+- **Spacing:** Sidebar rows retain a consistent icon/name layout. iPhone grid uses adaptive columns with 155-point minimum width, 16-point gaps, and 20-point padding; card content grows naturally. List rows use native SwiftUI List with a centered folder. No viewport-specific override was added.
+- **Colors:** Project colors are confined to folder icons; names stay semantic primary text. Existing project colors are preserved. This pass checks readability visually, not formal color-contrast compliance.
+- **Assets:** SF Symbols only; no generated art or raster substitutions.
+- **Copy/content:** Project name, calendar label, description, and existing values remain. The form still saves only when Save is selected. No task/project was created or changed for screenshots.
+- **Coverage:** Mac was checked in dark appearance at 1180 × 820 logical points; iPhone in light appearance at 402 × 874. The sole iPhone fixture has a description, so empty-description and many-project grid rendering are source-reviewed but not runtime-certified. Its project task list is empty, which is expected fixture state. iPad, rotation, narrow Mac windows, and very large text were not checked.
 
-## Follow-up polish
+Native browser-console checks do not apply. Successful builds/UI assertions are evidence for the specified flows, not a certification of all native runtime logs or calendar behavior. Existing account/session and real data were preserved.
 
-- P3: Validate extreme text-size settings, VoiceOver reading order, light appearance, and narrow Mac windows in a separate accessibility pass.
-- Real project names and task content were inspected without modifying them. The supplied project labels fit in the current sidebar; extreme lengths remain outside this pass.
-
-## Final contrast acceptance evidence
-
-- `outputs/design-qa/final-neutral-active-today-sidebar.png` — native Today and project sidebar, 1180 × 820, active window.
-- `outputs/design-qa/final-neutral-active-editor-current.png` — editor top and persistent Save/Cancel, 1180 × 820, active window.
-- `outputs/design-qa/final-neutral-editor-actions.png` — scrolled task actions and footer, 660 × 685, native sheet-only capture.
-- `outputs/design-qa/comparison-project-labels.png` — 508 × 494 combined before/after crops, both 1 image pixel per logical point. Opened and inspected. Before was inactive and after active; project text hierarchy is verified independent of native navigation accent differences.
-- `outputs/design-qa/comparison-neutral-buttons.png` — 1368 × 746 combined source/user screenshot and revised sheet, equal density with labeled margins. The user's original annotation arrow is preserved; scroll offsets differ intentionally to show task actions and the fixed footer in each capture. Opened and inspected.
-
-Active Save is visibly readable in both top and scrolled editor captures. The additional inactive-window foreground fix reads native controlActiveState and uses semantic primary text when inactive, secondary text when invalid, and navy only while active. It compiles on both platforms. A distinct final inactive appearance was not reliably captured: XCTest's inactive screenshot was obscured by Finder, and CUA's requested inactive capture continued showing the lime active treatment. Those files are not used as proof of inactive rendering.
-
-The focused read-only active capture passed without relaunching its existing Mac process or changing task data. One later capture attempt stopped before interaction when the previously observed task label was absent; CUA then opened the current task, captured the action controls, and cancelled. All temporary screenshot test methods were removed. The app is left on Today, connected to the real workspace.
+No remaining actionable P0/P1/P2 visual findings were found in the captured states. The updated Mac app remains open on Orbit with its original connected workspace. iPhone remains on Projects grid in the isolated test workspace. The prior task-editor QA report is preserved in commit `9426028`.
