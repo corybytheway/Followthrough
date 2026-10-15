@@ -46,6 +46,7 @@ import {
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { NativeSelect } from '@/components/ui/native-select';
+import WorkHourSelect from '@/components/work-hour-select';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -1871,19 +1872,15 @@ function SettingsPanel({
         )}
         <div className="field-row">
           <Field label="Start">
-            <Input
-              required
-              type="time"
+            <WorkHourSelect
               value={settings.workStart}
-              onChange={(e) => update('workStart', e.target.value)}
+              onChange={(value) => update('workStart', value)}
             />
           </Field>
           <Field label="End">
-            <Input
-              required
-              type="time"
+            <WorkHourSelect
               value={settings.workEnd}
-              onChange={(e) => update('workEnd', e.target.value)}
+              onChange={(value) => update('workEnd', value)}
             />
           </Field>
         </div>
