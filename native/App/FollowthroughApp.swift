@@ -500,6 +500,207 @@ private struct ProjectFolderIcon: View {
             .accessibilityHidden(true)
     }
 }
+private struct ProjectPaletteColor: Identifiable {
+    let name: String
+    let hex: String
+    var id: String { hex }
+    static let blue = "#4266D5"
+    static let all: [ProjectPaletteColor] = [
+        .init(name:"Blue",hex:blue),
+        .init(name:"Violet",hex:"#8063C5"),
+        .init(name:"Rose",hex:"#BA5D85"),
+        .init(name:"Coral",hex:"#BE6756"),
+        .init(name:"Amber",hex:"#A77C37"),
+        .init(name:"Green",hex:"#658951"),
+        .init(name:"Teal",hex:"#3D8A86"),
+        .init(name:"Slate",hex:"#687B91")
+    ]
+}
+private struct ProjectColorSelection {
+    var hex: String = ProjectPaletteColor.blue
+    var color: Color {
+        get { Color(hex:hex) }
+        set {
+            #if os(macOS)
+            guard let rgb = NSColor(newValue).usingColorSpace(.sRGB) else { return }
+            let components = [rgb.redComponent,rgb.greenComponent,rgb.blueComponent]
+            #else
+            guard let sRGB = CGColorSpace(name:CGColorSpace.sRGB),
+                  let rgb = UIColor(newValue).cgColor.converted(to:sRGB,intent:.relativeColorimetric,options:nil),
+                  let values = rgb.components, values.count >= 3 else { return }
+            let components = Array(values.prefix(3))
+            #endif
+            let chosenHex = "#" + components.map { String(format:"%02X",Int((min(1,max(0,$0)) * 255).rounded())) }.joined()
+            if !matches(chosenHex) { hex = chosenHex }
+        }
+    }
+    var isCustom: Bool { !ProjectPaletteColor.all.contains { matches($0.hex) } }
+    func matches(_ other: String) -> Bool { hex.caseInsensitiveCompare(other) == .orderedSame }
+}
+private struct ProjectColorPalette: View {
+    @Binding var selection: ProjectColorSelection
+    #if os(macOS)
+    @State private var colorPanel = ProjectColorPanelPresenter()
+    #else
+    @State private var showingCustomColor = false
+    #endif
+    var body: some View {
+        LazyVGrid(columns:[GridItem(.adaptive(minimum:44),spacing:6)],spacing:6) {
+            ForEach(ProjectPaletteColor.all) { color in
+                Button { selection.hex = color.hex } label: {
+                    ProjectColorDot(color:Color(hex:color.hex),selected:selection.matches(color.hex))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(color.name)
+                .accessibilityValue(selection.matches(color.hex) ? "Selected" : "")
+                .accessibilityAddTraits(selection.matches(color.hex) ? .isSelected : [])
+                .accessibilityIdentifier("projectColor_\(color.name.lowercased())")
+                .help(color.name)
+            }
+            #if os(macOS)
+            Button { colorPanel.show(selection:$selection) } label: {
+                ProjectSpectrumDot(color:selection.color,selected:selection.isCustom)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Custom color")
+            .accessibilityValue(selection.isCustom ? "Selected, \(selection.hex)" : "Choose any color")
+            .accessibilityIdentifier("projectCustomColor")
+            .help("Choose any color")
+            #else
+            Button { showingCustomColor = true } label: {
+                ProjectSpectrumDot(color:selection.color,selected:selection.isCustom)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Custom color")
+            .accessibilityValue(selection.isCustom ? "Selected, \(selection.hex)" : "Choose any color")
+            .accessibilityIdentifier("projectCustomColor")
+            #endif
+        }
+        .accessibilityIdentifier("projectColorPalette")
+        #if os(macOS)
+        .onChange(of:selection.hex) { _, _ in colorPanel.updateColor(selection.color) }
+        .onDisappear { colorPanel.close() }
+        #else
+        .sheet(isPresented:$showingCustomColor) {
+            ProjectSystemColorPicker(selection:$selection.color,isPresented:$showingCustomColor)
+                .safeAreaInset(edge:.bottom,spacing:0) {
+                    HStack {
+                        Spacer()
+                        Button("Done") { showingCustomColor = false }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.followNavy)
+                            .controlSize(.large)
+                            .accessibilityIdentifier("doneProjectColorPicker")
+                    }
+                    .padding(.horizontal,20)
+                    .padding(.vertical,12)
+                    .background(.bar)
+                }
+        }
+        #endif
+    }
+}
+#if os(macOS)
+@MainActor private final class ProjectColorPanelPresenter: NSObject {
+    private static weak var activeOwner: ProjectColorPanelPresenter?
+    private var selection: Binding<ProjectColorSelection>?
+    func show(selection: Binding<ProjectColorSelection>) {
+        Self.activeOwner?.close()
+        self.selection = selection
+        Self.activeOwner = self
+        let panel = NSColorPanel.shared
+        panel.setTarget(nil)
+        panel.setAction(nil)
+        panel.showsAlpha = false
+        panel.isContinuous = true
+        panel.color = NSColor(selection.wrappedValue.color)
+        panel.setTarget(self)
+        panel.setAction(#selector(colorChanged(_:)))
+        panel.makeKeyAndOrderFront(nil)
+    }
+    func updateColor(_ color: Color) {
+        guard Self.activeOwner === self else { return }
+        let panel = NSColorPanel.shared
+        panel.setTarget(nil)
+        panel.color = NSColor(color)
+        panel.setTarget(self)
+    }
+    func close() {
+        guard Self.activeOwner === self else { selection = nil; return }
+        let panel = NSColorPanel.shared
+        panel.setTarget(nil)
+        panel.setAction(nil)
+        panel.orderOut(nil)
+        selection = nil
+        Self.activeOwner = nil
+    }
+    @objc private func colorChanged(_ panel: NSColorPanel) {
+        guard Self.activeOwner === self, let selection else { return }
+        selection.wrappedValue.color = Color(nsColor:panel.color)
+    }
+}
+#else
+private struct ProjectSystemColorPicker: UIViewControllerRepresentable {
+    @Binding var selection: Color
+    @Binding var isPresented: Bool
+    func makeCoordinator() -> Coordinator { Coordinator(parent:self) }
+    func makeUIViewController(context: Context) -> UIColorPickerViewController {
+        let picker = UIColorPickerViewController()
+        picker.supportsAlpha = false
+        picker.selectedColor = UIColor(selection)
+        picker.delegate = context.coordinator
+        return picker
+    }
+    func updateUIViewController(_ picker: UIColorPickerViewController,context: Context) {
+        context.coordinator.parent = self
+        let selectedColor = UIColor(selection)
+        if picker.selectedColor != selectedColor { picker.selectedColor = selectedColor }
+    }
+    static func dismantleUIViewController(_ picker: UIColorPickerViewController,coordinator: Coordinator) {
+        picker.delegate = nil
+    }
+    @MainActor final class Coordinator: NSObject, UIColorPickerViewControllerDelegate {
+        var parent: ProjectSystemColorPicker
+        init(parent: ProjectSystemColorPicker) { self.parent = parent }
+        func colorPickerViewController(_ viewController: UIColorPickerViewController,didSelect color: UIColor,continuously: Bool) {
+            parent.selection = Color(uiColor:color)
+        }
+        func colorPickerViewControllerDidFinish(_ viewController: UIColorPickerViewController) {
+            parent.isPresented = false
+        }
+    }
+}
+#endif
+private struct ProjectColorDot: View {
+    let color: Color
+    let selected: Bool
+    var body: some View {
+        Circle().fill(color)
+            .frame(width:28,height:28)
+            .overlay {
+                Circle().strokeBorder(.primary.opacity(selected ? 1 : 0),lineWidth:2)
+                    .frame(width:36,height:36)
+            }
+            .frame(width:44,height:44)
+            .contentShape(Circle())
+    }
+}
+private struct ProjectSpectrumDot: View {
+    let color: Color
+    let selected: Bool
+    private let spectrum: [Color] = [.red,.orange,.yellow,.green,.cyan,.blue,.purple,.red]
+    var body: some View {
+        Circle().fill(AngularGradient(colors:spectrum,center:.center))
+            .frame(width:28,height:28)
+            .overlay {
+                Circle().fill(selected ? color : Color.card).frame(width:16,height:16)
+                Circle().strokeBorder(.primary.opacity(selected ? 1 : 0),lineWidth:2)
+                    .frame(width:36,height:36)
+            }
+            .frame(width:44,height:44)
+            .background(Color.card,in:Circle())
+    }
+}
 struct ProjectEditor: View {
     let store: WorkspaceStore
     let project: FTProject?
@@ -508,12 +709,13 @@ struct ProjectEditor: View {
     @State private var name = ""
     @State private var shortName = ""
     @State private var detail = ""
+    @State private var projectColor = ProjectColorSelection()
     @State private var confirmingDiscard = false
     #if os(macOS)
     @Environment(\.controlActiveState) private var controlActiveState
     #endif
     private var hasUnsavedChanges: Bool {
-        name != (project?.name ?? "") || shortName != (project?.shortName ?? "") || detail != (project?.description ?? "")
+        name != (project?.name ?? "") || shortName != (project?.shortName ?? "") || detail != (project?.description ?? "") || !projectColor.matches(project?.color ?? ProjectPaletteColor.blue)
     }
     private var validName: Bool { !name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty }
     private var saveForeground: Color {
@@ -530,6 +732,9 @@ struct ProjectEditor: View {
                     TextField("Project name",text:$name).accessibilityIdentifier("projectName")
                     TextField("Calendar label",text:$shortName)
                     TextField("Description",text:$detail,axis:.vertical).lineLimit(3...6)
+                }
+                Section("Color") {
+                    ProjectColorPalette(selection:$projectColor)
                 }
                 if let onViewTasks {
                     Section {
@@ -563,7 +768,7 @@ struct ProjectEditor: View {
                 }
                 ToolbarItem(placement:.confirmationAction) {
                     Button("Save") {
-                        let values: [String:JSONValue] = ["name":.string(name),"shortName":.string(shortName),"description":.string(detail),"color":.string(project?.color ?? "#4266d5"),"aliases":.array((project?.aliases ?? []).map(JSONValue.string))]
+                        let values: [String:JSONValue] = ["name":.string(name),"shortName":.string(shortName),"description":.string(detail),"color":.string(projectColor.hex),"aliases":.array((project?.aliases ?? []).map(JSONValue.string))]
                         var fields: [String:JSONValue] = ["project":.object(values)]; if let project { fields["id"] = .string(project.id) }
                         if store.mutate(action:project == nil ? "create_project" : "update_project",title:name,fields:fields) { dismiss() }
                     }
@@ -581,13 +786,18 @@ struct ProjectEditor: View {
             }
         }
         #if os(macOS)
-        .frame(width:520,height:380)
+        .frame(width:520,height:480)
         #endif
         .confirmationDialog("Discard your changes?",isPresented:$confirmingDiscard,titleVisibility:.visible) {
             Button("Discard changes and view tasks",role:.destructive) { onViewTasks?() }
             Button("Keep editing",role:.cancel) {}
         }
-        .onAppear { name = project?.name ?? ""; shortName = project?.shortName ?? ""; detail = project?.description ?? "" }
+        .onAppear {
+            name = project?.name ?? ""
+            shortName = project?.shortName ?? ""
+            detail = project?.description ?? ""
+            projectColor = ProjectColorSelection(hex:project?.color ?? ProjectPaletteColor.blue)
+        }
     }
 }
 struct CaptureSheet: View {

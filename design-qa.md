@@ -1,72 +1,55 @@
 <!-- Created by Cory McCabe -->
-# Followthrough native project navigation QA
+# Followthrough native project colors QA
 
-final result: passed
+final result: blocked
 
-## Scope and decision
+## Current decision
 
-The latest user direction removes the redundant Projects destination on Mac. Projects now live in the persistent sidebar, with project-colored folder symbols and neutral names. Selecting a folder shows its tasks. The section plus opens New project; the selected project's toolbar control and sidebar context menu open its editor.
+The project color editor is implemented, but the user considers the first palette too washed out and requested several stronger alternatives before settling on defaults. Four comparison palettes are prepared: Crisp, Electric, Jewel, and Orchard. Palette approval is outstanding. Existing project colors are not migrated to a preset automatically.
 
-iPhone retains the Projects tab because it has no persistent sidebar. It starts in grid view and remembers a grid/list selection. Both card and list-row selections open a project sheet, with View tasks available from that sheet. No inline Edit labels remain in the project overview.
+This is local native work only. Mac verification used Cory's existing workspace without saving project mutations. iPhone verification used the isolated Local Studio fixture; its exact original `#7652db` color was restored after the save check. No website deployment, TestFlight, or distribution occurred.
 
-This is local native development only. No website deployment, TestFlight, distribution, or account reconnection occurred. Mac checks used Cory's existing connected workspace without saving edits; iPhone checks used the existing isolated local fixture workspace.
+## Visual evidence and normalization
 
-## Visual truth and evidence
+- Source baseline: `outputs/design-qa/project-colors-2026-10-14/mac-before.png`, 1040 x 890 pixels, 520 x 445 logical points, 2x density.
+- Implemented editor: `outputs/design-qa/project-colors-2026-10-14/mac-palette-final.png`, 520 x 545 pixels, 1x density.
+- Combined comparison: `outputs/design-qa/project-colors-2026-10-14/comparison-project-editor.png`, 1088 x 601 pixels. Baseline normalized to 520 x 445, implementation kept at 520 x 545. The added 100 logical points accommodate the Color section; this is an intentional layout change, not pixel matching.
+- Focused controls: `outputs/design-qa/project-colors-2026-10-14/palette-control-detail.png`.
+- Mac system picker: `mac-apple-color-picker.png`, `mac-picker-custom-hex.png`, and `mac-custom-draft.png` in the same directory.
+- iPhone: `PaletteQA 02 Original palette.png`, `PaletteQA 03 Blue selected draft.png`, `PaletteQA 04 Color-only dirty guard.png`, and `PalettePicker 05 Native sliders.png` in the same directory, iPhone 18 Pro / iOS 27.0, light appearance, 1206 x 2622 pixels at 3x density (402 x 874 logical points).
 
-- User reference: `/var/folders/l3/wwhcs0gd0yv4yhw10vl5z9fm0000gn/T/codex-clipboard-b15eac64-3e71-4ad2-8c9f-7c2e5daf0c91.png` (1292 × 932 pixels, black outer canvas).
-- Before: `outputs/design-qa/projects-2026-10-14/before-projects.png`, 1180 × 820 pixels at 1 pixel per logical point.
-- After: `outputs/design-qa/projects-2026-10-14/mac-sidebar-project.png`, 2360 × 1640 pixels at 2 pixels per logical point, dark appearance and active window.
-- Normalized after: `outputs/design-qa/projects-2026-10-14/mac-sidebar-project-1x.png`, resized to 1180 × 820 for equal logical-scale comparison.
-- Existing project sheet: `outputs/design-qa/projects-2026-10-14/mac-project-editor.png`, 1040 × 890 pixels, 520 × 445 logical points including native sheet chrome.
-- Empty New project sheet: `outputs/design-qa/projects-2026-10-14/mac-new-project.png`, same sheet size, Save disabled.
-- iPhone grid/list: `outputs/design-qa/projects-2026-10-14/ProjectsQA 02 Default grid.png` and `ProjectsQA 03 List layout.png`, 1206 × 2622 pixels, 402 × 874 logical points, iPhone 18 Pro / iOS 27.0, light appearance.
+The combined comparison was opened and inspected. Baseline and final captures differ in window activation, so the inactive baseline Save styling is not treated as a palette regression. Native screenshots have no CSS viewport or browser deviceScaleFactor. No product pixels were retouched; only scaling, cropping, and labeled margins were used.
 
-Browser CSS viewport/deviceScaleFactor are not applicable to native captures. Screenshot density is accounted for explicitly. No source pixels were retouched; only labeled margins, crops, and the documented 2× to 1× normalization were used for comparison.
+## Findings and iteration history
 
-## Combined comparisons
+1. **P2 — Initial preset colors feel washed out.** The user's current feedback supersedes the initial muted palette choice. Prepared four more saturated alternatives with light/dark sidebar previews; selection is pending.
+2. **P2 — Mac custom color activation did not reliably open the system panel.** Replaced the decorated SwiftUI picker with an explicit spectrum button opening `NSColorPanel`. Runtime verification now opens Apple's panel, accepts custom hex `#4682B4` as a draft, and returns that exact value to the editor. Cancel and reopening return the original Meta Note color `#ffc629`.
+3. **P2 — iPhone custom picker activation was inconsistent in focused checks.** The dedicated run opened native Colors and Sliders successfully, but a later fresh-editor attempt failed an 8-second Sliders wait. Replaced the presentation path with an explicit button and native `UIColorPickerViewController`. Added a visible native Done button after the first explicit presentation exposed only gesture dismissal. The final test opened and dismissed the picker with Done across two separate editor visits, preserving `#7652db`; 34.395 seconds, zero failures. The final native picker screenshot was opened and visually inspected.
+4. **P2 — Wide-gamut custom colors needed explicit sRGB serialization.** Both platforms now convert to sRGB before hex serialization. Source review passed. Existing exact hex values are preserved unless a different color is selected.
 
-Created, opened, and visually inspected:
+## Verified behavior
 
-- `outputs/design-qa/projects-2026-10-14/comparison-mac-projects.png`, 2408 × 880 pixels: before and after at equal 1180 × 820 logical size.
-- `outputs/design-qa/projects-2026-10-14/comparison-sidebar.png`, 512 × 850 pixels: equal-scale sidebar crops.
+- Eight named presets plus a spectrum option, with visible selection rings and accessible names/selected states.
+- Existing colors outside the palette remain custom colors. Opening the editor does not replace them.
+- Mac preset selection, custom draft selection, Cancel, and original-color readback passed without a live Save.
+- iPhone preset selection, color-only dirty-navigation confirmation, retained draft, Cancel, and original-color readback passed.
+- Isolated iPhone fixture saved Blue and reopened with Blue selected; independent local API readback confirmed `#4266d5`. Original `#7652db` restored through the local API after the custom restoration UI check stalled, with no real workspace data touched.
+- Source review confirms Save-only project mutations, aliases preservation, and Mac picker target/binding cleanup between editor presentations.
 
-- `outputs/design-qa/projects-2026-10-14/iphone-toolbar-before-after-native-scale.png`, 1206 × 420 pixels: unscaled crops from the initial and corrected iPhone sheet toolbars.
-- Final iPhone sheet: `outputs/design-qa/projects-2026-10-14/ProjectsFinal 03 Project sheet toolbar.png`.
-- Guard and original-name readback: `ProjectsFinal 05 Discard confirmation.png` and `ProjectsFinal 09 Original project name retained.png` in the same evidence directory.
+Mac and iPhone builds succeeded: `/tmp/followthrough-native-project-color-mac-build.log` and `/tmp/followthrough-native-project-color-ios-build.log`. The final iPhone picker evidence is saved as `ExplicitPickerDone 1 Native picker result.png` in the evidence directory. Both the original color and visible Done action are readable. Functional checks are complete; the final result remains blocked only on palette selection and its final visual pass.
 
-The change from a project overview to the selected project's task list is intentional, following the user's final direction. This is a behavior/layout improvement, not a claim of pixel fidelity to the rejected page. The sidebar comparison verifies removal of the redundant destination, consistent folder placement, neutral labels, and visible selection. The Mac project names—including long names—fit the checked sidebar width.
+## Fidelity surfaces
 
-## Findings and corrections
+- **Typography:** Existing native system fonts and project form labels retained; color names are accessibility/help labels, keeping the palette compact. No wrapping/clipping observed in captured controls.
+- **Spacing:** 44-point effective targets; 28-point swatches and 36-point selection rings. Adaptive grid wraps at narrow widths. Mac fits nine options on one row. The sheet grows intentionally to keep footer controls visible.
+- **Colors:** Current muted defaults remain provisional pending the user's choice. Selection rings use semantic foreground, and existing custom colors remain visible in the spectrum center. sRGB conversion prevents gamut-dependent hex drift. No formal color-contrast certification is claimed.
+- **Assets:** SF Symbols, native controls, and color swatches only. No generated imagery or substitute logos.
+- **Copy/content:** Color is the only added section. Existing name, calendar label, description, Save, and Cancel remain. Project color changes use the existing synchronized project field.
 
-1. **P2 — Duplicate project navigation and awkward overview alignment.** Removed the Mac Projects destination. Persistent sidebar rows use aligned colored folder symbols and primary text. Existing project task filtering remains the destination. iPhone overview cards use top-aligned content; native List rows center the folder against the title and optional description.
-2. **P2 — Inline Edit links had inconsistent placement.** Removed them. Mac exposes project settings from the toolbar and context menu; iPhone opens a details sheet from the card or row.
-3. **P2 — View tasks could silently discard draft changes.** Added explicit Keep editing / Discard changes and view tasks confirmation. Cancel and navigation do not submit project mutations.
-4. **P2 — First iPhone editor render clipped Cancel and used white text on lime.** Replaced the iPhone Cancel text with the native close symbol and a Cancel accessibility label; iPhone Save uses the dark navy tint with system-managed foreground. Mac's neutral Cancel and active lime/dark Save are unchanged. The corrected iPhone sheet and equal-scale toolbar comparison were opened and inspected; both controls fit and are readable.
+## Remaining checklist
 
-## Interaction verification
+- [ ] Select the final palette from the four proposed options.
+- [x] Complete iPhone repeated open/dismiss verification using explicit native picker presentation and visible Done.
+- [ ] Update defaults and perform a final visual pass after palette selection.
 
-Mac CUA checks passed on the rebuilt app:
-
-- Main navigation contains Today, Tasks, Settings, then the Projects section.
-- Selecting Orbit opens its two existing active tasks and highlights the folder row.
-- Project settings opens Orbit's draft editor with the original description.
-- Cancel returns without changing the project.
-- Sidebar plus opens an empty New project sheet with Save disabled; Cancel dismisses it.
-- Control-clicking Orbit exposes Edit project; selecting it opens the same editor and Cancel dismisses it.
-
-Initial iPhone focused UI check passed with 0 failures in 30.4 seconds: default grid, list switch, layout persistence after relaunch, restored grid, project sheet, unsaved-name Cancel, original-name readback, and View tasks navigation. Evidence/log: `outputs/design-qa/projects-2026-10-14/iphone-functional-pass.log`. The first harness attempt failed on a SwiftUI List container accessibility-ID assertion; the retry checked the selected segment and captured hierarchy instead. Neither attempt saved data.
-
-Signed Mac and simulator builds passed: `/tmp/followthrough-native-projects-mac-build.log` and `/tmp/followthrough-native-projects-ios-build.log`. A separate read-only source review checked stable project IDs, draft-only editing until Save, persisted layout, and sheet dismissal before task navigation. Final corrected iPhone toolbar/dirty-draft validation passed with 0 failures in 28.815 seconds: `outputs/design-qa/projects-2026-10-14/iphone-toolbar-guard-pass.log`. The native discard popover was dismissed outside to keep editing (iOS 27 does not display the cancel-role button in this presentation), and the draft text remained. Choosing Discard changes and view tasks then navigated successfully; reopening project settings showed the original name. The first guard harness attempt expected a visible Keep editing button and failed before mutation; the corrected assertion used native outside-dismiss behavior. Temporary screenshot tests were removed after capture.
-
-## Fidelity surfaces and limits
-
-- **Typography:** Native system fonts, primary project names, secondary descriptions. Current Mac names and the iPhone fixture description fit without overlap. Extreme text size/VoiceOver remain outside this pass.
-- **Spacing:** Sidebar rows retain a consistent icon/name layout. iPhone grid uses adaptive columns with 155-point minimum width, 16-point gaps, and 20-point padding; card content grows naturally. List rows use native SwiftUI List with a centered folder. No viewport-specific override was added.
-- **Colors:** Project colors are confined to folder icons; names stay semantic primary text. Existing project colors are preserved. This pass checks readability visually, not formal color-contrast compliance.
-- **Assets:** SF Symbols only; no generated art or raster substitutions.
-- **Copy/content:** Project name, calendar label, description, and existing values remain. The form still saves only when Save is selected. No task/project was created or changed for screenshots.
-- **Coverage:** Mac was checked in dark appearance at 1180 × 820 logical points; iPhone in light appearance at 402 × 874. The sole iPhone fixture has a description, so empty-description and many-project grid rendering are source-reviewed but not runtime-certified. Its project task list is empty, which is expected fixture state. iPad, rotation, narrow Mac windows, and very large text were not checked.
-
-Native browser-console checks do not apply. Successful builds/UI assertions are evidence for the specified flows, not a certification of all native runtime logs or calendar behavior. Existing account/session and real data were preserved.
-
-No remaining actionable P0/P1/P2 visual findings were found in the captured states. The updated Mac app remains open on Orbit with its original connected workspace. iPhone remains on Projects grid in the isolated test workspace. The prior task-editor QA report is preserved in commit `9426028`.
+Coverage is Mac dark appearance and iPhone light appearance. Large Dynamic Type, VoiceOver, iPad, and physical-device color appearance were not checked. The prior project-navigation QA report remains in commit `583d549`.
