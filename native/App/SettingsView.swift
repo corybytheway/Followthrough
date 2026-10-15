@@ -86,9 +86,9 @@ struct WorkHoursEditor: View {
         NavigationStack {
             Form {
                 LabeledContent("Time zone") { TextField("Time zone",text:$draft.timeZone).multilineTextAlignment(.trailing) }
-                LabeledContent("Start") { TextField("HH:mm",text:$draft.workStart).multilineTextAlignment(.trailing) }
-                LabeledContent("End") { TextField("HH:mm",text:$draft.workEnd).multilineTextAlignment(.trailing) }
-                if !validHours { Text("Use HH:mm, with the end later than the start on the same day.").font(.callout).foregroundStyle(.orange) }
+                WorkHourPicker(title: "Start", selection: $draft.workStart)
+                WorkHourPicker(title: "End", selection: $draft.workEnd)
+                if !validHours { Text("Choose valid times, with the end later than the start on the same day.").font(.callout).foregroundStyle(.orange) }
                 Section("Work days") { ForEach(0..<7) { day in Toggle(Calendar.current.weekdaySymbols[day],isOn:Binding(get:{draft.workDays.contains(day)},set:{ on in if on { draft.workDays.append(day) } else { draft.workDays.removeAll {$0 == day} } })).toggleStyle(.checklist) } }
                 Picker("Longest work session",selection:$draft.maxBlockMinutes) { ForEach(Array(stride(from:15,through:480,by:15)),id:\.self) { Text(FTTask.duration($0)).tag($0) } }
                 Picker("Break length",selection:$draft.breakMinutes) { ForEach([0,15,30,45,60,90,120],id:\.self) { Text(FTTask.duration($0)).tag($0) } }
@@ -100,6 +100,35 @@ struct WorkHoursEditor: View {
                     }.disabled(!validHours || draft.workDays.isEmpty || TimeZone(identifier:draft.timeZone) == nil) }
                 }
         }.frame(minWidth:340,minHeight:550)
+    }
+}
+private struct WorkHourPicker: View {
+    let title: String
+    @Binding var selection: String
+
+    private static let times: [String] = stride(from: 0, to: 24 * 60, by: 30).map { minutes in
+        String(format: "%02d:%02d", minutes / 60, minutes % 60)
+    }
+
+    var body: some View {
+        Picker(title, selection: $selection) {
+            // Preserve legacy saved times until the user explicitly selects a new time.
+            if !Self.times.contains(selection) {
+                Text("\(timeLabel(selection)) (current)")
+                    .tag(selection)
+                    .disabled(true)
+            }
+            ForEach(Self.times, id: \.self) { time in
+                Text(timeLabel(time)).tag(time)
+            }
+        }
+        .pickerStyle(.menu)
+    }
+
+    private func timeLabel(_ time: String) -> String {
+        let parts = time.split(separator: ":")
+        guard parts.count == 2, let hour = Int(parts[0]) else { return time }
+        return "\(hour % 12 == 0 ? 12 : hour % 12):\(parts[1]) \(hour < 12 ? "AM" : "PM")"
     }
 }
 @MainActor @Observable final class DeviceCalendars {
