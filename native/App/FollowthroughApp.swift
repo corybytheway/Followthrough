@@ -74,7 +74,7 @@ struct ConnectionView: View {
                 HStack { if store.authorizing { ProgressView() }; Text("Connect your workspace"); Image(systemName:"arrow.up.right") }.frame(maxWidth:.infinity).padding(.vertical,8)
             }.buttonStyle(.borderedProminent).disabled(store.authorizing)
             Text("Sign in securely in your browser and approve this device.").font(.callout).foregroundStyle(.secondary)
-            #if DEBUG
+            #if DEBUG && (os(macOS) || targetEnvironment(simulator))
             DisclosureGroup("Local development") {
                 TextField("Server", text:$store.server).textFieldStyle(.roundedBorder)
                 Text("The local server uses an isolated workspace. Your live tasks are not imported.").font(.caption).foregroundStyle(.secondary)
@@ -228,7 +228,7 @@ struct TodayTasks: View {
                 Button("View all tasks →") { store.selectedSection = "tasks" }.buttonStyle(.plain).foregroundStyle(Color.followBlue)
             } else {
                 VStack(spacing:0) { ForEach(workspace.todayTasks) { task in
-                    TaskRow(task:task,project:workspace.project(task.projectId),onSelect:{store.selectedTask = task},onComplete:{store.complete(task)})
+                    TaskRow(task:task,project:workspace.project(task.projectId),warning:workspace.warnings.first { $0.taskId == task.id && ["deadline", "capacity"].contains($0.reason) }?.message,onSelect:{store.selectedTask = task},onComplete:{store.complete(task)})
                     if task.id != workspace.todayTasks.last?.id { Divider().padding(.leading,54) }
                 } }.background(Color.card,in:RoundedRectangle(cornerRadius:18))
                     .overlay { RoundedRectangle(cornerRadius:18).strokeBorder(.primary.opacity(0.06),lineWidth:1) }
@@ -265,6 +265,7 @@ struct CaptureCard: View {
 struct TaskRow: View {
     let task: FTTask
     let project: FTProject?
+    let warning: String?
     let onSelect: () -> Void
     let onComplete: () -> Void
     var body: some View {
@@ -284,6 +285,19 @@ struct TaskRow: View {
                         if !task.steps.isEmpty { Text("\(task.steps.filter(\.done).count)/\(task.steps.count) steps") }
                         if task.priority == .top || task.priority == .high { Text("\(task.priority.title) priority").fontWeight(.bold).foregroundStyle(task.priority == .top ? Color.red : Color(hex:"#ffae00")) }
                     }.font(.system(size:12)).foregroundStyle(.secondary)
+                    if let warning {
+                        Label {
+                            Text(warning).foregroundStyle(.primary)
+                        } icon: {
+                            Image(systemName:"exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        }
+                        .font(.system(size:12))
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal:false,vertical:true)
+                        .accessibilityElement(children:.combine)
+                        .accessibilityLabel("Scheduling warning: \(warning)")
+                        .accessibilityIdentifier("taskSchedulingWarning_\(task.id)")
+                    }
                 }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
             }.buttonStyle(.plain)
             Image(systemName:"arrow.up.right").font(.system(size:12,weight:.medium)).foregroundStyle(.secondary).padding(.top,5)
@@ -341,7 +355,7 @@ struct TasksView: View {
         List {
             Toggle("Show completed",isOn:$includeCompleted)
             ForEach(workspace.tasks.filter { $0.deletedAt == nil && (includeCompleted || $0.active) && (projectId == nil || $0.projectId == projectId) && (search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) || $0.source.localizedCaseInsensitiveContains(search)) }.sorted { $0.priority.rank < $1.priority.rank }) { task in
-                TaskRow(task:task,project:workspace.project(task.projectId),onSelect:{store.selectedTask = task},onComplete:{store.complete(task)}).listRowInsets(EdgeInsets())
+                TaskRow(task:task,project:workspace.project(task.projectId),warning:workspace.warnings.first { $0.taskId == task.id && ["deadline", "capacity"].contains($0.reason) }?.message,onSelect:{store.selectedTask = task},onComplete:{store.complete(task)}).listRowInsets(EdgeInsets())
             }
         }
         .searchable(text:$search,prompt:"Search tasks and original input")
@@ -504,16 +518,16 @@ private struct ProjectPaletteColor: Identifiable {
     let name: String
     let hex: String
     var id: String { hex }
-    static let blue = "#4266D5"
+    static let blue = "#4465FF"
     static let all: [ProjectPaletteColor] = [
         .init(name:"Blue",hex:blue),
-        .init(name:"Violet",hex:"#8063C5"),
-        .init(name:"Rose",hex:"#BA5D85"),
-        .init(name:"Coral",hex:"#BE6756"),
-        .init(name:"Amber",hex:"#A77C37"),
-        .init(name:"Green",hex:"#658951"),
-        .init(name:"Teal",hex:"#3D8A86"),
-        .init(name:"Slate",hex:"#687B91")
+        .init(name:"Violet",hex:"#994CFF"),
+        .init(name:"Magenta",hex:"#E832C9"),
+        .init(name:"Rose",hex:"#FF4F70"),
+        .init(name:"Orange",hex:"#FF8A2B"),
+        .init(name:"Lime",hex:"#A3C52D"),
+        .init(name:"Green",hex:"#16BF83"),
+        .init(name:"Cyan",hex:"#00BBD4")
     ]
 }
 private struct ProjectColorSelection {

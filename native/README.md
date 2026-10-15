@@ -6,7 +6,7 @@ This branch adds locally runnable SwiftUI clients to Followthrough. The app can 
 
 ## Open and run
 
-Open `native/Followthrough.xcodeproj`. The shared schemes are `FollowthroughMac` and `FollowthroughIOS`. Use Debug for local testing. The default server is `http://localhost:4318` and all test tasks belong to the local Sites identity, `seedy@sites.test`.
+Open `native/Followthrough.xcodeproj`. The shared schemes are `FollowthroughMac` and `FollowthroughIOS`. Use Debug for local testing. Mac and simulator Debug builds default to `http://localhost:4318`; physical iPhone builds default to the live HTTPS workspace. All isolated test tasks belong to the local Sites identity, `seedy@sites.test`.
 
 From the repository root:
 
@@ -51,8 +51,9 @@ Pass `--no-session` to the launcher to use browser sign-in or the Keychain sessi
 
 - Shared task/project models and SwiftUI views; native iPhone tabs and Mac sidebar.
 - Mac projects open directly from colored folders in the sidebar. The section's plus creates a project; the project toolbar or context menu opens its editor. iPhone keeps a Projects tab with a remembered grid/list choice, starting in grid view.
-- Project editors offer eight color presets and Apple's system color picker. Existing custom colors are retained, and only Save writes the selected color. The final preset palette is under design review.
+- Project editors offer the selected Electric palette (Blue, Violet, Magenta, Rose, Orange, Lime, Green, and Cyan) and Apple's system color picker. Existing custom colors are retained, and only Save writes the selected color. New projects start with Electric Blue (`#4465FF`).
 - Today, schedule, task search, project editing, task details, suggested-step completion, prerequisites, and expanded selectable original input.
+- Task rows show the server's deadline/capacity warnings, using the same first matching warning as the website. The messages wrap below task metadata in Today, Tasks, and project views.
 - Capture on Today; Return submits and Shift-Return adds a line. Mac Command-N opens quick capture, Command-Return submits it, and Command-R synchronizes. A menu-bar entry provides quick capture and the next task.
 - Task completion, postponement, next-workweek move, adding an hour, deletion, and the full-context handoff to Codex on Mac and ChatGPT on iPhone. The handoff starts with a request to plan before acting; the app does not assert that a URL can force the recipient's native Plan-mode setting.
 - A WidgetKit next-task widget, an App Intent for Shortcuts/Siri/Action Button, and an iOS text/URL share extension. Shared captures are persisted locally and uploaded when the main app next connects. Widgets show cached information and its update time.
@@ -81,7 +82,24 @@ Use **dedicated test calendars** for the next provider acceptance pass. No real 
 
 The local Mac build uses the existing Ethos Apps development certificate. Its team-prefixed App Group (`6G252Y8692.dev.ethosapps.followthrough.local`) supports shared widget/intent storage without creating a distribution profile. See [Apple's Mac App Group guidance](https://developer.apple.com/documentation/xcode/accessing-app-group-containers). An ad-hoc Mac build can run with `CODE_SIGNING_ALLOWED=NO` and `run-local.py mac --ad-hoc`, but shared extensions may be unavailable; the app detects this and retains normal task storage in its own container.
 
-The iOS simulator uses a local-only application/keychain identifier. A physical device needs development signing and a provisioned App Group, plus an HTTPS development API reachable from that device. `localhost` on a phone points to the phone. Physical-device calendar permissions, share-sheet integration, and widget refresh are separate acceptance checks; no TestFlight is required for them.
+The iOS simulator retains its local-only application/keychain identifier. Physical iPhone builds use `dev.ethosapps.followthrough`, with `.widgets` and `.share` extension identifiers and the provisioned `group.dev.ethosapps.followthrough` App Group. All three targets use automatic development signing for the Ethos Apps team. Mac and simulator identifiers and storage remain unchanged.
+
+To run on a connected iPhone, sign in to the Ethos Apps developer account in **Xcode → Settings → Apple Accounts**, choose the `FollowthroughIOS` scheme and the physical phone, then Run. Xcode registers the device and prepares the development profiles. The installed app is named **Followthrough**; the build product filename remains `Followthrough Local.app` so existing schemes and local tooling stay compatible.
+
+For a terminal build, use the connected device's actual UDID:
+
+```sh
+xcodebuild -project native/Followthrough.xcodeproj -scheme FollowthroughIOS \
+  -configuration Debug -destination 'platform=iOS,id=DEVICE_UDID' \
+  -derivedDataPath native/DerivedDataDevice \
+  -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+python3 native/Scripts/run-device.py --device DEVICE_UDID \
+  --app 'native/DerivedDataDevice/Build/Products/Debug-iphoneos/Followthrough Local.app'
+```
+
+Keep the phone unlocked for launch. The launcher requires an explicit device and validates the physical app and extensions before installation.
+
+Physical iPhone builds connect to `https://followthrough.corymccabe.com` and exclude the local test-session injection path. Sign in on the phone and approve **Connect this device** for the intended workspace; never copy the Mac's credentials. Physical-device calendar permissions, share-sheet integration, and widget refresh remain separate acceptance checks. No App Store Connect app record or TestFlight upload is needed for development installation.
 
 ## Connect your existing account
 
@@ -92,6 +110,8 @@ The canonical workspace remains `https://followthrough.corymccabe.com`. Native A
 Use `run-local.py mac --no-session` when launching with a real account; the optional test-session launcher is only for loopback fixtures. The minimal deployed API support is maintained separately from this branch's experimental calendar destination and scheduler changes.
 
 ## Validation
+
+On October 14, 2026, development builds succeeded for Mac and a physical iPhone 17e (iOS 27.2). The app, widget, and share extension profiles were verified against the connected phone and matching App Group. The final device launcher installed and launched `dev.ethosapps.followthrough`; Cory confirmed that sign-in loaded his real projects and tasks. Mac's existing connected workspace remained available. Physical widget/share usage, new task capture, and end-to-end calendar publication were not exercised during this signing pass.
 
 ```sh
 npm test

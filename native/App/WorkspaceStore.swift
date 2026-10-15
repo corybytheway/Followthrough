@@ -19,7 +19,7 @@ import Security
     var blockedMutation = false
     var storageError: String?
     var server: String = UserDefaults.standard.string(forKey: "server") ?? {
-        #if DEBUG
+        #if DEBUG && (os(macOS) || targetEnvironment(simulator))
         return "http://localhost:4318"
         #else
         return "https://followthrough.corymccabe.com"
@@ -44,9 +44,9 @@ import Security
     func start() async {
         guard !started else { return }; started = true
         if let data = Keychain.load(server), let saved = try? JSONDecoder().decode(NativeSession.self, from: data) { session = saved; connected = true }
-        #if DEBUG
+        #if DEBUG && (os(macOS) || targetEnvironment(simulator))
         // Local integration tests provision a real PKCE-issued session. This is
-        // never compiled into distribution builds and cannot target remote hosts.
+        // never compiled into physical iPhone builds and cannot target remote hosts.
         if session == nil, ["localhost", "127.0.0.1"].contains(URL(string: server)?.host ?? ""),
            let encoded = ProcessInfo.processInfo.environment["FOLLOWTHROUGH_SESSION"], let data = Data(base64Encoded: encoded),
            let supplied = try? JSONDecoder().decode(NativeSession.self, from: data) {

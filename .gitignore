@@ -43,6 +43,7 @@ next-env.d.ts
 *.tsbuildinfo
 /native/.build/
 /native/DerivedData/
+/native/DerivedDataDevice/
 /native/local-session.json
 xcuserdata/
 

@@ -100,13 +100,19 @@ extension Date {
 }
 struct SharedCapture: Codable { var identity: String; var source: String }
 enum SharedStorage {
-    #if os(macOS)
-    // macOS permits a team-prefixed group with local development signing,
-    // without creating a provisioning profile or distributing the app.
-    static let group = "6G252Y8692.dev.ethosapps.followthrough.local"
-    #else
-    static let group = "group.dev.ethosapps.followthrough.local"
-    #endif
+    static let group: String = {
+        if let configured = Bundle.main.object(forInfoDictionaryKey: "FollowthroughAppGroup") as? String,
+           !configured.isEmpty, !configured.contains("$(") {
+            return configured
+        }
+        #if os(macOS)
+        return "6G252Y8692.dev.ethosapps.followthrough.local"
+        #elseif targetEnvironment(simulator)
+        return "group.dev.ethosapps.followthrough.local"
+        #else
+        return "group.dev.ethosapps.followthrough"
+        #endif
+    }()
     static let directory: URL = {
         let fm = FileManager.default
         if let shared = fm.containerURL(forSecurityApplicationGroupIdentifier: group) {
@@ -117,7 +123,12 @@ enum SharedStorage {
                 return shared
             } catch { /* A local ad-hoc Mac build may not have App Group access. */ }
         }
-        let local = fm.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent("Followthrough Local",isDirectory:true)
+        #if os(macOS) || targetEnvironment(simulator)
+        let directoryName = "Followthrough Local"
+        #else
+        let directoryName = "Followthrough"
+        #endif
+        let local = fm.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent(directoryName,isDirectory:true)
         try? fm.createDirectory(at:local,withIntermediateDirectories:true)
         return local
     }()

@@ -14,8 +14,8 @@ def quote(v):
     return json.dumps(str(v))
 def plist(name,values):
     path=root/'Config'/name; path.write_bytes(plistlib.dumps(values)); return 'Config/'+name
-base={'CFBundleDisplayName':'Followthrough','CFBundleDevelopmentRegion':'en','CFBundleExecutable':'$(EXECUTABLE_NAME)','CFBundleIdentifier':'$(PRODUCT_BUNDLE_IDENTIFIER)','CFBundleInfoDictionaryVersion':'6.0','CFBundleName':'$(PRODUCT_NAME)','CFBundleShortVersionString':'0.1','CFBundleVersion':'1'}
-appinfo={**base,'CFBundlePackageType':'APPL','CFBundleDisplayName':'Followthrough Local','CFBundleURLTypes':[{'CFBundleURLName':'Followthrough','CFBundleURLSchemes':['followthrough']}], 'NSCalendarsFullAccessUsageDescription':'Check which calendars are available on this device. No events are changed by this check.', 'NSCalendarsUsageDescription':'Check access to your device calendars.', 'NSAppTransportSecurity':{'NSAllowsLocalNetworking':True},'UILaunchScreen':{},'UIApplicationSceneManifest':{'UIApplicationSupportsMultipleScenes':True},'UISupportedInterfaceOrientations':['UIInterfaceOrientationPortrait','UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight']}
+base={'CFBundleDisplayName':'Followthrough','CFBundleDevelopmentRegion':'en','CFBundleExecutable':'$(EXECUTABLE_NAME)','CFBundleIdentifier':'$(PRODUCT_BUNDLE_IDENTIFIER)','CFBundleInfoDictionaryVersion':'6.0','CFBundleName':'$(PRODUCT_NAME)','CFBundleShortVersionString':'0.1','CFBundleVersion':'1','FollowthroughAppGroup':'$(FOLLOWTHROUGH_APP_GROUP)'}
+appinfo={**base,'CFBundlePackageType':'APPL','CFBundleDisplayName':'$(FOLLOWTHROUGH_DISPLAY_NAME)','CFBundleURLTypes':[{'CFBundleURLName':'Followthrough','CFBundleURLSchemes':['followthrough']}], 'NSCalendarsFullAccessUsageDescription':'Check which calendars are available on this device. No events are changed by this check.', 'NSCalendarsUsageDescription':'Check access to your device calendars.', 'NSAppTransportSecurity':{'NSAllowsLocalNetworking':True},'UILaunchScreen':{},'UIApplicationSceneManifest':{'UIApplicationSupportsMultipleScenes':True},'UISupportedInterfaceOrientations':['UIInterfaceOrientationPortrait','UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight']}
 plist('App.plist',appinfo)
 plist('Widget.plist',{**base,'CFBundlePackageType':'XPC!','NSExtension':{'NSExtensionPointIdentifier':'com.apple.widgetkit-extension'}})
 plist('Share.plist',{**base,'CFBundlePackageType':'XPC!','NSExtension':{'NSExtensionPointIdentifier':'com.apple.share-services','NSExtensionPrincipalClass':'$(PRODUCT_MODULE_NAME).ShareViewController','NSExtensionAttributes':{'NSExtensionActivationRule':{'NSExtensionActivationSupportsText':True,'NSExtensionActivationSupportsWebURLWithMaxCount':1}}}})
@@ -23,6 +23,8 @@ plist('App.entitlements',{'com.apple.security.app-sandbox':True,'com.apple.secur
 plist('Extension.entitlements',{'com.apple.security.app-sandbox':True,'com.apple.security.application-groups':['6G252Y8692.dev.ethosapps.followthrough.local']})
 plist('AppIOS.entitlements',{'application-identifier':'LOCALONLY.dev.ethosapps.followthrough.local','keychain-access-groups':['LOCALONLY.dev.ethosapps.followthrough.local'],'com.apple.security.application-groups':['group.dev.ethosapps.followthrough.local']})
 plist('ExtensionIOS.entitlements',{'com.apple.security.application-groups':['group.dev.ethosapps.followthrough.local']})
+plist('AppIOSDevice.entitlements',{'com.apple.security.application-groups':['$(FOLLOWTHROUGH_APP_GROUP)']})
+plist('ExtensionIOSDevice.entitlements',{'com.apple.security.application-groups':['$(FOLLOWTHROUGH_APP_GROUP)']})
 allfiles=sorted(set([str(p.relative_to(root)) for p in root.glob('*/*.swift')]+['Tests/FollowthroughUITests.swift']))
 refs={f:add('file'+f,'PBXFileReference',lastKnownFileType='sourcecode.swift',path=f,sourceTree='<group>') for f in allfiles}
 refs['Assets.xcassets']=add('assets','PBXFileReference',lastKnownFileType='folder.assetcatalog',path='Assets.xcassets',sourceTree='<group>')
@@ -51,7 +53,21 @@ def target(name,platform,kind,files,extensions=[]):
             deps.append(add(name+'dep'+ename,'PBXTargetDependency',target=ident(ename),targetProxy=proxy))
         phases.append(add(name+'embed','PBXCopyFilesBuildPhase',buildActionMask=2147483647,dstPath='',dstSubfolderSpec=13,files=embeds,name='Embed Extensions',runOnlyForDeploymentPostprocessing=0))
     settings={**common,'PRODUCT_NAME':'Followthrough Local' if not ext else name,'PRODUCT_MODULE_NAME':name.replace('-','_'),'PRODUCT_BUNDLE_IDENTIFIER':bundle,'SDKROOT':'macosx' if platform=='mac' else 'iphoneos','SUPPORTED_PLATFORMS':'macosx' if platform=='mac' else 'iphoneos iphonesimulator','TARGETED_DEVICE_FAMILY':'1,2','INFOPLIST_FILE':'Config/'+('App.plist' if not ext else 'Widget.plist' if kind=='widgets' else 'Share.plist'),'CODE_SIGN_ENTITLEMENTS':'Config/'+(('App.entitlements' if not ext else 'Extension.entitlements') if platform=='mac' else ('AppIOS.entitlements' if not ext else 'ExtensionIOS.entitlements')),'LD_RUNPATH_SEARCH_PATHS':['$(inherited)','@executable_path/../Frameworks' if platform=='mac' else '@executable_path/Frameworks'], 'SKIP_INSTALL':'YES' if ext else 'NO','APPLICATION_EXTENSION_API_ONLY':'YES' if ext else 'NO'}
+    settings['FOLLOWTHROUGH_DISPLAY_NAME']='Followthrough Local'
+    settings['FOLLOWTHROUGH_APP_GROUP']='6G252Y8692.dev.ethosapps.followthrough.local' if platform=='mac' else 'group.dev.ethosapps.followthrough.local'
     if platform=='mac': settings.update({'DEVELOPMENT_TEAM':'6G252Y8692','CODE_SIGN_IDENTITY':'Apple Development'})
+    else:
+        # Keep local simulator identities and entitlements unchanged. Xcode supplies
+        # the provisioning-profile application and keychain identifiers on devices.
+        settings.update({
+            'PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]':'dev.ethosapps.followthrough'+('.'+kind if ext else ''),
+            'CODE_SIGN_STYLE[sdk=iphoneos*]':'Automatic',
+            'CODE_SIGN_IDENTITY[sdk=iphoneos*]':'Apple Development',
+            'DEVELOPMENT_TEAM[sdk=iphoneos*]':'6G252Y8692',
+            'CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]':'Config/'+('ExtensionIOSDevice.entitlements' if ext else 'AppIOSDevice.entitlements'),
+            'FOLLOWTHROUGH_APP_GROUP[sdk=iphoneos*]':'group.dev.ethosapps.followthrough',
+            'FOLLOWTHROUGH_DISPLAY_NAME[sdk=iphoneos*]':'Followthrough',
+        })
     if not ext: settings['ASSETCATALOG_COMPILER_APPICON_NAME']='AppIcon'
     if ext: settings['LD_RUNPATH_SEARCH_PATHS']+=['@executable_path/../../Frameworks']
     t=add(name,'PBXNativeTarget',name=name,productName=name,productReference=product,productType='com.apple.product-type.app-extension' if ext else 'com.apple.product-type.application',buildConfigurationList=configs(name,settings),buildPhases=phases,buildRules=[],dependencies=deps)
