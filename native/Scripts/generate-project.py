@@ -21,6 +21,8 @@ plist('Widget.plist',{**base,'CFBundlePackageType':'XPC!','NSExtension':{'NSExte
 plist('Share.plist',{**base,'CFBundlePackageType':'XPC!','NSExtension':{'NSExtensionPointIdentifier':'com.apple.share-services','NSExtensionPrincipalClass':'$(PRODUCT_MODULE_NAME).ShareViewController','NSExtensionAttributes':{'NSExtensionActivationRule':{'NSExtensionActivationSupportsText':True,'NSExtensionActivationSupportsWebURLWithMaxCount':1}}}})
 plist('App.entitlements',{'com.apple.security.app-sandbox':True,'com.apple.security.network.client':True,'com.apple.security.personal-information.calendars':True,'com.apple.security.application-groups':['6G252Y8692.dev.ethosapps.followthrough.local']})
 plist('Extension.entitlements',{'com.apple.security.app-sandbox':True,'com.apple.security.application-groups':['6G252Y8692.dev.ethosapps.followthrough.local']})
+plist('AppMacRelease.entitlements',{'com.apple.security.app-sandbox':True,'com.apple.security.network.client':True,'com.apple.security.personal-information.calendars':True,'com.apple.security.application-groups':['$(FOLLOWTHROUGH_APP_GROUP)']})
+plist('ExtensionMacRelease.entitlements',{'com.apple.security.app-sandbox':True,'com.apple.security.application-groups':['$(FOLLOWTHROUGH_APP_GROUP)']})
 plist('AppIOS.entitlements',{'application-identifier':'LOCALONLY.dev.ethosapps.followthrough.local','keychain-access-groups':['LOCALONLY.dev.ethosapps.followthrough.local'],'com.apple.security.application-groups':['group.dev.ethosapps.followthrough.local']})
 plist('ExtensionIOS.entitlements',{'com.apple.security.application-groups':['group.dev.ethosapps.followthrough.local']})
 plist('AppIOSDevice.entitlements',{'com.apple.security.application-groups':['$(FOLLOWTHROUGH_APP_GROUP)']})
@@ -31,10 +33,11 @@ refs['Assets.xcassets']=add('assets','PBXFileReference',lastKnownFileType='folde
 productrefs=[]; targets=[]
 project_id=ident('project')
 common={'SWIFT_VERSION':'5.0','CLANG_ENABLE_MODULES':'YES','ENABLE_USER_SCRIPT_SANDBOXING':'YES','SWIFT_STRICT_CONCURRENCY':'targeted','CODE_SIGN_IDENTITY':'-','CODE_SIGN_STYLE':'Manual','DEVELOPMENT_TEAM':'','MACOSX_DEPLOYMENT_TARGET':'15.0','IPHONEOS_DEPLOYMENT_TARGET':'18.0','GENERATE_INFOPLIST_FILE':'NO','CURRENT_PROJECT_VERSION':'1','MARKETING_VERSION':'0.1','ENABLE_HARDENED_RUNTIME':'YES','SWIFT_EMIT_LOC_STRINGS':'YES'}
-def configs(key,settings):
+def configs(key,settings,release=None):
     ids=[]
     for name in ['Debug','Release']:
         config={**settings,'SWIFT_OPTIMIZATION_LEVEL':'-Onone' if name=='Debug' else '-O','SWIFT_ACTIVE_COMPILATION_CONDITIONS':'DEBUG' if name=='Debug' else '', 'DEBUG_INFORMATION_FORMAT':'dwarf'}
+        if name == 'Release': config.update(release or {})
         ids.append(add(key+name,'XCBuildConfiguration',name=name,buildSettings=config))
     return add(key+'list','XCConfigurationList',buildConfigurations=ids,defaultConfigurationIsVisible=0,defaultConfigurationName='Debug')
 def target(name,platform,kind,files,extensions=[]):
@@ -60,17 +63,21 @@ def target(name,platform,kind,files,extensions=[]):
         # Keep local simulator identities and entitlements unchanged. Xcode supplies
         # the provisioning-profile application and keychain identifiers on devices.
         settings.update({
-            'PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]':'dev.ethosapps.followthrough'+('.'+kind if ext else ''),
+            'PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]':'com.ethos.followthrough'+('.'+kind if ext else ''),
             'CODE_SIGN_STYLE[sdk=iphoneos*]':'Automatic',
             'CODE_SIGN_IDENTITY[sdk=iphoneos*]':'Apple Development',
             'DEVELOPMENT_TEAM[sdk=iphoneos*]':'6G252Y8692',
             'CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]':'Config/'+('ExtensionIOSDevice.entitlements' if ext else 'AppIOSDevice.entitlements'),
-            'FOLLOWTHROUGH_APP_GROUP[sdk=iphoneos*]':'group.dev.ethosapps.followthrough',
+            'FOLLOWTHROUGH_APP_GROUP[sdk=iphoneos*]':'group.com.ethos.followthrough',
             'FOLLOWTHROUGH_DISPLAY_NAME[sdk=iphoneos*]':'Followthrough',
         })
     if not ext: settings['ASSETCATALOG_COMPILER_APPICON_NAME']='AppIcon'
     if ext: settings['LD_RUNPATH_SEARCH_PATHS']+=['@executable_path/../../Frameworks']
-    t=add(name,'PBXNativeTarget',name=name,productName=name,productReference=product,productType='com.apple.product-type.app-extension' if ext else 'com.apple.product-type.application',buildConfigurationList=configs(name,settings),buildPhases=phases,buildRules=[],dependencies=deps)
+    release={}
+    if platform=='mac':
+        # Keep Debug's local identity and connected workspace; Release matches ASC.
+        release={'PRODUCT_BUNDLE_IDENTIFIER':'com.ethos.followthrough'+('.'+kind if ext else ''),'CODE_SIGN_STYLE':'Automatic','FOLLOWTHROUGH_APP_GROUP':'group.com.ethos.followthrough','FOLLOWTHROUGH_DISPLAY_NAME':'Followthrough','CODE_SIGN_ENTITLEMENTS':'Config/'+('ExtensionMacRelease.entitlements' if ext else 'AppMacRelease.entitlements')}
+    t=add(name,'PBXNativeTarget',name=name,productName=name,productReference=product,productType='com.apple.product-type.app-extension' if ext else 'com.apple.product-type.application',buildConfigurationList=configs(name,settings,release),buildPhases=phases,buildRules=[],dependencies=deps)
     targets.append(t)
     return t
 model=['Shared/Models.swift']

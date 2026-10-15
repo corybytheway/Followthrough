@@ -9,8 +9,8 @@ import plistlib
 import subprocess
 
 
-APP_ID = "dev.ethosapps.followthrough"
-APP_GROUP = "group.dev.ethosapps.followthrough"
+APP_ID = "com.ethos.followthrough"
+APP_GROUP = "group.com.ethos.followthrough"
 EXTENSION_IDS = {APP_ID + ".widgets", APP_ID + ".share"}
 
 

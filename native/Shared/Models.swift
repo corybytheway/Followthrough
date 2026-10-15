@@ -110,7 +110,7 @@ enum SharedStorage {
         #elseif targetEnvironment(simulator)
         return "group.dev.ethosapps.followthrough.local"
         #else
-        return "group.dev.ethosapps.followthrough"
+        return "group.com.ethos.followthrough"
         #endif
     }()
     static let directory: URL = {
