@@ -50,7 +50,18 @@ struct SettingsView: View {
                 Section("Local build") { Text("Task storage is working in the app. Shared widget and shortcut storage needs a development-signed App Group on this Mac.").font(.callout).foregroundStyle(.secondary) }
             }
             Section("Your workspace") {
-                Text(store.server).font(.callout).textSelection(.enabled)
+                if store.isLocalWorkspace {
+                    Text("Local test workspace").font(.headline)
+                    Text("Connect your account to see your existing projects and tasks.").font(.callout).foregroundStyle(.secondary)
+                    Button { store.connectLiveWorkspace() } label: {
+                        Label(store.authorizing ? "Connecting…" : "Connect my Followthrough account", systemImage:"person.crop.circle")
+                    }.buttonStyle(.borderedProminent).disabled(store.authorizing || store.syncing || !store.pending.isEmpty)
+                } else {
+                    Text("Your Followthrough account").font(.headline)
+                    Button(store.authorizing ? "Connecting…" : "Switch account") { store.connect() }
+                        .disabled(store.authorizing || store.syncing || !store.pending.isEmpty)
+                }
+                Text(store.server).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
                 Button("Disconnect this device",role:.destructive) { confirmDisconnect = true }
             }
         }.formStyle(.grouped).navigationTitle("Settings")

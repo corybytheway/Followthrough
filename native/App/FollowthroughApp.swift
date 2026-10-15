@@ -70,7 +70,7 @@ struct ConnectionView: View {
                 .frame(width:64,height:64).background(Color.followNavy,in:RoundedRectangle(cornerRadius:18))
             Text("Make room for\nyour work").font(.system(size:40,weight:.bold,design:.rounded))
             Text("Your projects, your calendar, and one clear next step.").foregroundStyle(.secondary)
-            Button { store.connect() } label: {
+            Button { store.connectLiveWorkspace() } label: {
                 HStack { if store.authorizing { ProgressView() }; Text("Connect your workspace"); Image(systemName:"arrow.up.right") }.frame(maxWidth:.infinity).padding(.vertical,8)
             }.buttonStyle(.borderedProminent).disabled(store.authorizing)
             Text("Sign in securely in your browser and approve this device.").font(.callout).foregroundStyle(.secondary)
@@ -78,6 +78,7 @@ struct ConnectionView: View {
             DisclosureGroup("Local development") {
                 TextField("Server", text:$store.server).textFieldStyle(.roundedBorder)
                 Text("The local server uses an isolated workspace. Your live tasks are not imported.").font(.caption).foregroundStyle(.secondary)
+                Button("Connect to development server") { store.connect() }.disabled(store.authorizing)
             }
             #endif
             if let error = store.error { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("connectionError") }
@@ -96,7 +97,15 @@ struct SidebarView: View {
             }
             if let workspace = store.workspace {
                 Section("Projects") { ForEach(workspace.projects) { project in
-                    Button { store.selectedSection = project.id } label: { Label(project.name,systemImage:"folder.fill").foregroundStyle(Color(hex:project.color)) }.buttonStyle(.plain)
+                    Button { store.selectedSection = project.id } label: {
+                        Label {
+                            Text(project.name).foregroundStyle(.primary)
+                        } icon: {
+                            Image(systemName:"circle.fill").font(.system(size:7)).foregroundStyle(Color(hex:project.color))
+                        }
+                        .frame(maxWidth:.infinity,alignment:.leading)
+                        .padding(.vertical,4)
+                    }.buttonStyle(.plain)
                 } }
             }
         }.navigationSplitViewColumnWidth(min:200,ideal:230,max:300)
@@ -152,9 +161,15 @@ struct TodayView: View {
                 TodayHeading(timeZone:workspace.settings.timeZone)
                 #endif
                 #if os(macOS)
-                HStack(alignment:.top,spacing:24) {
-                    TodayTasks(store:store,workspace:workspace).frame(maxWidth:.infinity)
-                    DaySchedule(workspace:workspace,onSelect:{store.selectedTask = $0}).frame(width:310)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment:.top,spacing:24) {
+                        TodayTasks(store:store,workspace:workspace).frame(minWidth:420,maxWidth:.infinity)
+                        DaySchedule(workspace:workspace,onSelect:{store.selectedTask = $0}).frame(width:300)
+                    }
+                    VStack(alignment:.leading,spacing:24) {
+                        TodayTasks(store:store,workspace:workspace)
+                        DaySchedule(workspace:workspace,onSelect:{store.selectedTask = $0})
+                    }
                 }
                 #else
                 TodayTasks(store:store,workspace:workspace)
@@ -169,10 +184,7 @@ struct TodayHeading: View {
     let timeZone: String
     static func title(timeZone: String) -> String { let f = DateFormatter(); f.locale = Locale(identifier:"en_US"); f.timeZone = TimeZone(identifier:timeZone); f.dateFormat = "EEEE, MMM. d"; return f.string(from:.now) }
     var body: some View {
-        VStack(alignment:.leading,spacing:7) {
-            Text(Self.title(timeZone:timeZone)).font(.largeTitle.bold())
-            EmptyView()
-        }
+        Text(Self.title(timeZone:timeZone)).font(.system(size:32,weight:.bold))
     }
 }
 struct TodayTasks: View {
@@ -181,7 +193,11 @@ struct TodayTasks: View {
     var body: some View {
         VStack(alignment:.leading,spacing:24) {
             CaptureCard(store:store)
-            HStack { Text(workspace.todayTasks.isEmpty ? "That’s it for today!" : "Followthrough on these first").font(.title3.bold()); Spacer(); if !workspace.todayTasks.isEmpty { Text("\(workspace.todayTasks.count) tasks").foregroundStyle(.secondary) } }
+            HStack(alignment:.firstTextBaseline) {
+                Text(workspace.todayTasks.isEmpty ? "That’s it for today!" : "Followthrough on these first").font(.system(size:18,weight:.semibold))
+                Spacer(minLength:12)
+                if !workspace.todayTasks.isEmpty { Text("\(workspace.todayTasks.count) tasks").font(.system(size:13)).foregroundStyle(.secondary).fixedSize() }
+            }
             if workspace.todayTasks.isEmpty {
                 Button("View all tasks →") { store.selectedSection = "tasks" }.buttonStyle(.plain).foregroundStyle(Color.followBlue)
             } else {
@@ -189,6 +205,7 @@ struct TodayTasks: View {
                     TaskRow(task:task,project:workspace.project(task.projectId),onSelect:{store.selectedTask = task},onComplete:{store.complete(task)})
                     if task.id != workspace.todayTasks.last?.id { Divider().padding(.leading,54) }
                 } }.background(Color.card,in:RoundedRectangle(cornerRadius:18))
+                    .overlay { RoundedRectangle(cornerRadius:18).strokeBorder(.primary.opacity(0.06),lineWidth:1) }
             }
         }
     }
@@ -198,15 +215,21 @@ struct CaptureCard: View {
     @State private var source = ""
     var body: some View {
         VStack(alignment:.leading,spacing:16) {
-            Text("What do you need to do?").font(.title3.bold())
+            Text("What do you need to do?").font(.system(size:19,weight:.semibold))
             TextField("What do you need to do?",text:$source,prompt:Text("Describe a task, or get a few things off your mind…").foregroundStyle(.white.opacity(0.65)),axis:.vertical)
+                .font(.system(size:16)).lineSpacing(5)
                 .lineLimit(3...6).textFieldStyle(.plain).onSubmit { submit() }
                 .onKeyPress(keys:[.return], phases:.down) { key in if key.modifiers.contains(.shift) { return .ignored }; submit(); return .handled }
                 .accessibilityIdentifier("captureInput")
             HStack {
-                Text("Give it a place in your day.").font(.caption).foregroundStyle(.white.opacity(0.65))
+                #if os(macOS)
+                Text("Enter to add · Shift-Enter for a new line").font(.system(size:12)).foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(2)
+                #else
+                Text("Give it a place in your day.").font(.caption).foregroundStyle(.white.opacity(0.7))
+                #endif
                 Spacer()
-                Button { submit() } label: { Label("Add to plan",systemImage:"arrow.up.right").font(.callout.bold()).padding(.horizontal,14).padding(.vertical,10).background(Color.followLime,in:Capsule()).foregroundStyle(Color.followNavy) }
+                Button { submit() } label: { Label("Add to plan",systemImage:"arrow.up.right").font(.system(size:14,weight:.semibold)).fixedSize().padding(.horizontal,16).padding(.vertical,12).background(Color.followLime,in:RoundedRectangle(cornerRadius:11)).foregroundStyle(Color.followNavy) }
                     .buttonStyle(.plain).disabled(source.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty).accessibilityIdentifier("captureSubmit")
             }
         }.padding(24).foregroundStyle(.white).background(Color.followNavy,in:RoundedRectangle(cornerRadius:22))
@@ -220,20 +243,25 @@ struct TaskRow: View {
     let onComplete: () -> Void
     var body: some View {
         HStack(alignment:.top,spacing:13) {
-            Button(action:onComplete) { Image(systemName:task.status == "done" ? "checkmark.circle.fill" : "circle").font(.title2).foregroundStyle(task.status == "done" ? Color.green : Color.secondary.opacity(0.5)) }.buttonStyle(.plain).accessibilityLabel("Complete \(task.title)")
+            Button(action:onComplete) { Image(systemName:task.status == "done" ? "checkmark.circle.fill" : "circle").font(.system(size:22)).foregroundStyle(task.status == "done" ? Color.green : Color.secondary.opacity(0.7)).frame(width:28,height:28) }.buttonStyle(.plain).accessibilityLabel("Complete \(task.title)")
             Button(action:onSelect) {
                 VStack(alignment:.leading,spacing:9) {
-                    Text(project.map { "\($0.label): \(task.title)" } ?? task.title).font(.headline).foregroundStyle(.primary).multilineTextAlignment(.leading)
-                    HStack(spacing:10) {
-                        if let project { Text(project.name).foregroundStyle(Color(hex:project.color)).lineLimit(1) }
+                    Text(project.map { "\($0.label): \(task.title)" } ?? task.title).font(.system(size:15,weight:.semibold)).foregroundStyle(.primary).multilineTextAlignment(.leading).fixedSize(horizontal:false,vertical:true)
+                    if let project {
+                        HStack(spacing:6) {
+                            Image(systemName:"circle.fill").font(.system(size:6)).foregroundStyle(Color(hex:project.color))
+                            Text(project.name).foregroundStyle(.primary).lineLimit(1)
+                        }.font(.system(size:12))
+                    }
+                    HStack(spacing:12) {
                         Text(task.remainingLabel)
                         if !task.steps.isEmpty { Text("\(task.steps.filter(\.done).count)/\(task.steps.count) steps") }
                         if task.priority == .top || task.priority == .high { Text("\(task.priority.title) priority").fontWeight(.bold).foregroundStyle(task.priority == .top ? Color.red : Color(hex:"#ffae00")) }
-                    }.font(.caption).foregroundStyle(.secondary)
+                    }.font(.system(size:12)).foregroundStyle(.secondary)
                 }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
             }.buttonStyle(.plain)
-            Image(systemName:"arrow.up.right").font(.caption).foregroundStyle(.tertiary).padding(.top,4)
-        }.padding(18)
+            Image(systemName:"arrow.up.right").font(.system(size:12,weight:.medium)).foregroundStyle(.secondary).padding(.top,5)
+        }.padding(20)
     }
 }
 struct DaySchedule: View {
@@ -241,21 +269,22 @@ struct DaySchedule: View {
     let onSelect: (FTTask) -> Void
     var body: some View {
         VStack(alignment:.leading,spacing:20) {
-            Text("Your day").font(.title3.bold())
-            Text("\(workspace.settings.workStart)–\(workspace.settings.workEnd) · \(workspace.settings.timeZone.split(separator:"/").last.map(String.init) ?? workspace.settings.timeZone)").font(.caption).foregroundStyle(.secondary)
+            Text("Your day").font(.system(size:18,weight:.semibold))
+            Text("\(workspace.settings.workStart)–\(workspace.settings.workEnd) · \(workspace.settings.timeZone.split(separator:"/").last.map(String.init) ?? workspace.settings.timeZone)").font(.system(size:12)).foregroundStyle(.secondary)
             let rows = scheduleRows()
             if rows.isEmpty { Label("Room to breathe",systemImage:"sun.max").foregroundStyle(.secondary).padding(.vertical,20) }
             ForEach(rows) { row in
                 Button { if let task = row.task { onSelect(task) } } label: {
                     HStack(alignment:.top,spacing:12) {
-                        VStack(alignment:.leading,spacing:4) { Text(row.start,style:.time); Text(row.end,style:.time).foregroundStyle(.secondary) }.font(.caption).frame(width:62,alignment:.leading)
+                        VStack(alignment:.leading,spacing:5) { Text(row.start,style:.time); Text(row.end,style:.time).foregroundStyle(.secondary) }.font(.system(size:12)).monospacedDigit().frame(width:62,alignment:.leading)
                         RoundedRectangle(cornerRadius:2).fill(row.task == nil ? Color.secondary.opacity(0.4) : Color.followBlue).frame(width:3)
-                        VStack(alignment:.leading,spacing:6) { Text(row.title).font(.callout.weight(.medium)); Text(row.task == nil ? "Busy time" : "Work session").font(.caption).foregroundStyle(.secondary) }.frame(maxWidth:.infinity,alignment:.leading)
+                        VStack(alignment:.leading,spacing:7) { Text(row.title).font(.system(size:14,weight:.medium)); Text(row.task == nil ? "Busy time" : "Work session").font(.system(size:12)).foregroundStyle(.secondary) }.frame(maxWidth:.infinity,alignment:.leading)
                     }.fixedSize(horizontal:false,vertical:true).foregroundStyle(.primary).multilineTextAlignment(.leading)
                 }.buttonStyle(.plain)
                 if row.id != rows.last?.id { Divider() }
             }
         }.padding(22).frame(maxWidth:.infinity,alignment:.leading).background(Color.card,in:RoundedRectangle(cornerRadius:18))
+            .overlay { RoundedRectangle(cornerRadius:18).strokeBorder(.primary.opacity(0.06),lineWidth:1) }
     }
     private func scheduleRows() -> [ScheduleRow] {
         let today = workspace.day(.now)
@@ -298,7 +327,7 @@ struct ProjectsView: View {
     var body: some View {
         List { ForEach(projects) { project in
             HStack {
-                Image(systemName:"folder.fill").foregroundStyle(Color(hex:project.color)).font(.title2)
+                Image(systemName:"folder").foregroundStyle(.secondary).font(.title2)
                 NavigationLink { if let workspace = store.workspace { TasksView(store:store,workspace:workspace,projectId:project.id) } } label: { VStack(alignment:.leading,spacing:5) { Text(project.name).font(.headline); Text(project.description).font(.callout).foregroundStyle(.secondary) } }
                 Button("Edit") { editing = project }.buttonStyle(.borderless)
             }.padding(.vertical,8)
@@ -378,9 +407,20 @@ extension Color {
     }
     static var card: Color {
         #if os(macOS)
-        Color(nsColor:.controlBackgroundColor)
+        Color(nsColor:NSColor(name:nil) { appearance in
+            appearance.bestMatch(from:[.darkAqua,.aqua]) == .darkAqua ? NSColor(calibratedWhite:0.15,alpha:1) : .white
+        })
         #else
         Color(uiColor:.secondarySystemGroupedBackground)
+        #endif
+    }
+    static var fieldSurface: Color {
+        #if os(macOS)
+        Color(nsColor:NSColor(name:nil) { appearance in
+            appearance.bestMatch(from:[.darkAqua,.aqua]) == .darkAqua ? NSColor(calibratedWhite:0.11,alpha:1) : NSColor(calibratedWhite:0.965,alpha:1)
+        })
+        #else
+        Color(uiColor:.tertiarySystemFill)
         #endif
     }
     init(hex: String) { let value = UInt64(hex.trimmingCharacters(in:CharacterSet(charactersIn:"#")),radix:16) ?? 0x4266d5; self.init(red:Double((value >> 16) & 255)/255,green:Double((value >> 8) & 255)/255,blue:Double(value & 255)/255) }

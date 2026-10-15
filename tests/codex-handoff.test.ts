@@ -27,7 +27,7 @@ void test('Codex receives the full source, project, notes, progress, timing and 
   assert.equal(task.source, source);
   assert.ok(handoff.taskUrl.includes('task='));
   const linkedPrompt = new URL(codexDraftUrl(handoff, 'signed-token')).searchParams.get('prompt') || '';
-  assert.ok(linkedPrompt.startsWith('/plan Complete this Followthrough task: Update timesheet export'));
+  assert.ok(linkedPrompt.startsWith('Complete this Followthrough task: Update timesheet export'));
   assert.ok(linkedPrompt.includes('/codex/context?k=signed-token'));
   assert.ok(!linkedPrompt.includes(source));
 });
@@ -38,7 +38,7 @@ void test('Codex handoff rejects deleted and completed tasks and does not includ
   workspace.tasks.push({ ...task, id: 'unrelated', title: 'Unrelated private task', source: 'Unrelated source' });
   const handoff = codexHandoff(workspace, task);
   assert.ok(!handoff.prompt.includes('Unrelated private task'));
-  assert.equal(new URL(codexDraftUrl(handoff, 'signed-token')).searchParams.get('prompt'), `/plan ${handoff.prompt}`);
+  assert.equal(new URL(codexDraftUrl(handoff, 'signed-token')).searchParams.get('prompt'), handoff.prompt);
   for (const changed of [{ status: 'done' as const }, { status: 'archived' as const }, { deletedAt: '2026-10-13' }])
     assert.throws(() => codexHandoff(workspace, { ...task, ...changed }));
 });

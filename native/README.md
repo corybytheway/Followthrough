@@ -2,7 +2,7 @@
 
 Created by Cory McCabe.
 
-This branch adds native SwiftUI clients to the existing Followthrough server. It is an isolated local development build. It does not deploy the website, connect production calendars, create a TestFlight build, or configure subscriptions.
+This branch adds locally runnable SwiftUI clients to Followthrough. The app can use either an isolated development workspace or your existing Followthrough account. TestFlight, public native distribution, and subscriptions remain separate later steps.
 
 ## Open and run
 
@@ -22,7 +22,7 @@ Leave that terminal running. In another terminal, create isolated sample data an
 node native/Scripts/verify-local.mjs
 ```
 
-The runner writes ignored, owner-readable `native/local-session.json` and `native/local-session-ios.json` files. These are local bearer credentials: do not commit or share them. They are optional; **Connect your workspace** also exercises browser sign-in, workspace approval, and the real PKCE callback against the loopback server. `/signin-with-chatgpt` uses the Sites local-only identity. Production credentials are never needed for that test.
+The runner writes ignored, owner-readable `native/local-session.json` and `native/local-session-ios.json` files. These are local bearer credentials: do not commit or share them. They are optional; **Local development → Connect to development server** exercises browser sign-in, workspace approval, and the real PKCE callback against the loopback server. The primary **Connect your workspace** action opens the live service. `/signin-with-chatgpt` uses the Sites local-only identity. Production credentials are never needed for that test.
 
 Mac:
 
@@ -52,7 +52,7 @@ Pass `--no-session` to the launcher to use browser sign-in or the Keychain sessi
 - Shared task/project models and SwiftUI views; native iPhone tabs and Mac sidebar.
 - Today, schedule, task search, project editing, task details, suggested-step completion, prerequisites, and expanded selectable original input.
 - Capture on Today; Return submits and Shift-Return adds a line. Mac Command-N opens quick capture, Command-Return submits it, and Command-R synchronizes. A menu-bar entry provides quick capture and the next task.
-- Task completion, postponement, next-workweek move, adding an hour, deletion, and the full-context ChatGPT handoff. The handoff starts with a request to plan before acting; the app does not assert that a URL can force the recipient's native Plan-mode setting.
+- Task completion, postponement, next-workweek move, adding an hour, deletion, and the full-context handoff to Codex on Mac and ChatGPT on iPhone. The handoff starts with a request to plan before acting; the app does not assert that a URL can force the recipient's native Plan-mode setting.
 - A WidgetKit next-task widget, an App Intent for Shortcuts/Siri/Action Button, and an iOS text/URL share extension. Shared captures are persisted locally and uploaded when the main app next connects. Widgets show cached information and its update time.
 - Optional EventKit access validation that lists device calendars without changing their events.
 - Existing capture pipeline, planner, project names, priorities, and calendar rules remain on the server. Without a local AI connection, the existing basic fallback preserves the source and uses a provisional estimate; no AI key is bundled in the app.
@@ -81,7 +81,13 @@ The local Mac build uses the existing Ethos Apps development certificate. Its te
 
 The iOS simulator uses a local-only application/keychain identifier. A physical device needs development signing and a provisioned App Group, plus an HTTPS development API reachable from that device. `localhost` on a phone points to the phone. Physical-device calendar permissions, share-sheet integration, and widget refresh are separate acceptance checks; no TestFlight is required for them.
 
-Before any production native connection, configure the invite-only host to admit the native token exchange/API routes without requiring a browser cookie at the hosting gateway, while keeping application authorization on every route. The local server validates app-level authentication; it does not validate the deployed Sites gateway configuration. Do not deploy these changes as part of local validation.
+## Connect your existing account
+
+In native Settings, choose **Connect my Followthrough account**. The browser uses a fresh sign-in session so a different ChatGPT account in your normal browser does not silently select the wrong workspace. Check the email shown before **Connect this device** approval. **Switch account** opens that same flow after connection. Pending local changes must finish syncing first. The app changes workspaces only after the new session is saved to Keychain; it does not import local test tasks into your real account.
+
+The canonical workspace remains `https://followthrough.corymccabe.com`. Native API requests use the existing actions relay, which forwards only an explicit native route/method allowlist using a server-held hosting credential. Native bearer authorization remains mandatory on the primary server, and the website stays invite-only. Calendar credentials remain server-side.
+
+Use `run-local.py mac --no-session` when launching with a real account; the optional test-session launcher is only for loopback fixtures. The minimal deployed API support is maintained separately from this branch's experimental calendar destination and scheduler changes.
 
 ## Validation
 

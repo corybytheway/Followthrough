@@ -29,6 +29,7 @@ import Security
     @ObservationIgnored private var authSession: ASWebAuthenticationSession?
     @ObservationIgnored private var verifier = ""
     @ObservationIgnored private var authState = ""
+    @ObservationIgnored private var authorizationServer: String?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var refreshTask: Task<NativeSession, Error>?
     @ObservationIgnored private var pendingTaskID: String?
@@ -36,6 +37,10 @@ import Security
     var cacheURL: URL { SharedStorage.directory.appendingPathComponent("workspace.json") }
     var queueURL: URL { SharedStorage.directory.appendingPathComponent("outbox.json") }
     var client: APIClient { get throws { try APIClient(server: server) } }
+    var isLocalWorkspace: Bool { ["localhost", "127.0.0.1", "::1"].contains(URL(string: server)?.host ?? "") }
+    func connectLiveWorkspace() {
+        connect(to: "https://followthrough.corymccabe.com")
+    }
     func start() async {
         guard !started else { return }; started = true
         if let data = Keychain.load(server), let saved = try? JSONDecoder().decode(NativeSession.self, from: data) { session = saved; connected = true }
@@ -57,34 +62,71 @@ import Security
         await sync()
     }
     private var identity: String { server + ":" + (session?.ownerId ?? "") }
-    func connect() {
+    func connect(to destination: String? = nil) {
         do {
-            _ = try client
-            UserDefaults.standard.set(server, forKey: "server")
+            guard !authorizing, !syncing, refreshTask == nil else { return }
+            let target = destination ?? server
+            if session != nil { importSharedCaptures() }
+            if target != server && !pending.isEmpty {
+                error = "Sync your saved changes before switching workspaces. They are still safe on this device."
+                Task { await sync() }
+                return
+            }
+            let api = try APIClient(server: target)
+            authorizationServer = target
+            error = nil
             verifier = try Self.random(); authState = try Self.random()
             let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64EncodedString().urlSafe
-            var components = URLComponents(url: try client.baseURL.appendingPathComponent("native/connect"), resolvingAgainstBaseURL: false)!
+            var components = URLComponents(url: api.baseURL.appendingPathComponent("native/connect"), resolvingAgainstBaseURL: false)!
             components.queryItems = [URLQueryItem(name:"challenge",value:challenge),URLQueryItem(name:"state",value:authState)]
             let session = ASWebAuthenticationSession(url: components.url!, callbackURLScheme: "followthrough") { [weak self] url, failure in
                 Task { @MainActor in
-                    guard let self else { return }; self.authorizing = false
+                    guard let self else { return }
                     if let url { await self.completeSignIn(url) }
-                    else if let failure, (failure as NSError).code != ASWebAuthenticationSessionError.canceledLogin.rawValue { self.error = failure.localizedDescription }
+                    else {
+                        self.authorizing = false; self.authorizationServer = nil
+                        if let failure, (failure as NSError).code != ASWebAuthenticationSessionError.canceledLogin.rawValue { self.error = failure.localizedDescription }
+                    }
                 }
             }
-            session.presentationContextProvider = self; session.prefersEphemeralWebBrowserSession = false
+            session.presentationContextProvider = self
+            // Use a fresh account choice instead of silently reusing another
+            // ChatGPT account from the browser's current profile.
+            session.prefersEphemeralWebBrowserSession = true
             authSession = session; authorizing = true
-            if !session.start() { authorizing = false; error = "Could not open sign-in. Try again." }
-        } catch { self.error = error.localizedDescription }
+            if !session.start() { authorizing = false; authorizationServer = nil; error = "Could not open sign-in. Try again." }
+        } catch { authorizing = false; authorizationServer = nil; self.error = error.localizedDescription }
     }
     func completeSignIn(_ url: URL) async {
         guard url.host == "auth", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
               parts.queryItems?.first(where: {$0.name == "state"})?.value == authState,
-              let code = parts.queryItems?.first(where: {$0.name == "code"})?.value, !verifier.isEmpty else { return }
+              let code = parts.queryItems?.first(where: {$0.name == "code"})?.value, !verifier.isEmpty,
+              let target = authorizationServer else {
+            authorizing = false; authorizationServer = nil
+            verifier = ""; authState = ""
+            error = "Sign-in could not be verified. Connect your workspace again."
+            return
+        }
         do {
-            let result: NativeSession = try await client.send("api/native/session", method:"POST", body:["code":.string(code),"verifier":.string(verifier),"deviceName":.string(Self.deviceName)])
-            verifier = ""; authState = ""; try accept(result); await sync()
-        } catch { self.error = error.localizedDescription }
+            let result: NativeSession = try await APIClient(server: target).send("api/native/session", method:"POST", body:["code":.string(code),"verifier":.string(verifier),"deviceName":.string(Self.deviceName)])
+            // Captures may arrive from a shortcut while the browser is open.
+            // Preserve them even when a different account uses the same host.
+            if session != nil { importSharedCaptures() }
+            if (target != server || session?.ownerId != result.ownerId) && !pending.isEmpty {
+                let _: [String: Bool]? = try? await APIClient(server: target).send("api/native/session", method: "DELETE", token: result.accessToken)
+                throw APIError.response(0, "Your previous workspace still has saved changes. Reconnect to that account and sync them before switching.")
+            }
+            // Do not discard the current workspace until the new login succeeds
+            // and its credential is securely stored. Never move its outbox.
+            try Keychain.save(JSONEncoder().encode(result), account: target)
+            if target != server || session?.ownerId != result.ownerId { clearLocalData() }
+            server = target
+            UserDefaults.standard.set(target, forKey: "server")
+            verifier = ""; authState = ""; authorizationServer = nil
+            try accept(result)
+            authorizing = false
+            await sync()
+        } catch { authorizing = false; authorizationServer = nil; self.error = error.localizedDescription }
     }
     private func accept(_ value: NativeSession) throws {
         if let existing = session, existing.ownerId != value.ownerId { clearLocalData() }
@@ -108,7 +150,7 @@ import Security
         return value.accessToken
     }
     func sync() async {
-        guard connected, !syncing else { return }
+        guard connected, !syncing, !authorizing else { return }
         syncing = true; defer { syncing = false }
         do {
             let token = try await access()
@@ -149,6 +191,7 @@ import Security
         return enqueue(.init(endpoint:"api/native/workspace",body:body,title:title))
     }
     @discardableResult private func enqueue(_ operation: PendingMutation) -> Bool {
+        guard !authorizing else { error = "Finish connecting your workspace before saving a task."; return false }
         pending.append(operation)
         guard persist() else { pending.removeLast(); return false }
         Task { await sync() }; return true
@@ -226,8 +269,13 @@ import Security
     func handoff(_ task: FTTask) async throws -> URL {
         struct HandoffResponse: Decodable, Sendable { var prompt: String }
         let response: HandoffResponse = try await client.send("api/native/handoff",method:"POST",body:["id":.string(task.id),"expectedUpdatedAt":.string(task.updatedAt)],token:try await access())
+        #if os(macOS)
+        var parts = URLComponents(string:"codex://new")!
+        parts.queryItems = [URLQueryItem(name:"mode",value:"codex"), URLQueryItem(name:"prompt",value:response.prompt)]
+        #else
         var parts = URLComponents(string:"https://chatgpt.com/")!
-        parts.queryItems = [URLQueryItem(name:"prompt",value:"/plan " + response.prompt)]
+        parts.queryItems = [URLQueryItem(name:"prompt",value:response.prompt)]
+        #endif
         return parts.url!
     }
     func open(_ url: URL) {

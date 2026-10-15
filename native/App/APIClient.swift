@@ -12,6 +12,13 @@ enum APIError: LocalizedError {
 }
 struct APIClient: Sendable {
     let baseURL: URL
+    // Sites keeps the web workspace behind sign-in. Native requests use its
+    // dedicated relay, which still requires the device's scoped bearer token.
+    private var transportURL: URL {
+        baseURL.host == "followthrough.corymccabe.com"
+            ? URL(string: "https://followthrough-actions.corybytheway.chatgpt.site")!
+            : baseURL
+    }
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpShouldSetCookies = false
@@ -26,7 +33,8 @@ struct APIClient: Sendable {
         baseURL = url
     }
     func send<T: Decodable & Sendable>(_ path: String, method: String = "GET", body: [String: JSONValue]? = nil, token: String? = nil) async throws -> T {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path)); request.httpMethod = method
+        let destination = path.hasPrefix("api/native/") ? transportURL : baseURL
+        var request = URLRequest(url: destination.appendingPathComponent(path)); request.httpMethod = method
         request.timeoutInterval = 60
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }

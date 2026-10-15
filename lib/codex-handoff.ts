@@ -32,7 +32,7 @@ export function codexHandoff(workspace: Workspace, task: Task, origin = APP_ORIG
 
 export function codexDraftUrl(handoff: ReturnType<typeof codexHandoff>, token: string) {
   let prompt = handoff.prompt;
-  if (encodeURIComponent(`/plan ${prompt}`).length > 7000) {
+  if (encodeURIComponent(prompt).length > 7000) {
     const contextUrl = `https://followthrough-actions.corybytheway.chatgpt.site/codex/context?k=${encodeURIComponent(token)}`;
     prompt = [
       `Complete this Followthrough task: ${handoff.title}`,
@@ -42,5 +42,5 @@ export function codexDraftUrl(handoff: ReturnType<typeof codexHandoff>, token: s
       `Manage task: ${handoff.taskUrl}`,
     ].join('\n\n');
   }
-  return `https://chatgpt.com/?prompt=${encodeURIComponent(`/plan ${prompt}`)}`;
+  return `https://chatgpt.com/?prompt=${encodeURIComponent(prompt)}`;
 }
