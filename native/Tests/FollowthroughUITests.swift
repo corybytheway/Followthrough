@@ -115,7 +115,7 @@ final class FollowthroughUITests: XCTestCase {
             )).firstMatch
         }
 
-        let names = ["Today", "Tasks", "Projects", "Settings", "New task"]
+        let names = ["Settings", "Projects", "Tasks", "Today", "New task"]
         let tabs = names.map(tab)
         for (name, item) in zip(names, tabs) {
             XCTAssertTrue(item.exists && item.isHittable, "\(name) must be reachable in the vertical bar.")

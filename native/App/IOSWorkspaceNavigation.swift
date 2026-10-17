@@ -8,17 +8,20 @@ struct IOSWorkspaceNavigation: View {
 
     var body: some View {
         TabView(selection: sectionSelection) {
-            Tab("Today", systemImage: "bolt.fill", value: "today") {
-                IOSWorkspaceTab(store: store, section: "today")
-            }
-            Tab("Tasks", systemImage: "checklist", value: "tasks") {
-                IOSWorkspaceTab(store: store, section: "tasks")
+            // The system bar is visible only in vertical layouts. Place
+            // Today nearest the bottom capture action; the custom horizontal
+            // bar keeps its existing order.
+            Tab("Settings", systemImage: store.selectedSection == "settings" ? "gearshape.fill" : "gearshape", value: "settings") {
+                IOSWorkspaceTab(store: store, section: "settings")
             }
             Tab("Projects", systemImage: store.selectedSection == "projects" ? "folder.fill" : "folder", value: "projects") {
                 IOSWorkspaceTab(store: store, section: "projects")
             }
-            Tab("Settings", systemImage: store.selectedSection == "settings" ? "gearshape.fill" : "gearshape", value: "settings") {
-                IOSWorkspaceTab(store: store, section: "settings")
+            Tab("Tasks", systemImage: "checklist", value: "tasks") {
+                IOSWorkspaceTab(store: store, section: "tasks")
+            }
+            Tab("Today", systemImage: "bolt.fill", value: "today") {
+                IOSWorkspaceTab(store: store, section: "today")
             }
             if #available(iOS 27.1, *) {
                 // The system pins the prominent item below the other tabs
@@ -62,6 +65,12 @@ private struct IOSWorkspaceTab: View {
             WorkspaceSection(store: store, section: section)
                 .modifier(IOSWorkspaceContentInset(store: store))
                 .toolbar { WorkspaceSaveToolbar(store: store) }
+        }
+        .background {
+            if #available(iOS 27.1, *) {
+                // Keep the style bridge alive when this stack pushes a page.
+                IOSCaptureTabSurfaceContext()
+            }
         }
     }
 }
@@ -108,6 +117,123 @@ private struct IOSNavigationInset: ViewModifier {
             }
         }
         .toolbarVisibility(usesVerticalBar ? .visible : .hidden, for: .tabBar)
+    }
+}
+
+@available(iOS 27.1, *)
+private struct IOSCaptureTabSurfaceContext: View {
+    @Environment(\.toolbarVerticalEdge) private var verticalEdge
+
+    var body: some View {
+        IOSCaptureTabSurface(enabled: verticalEdge != nil)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Style only the native capture item's surface. UIKit still owns its placement,
+/// accessibility, and tap handling; no private tab-bar views are inspected.
+@available(iOS 27.1, *)
+private struct IOSCaptureTabSurface: UIViewControllerRepresentable {
+    let enabled: Bool
+
+    func makeUIViewController(context: Context) -> SurfaceController {
+        SurfaceController()
+    }
+
+    func updateUIViewController(_ controller: SurfaceController, context: Context) {
+        controller.enabled = enabled
+        controller.refreshSurface()
+    }
+
+    static func dismantleUIViewController(_ controller: SurfaceController, coordinator: ()) {
+        controller.removeSurface()
+    }
+
+    final class SurfaceController: UIViewController {
+        var enabled = false
+        private let surface = CaptureSurfaceView()
+
+        override func loadView() {
+            view = UIView()
+            view.backgroundColor = .clear
+            view.isUserInteractionEnabled = false
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            refreshSurface()
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            refreshSurface()
+        }
+
+        override func viewDidDisappear(_ animated: Bool) {
+            super.viewDidDisappear(animated)
+            removeSurface()
+        }
+
+        func refreshSurface() {
+            guard enabled, isViewLoaded, view.window != nil,
+                  let host = tabBarController,
+                  let identifier = host.prominentTabIdentifier,
+                  let captureTab = host.tabs.first(where: { $0.identifier == identifier }) else {
+                removeSurface()
+                return
+            }
+            surface.captureTab = captureTab
+            if surface.superview !== host.view {
+                host.view.addSubview(surface)
+            }
+            surface.frame = host.view.bounds
+            surface.setNeedsLayout()
+        }
+
+        func removeSurface() {
+            surface.removeFromSuperview()
+        }
+    }
+
+    final class CaptureSurfaceView: UIView {
+        weak var captureTab: UITab?
+        private let circle = UIView()
+        private let plus = UIImageView(image: UIImage(
+            systemName: "plus",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 27, weight: .semibold)
+        ))
+
+        init() {
+            super.init(frame: .zero)
+            backgroundColor = .clear
+            isUserInteractionEnabled = false
+            accessibilityElementsHidden = true
+            autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            circle.backgroundColor = UIColor(.followMint)
+            plus.tintColor = UIColor(.followNavy)
+            plus.contentMode = .center
+            addSubview(circle)
+            circle.addSubview(plus)
+        }
+
+        required init?(coder: NSCoder) { return nil }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            // UITab's public source-item frame follows the real native button
+            // through rotation and folding, without guessed screen offsets.
+            let itemFrame: CGRect? = captureTab?.frame(in: self)
+            guard let itemFrame, !itemFrame.isEmpty, !itemFrame.isNull,
+                  itemFrame.minX.isFinite, itemFrame.minY.isFinite else {
+                circle.isHidden = true
+                return
+            }
+            circle.isHidden = false
+            circle.frame = itemFrame
+            circle.layer.cornerRadius = min(itemFrame.width, itemFrame.height) / 2
+            plus.frame = circle.bounds
+        }
     }
 }
 
