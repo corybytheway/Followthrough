@@ -12,11 +12,16 @@ import Security
     var syncing = false
     var connected = false
     var authorizing = false
-    var capturePresented = false
+    var captureFocused = false
+    var captureText = ""
+    var captureReceipt: CaptureReceipt?
     var selectedTask: FTTask?
+    var taskConflict: TaskSyncConflict?
     var selectedSection = "today"
+    private(set) var sectionReselectionIDs: [String: UUID] = [:]
     var lastSynced: Date?
     var blockedMutation = false
+    private(set) var completionFeedback: [String: TaskCompletionFeedback] = [:]
     var storageError: String?
     var server: String = UserDefaults.standard.string(forKey: "server") ?? {
         #if DEBUG && (os(macOS) || targetEnvironment(simulator))
@@ -32,17 +37,42 @@ import Security
     @ObservationIgnored private var authorizationServer: String?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var refreshTask: Task<NativeSession, Error>?
+    @ObservationIgnored private var syncRequested = false
     @ObservationIgnored private var pendingTaskID: String?
 
     var cacheURL: URL { SharedStorage.directory.appendingPathComponent("workspace.json") }
     var queueURL: URL { SharedStorage.directory.appendingPathComponent("outbox.json") }
     var client: APIClient { get throws { try APIClient(server: server) } }
     var isLocalWorkspace: Bool { ["localhost", "127.0.0.1", "::1"].contains(URL(string: server)?.host ?? "") }
+    private var blockedOperation: PendingMutation? { blockedMutation ? pending.first : nil }
+    var presentationWorkspace: Workspace? {
+        workspace.map { TaskCompletionPresentation.workspace($0, operations: pending, blocked: blockedOperation, feedback: completionFeedback) }
+    }
+    func completionStatus(for task: FTTask) -> String {
+        if TaskCompletionPresentation.blockedTaskID(blockedOperation) == task.id {
+            return workspace?.tasks.first(where: { $0.id == task.id })?.status ?? task.status
+        }
+        return completionFeedback[task.id]?.status ?? TaskCompletionPresentation.task(task, operations: pending, blocked: blockedOperation).status
+    }
+    func canComplete(_ task: FTTask, in displayedWorkspace: Workspace? = nil) -> Bool {
+        let current = displayedWorkspace ?? presentationWorkspace ?? workspace
+        return task.deletedAt == nil && task.status != "archived" && completionFeedback[task.id] == nil
+            && TaskCompletionPresentation.blockedTaskID(blockedOperation) != task.id
+            && (completionStatus(for: task) == "done" || !(current?.hasUnfinishedPrerequisites(for: task) ?? false))
+    }
     func connectLiveWorkspace() {
         connect(to: "https://followthrough.corymccabe.com")
     }
+    func selectSection(_ section: String) {
+        if selectedSection == section {
+            sectionReselectionIDs[section] = UUID()
+        } else {
+            selectedSection = section
+        }
+    }
     func start() async {
         guard !started else { return }; started = true
+        NativeSyncLog.record(SharedStorage.extensionsAvailable ? "storage_app_group" : "storage_app_private")
         if let data = Keychain.load(server), let saved = try? JSONDecoder().decode(NativeSession.self, from: data) { session = saved; connected = true }
         #if DEBUG && (os(macOS) || targetEnvironment(simulator))
         // Local integration tests provision a real PKCE-issued session. This is
@@ -58,8 +88,10 @@ import Security
             if let data = try? Data(contentsOf: cacheURL), let cache = try? JSONDecoder().decode(CachedWorkspace.self, from: data), cache.identity == identity { workspace = cache.workspace }
             if let data = try? Data(contentsOf: queueURL), let queue = try? JSONDecoder().decode(CachedOutbox.self, from: data), queue.identity == identity { pending = queue.operations }
             openPendingTask()
+            NativeSyncLog.record("outbox_loaded", count: pending.count)
         }
         await sync()
+        synchronizeDeviceTimeZone()
     }
     private var identity: String { server + ":" + (session?.ownerId ?? "") }
     func connect(to destination: String? = nil) {
@@ -126,6 +158,7 @@ import Security
             try accept(result)
             authorizing = false
             await sync()
+            synchronizeDeviceTimeZone()
         } catch { authorizing = false; authorizationServer = nil; self.error = error.localizedDescription }
     }
     private func accept(_ value: NativeSession) throws {
@@ -134,9 +167,9 @@ import Security
         session = value; connected = true
         try SharedStorage.bind(identity)
     }
-    private func access() async throws -> String {
+    private func access(forceRefresh: Bool = false) async throws -> String {
         guard var value = session else { throw APIError.response(401, "Connect your workspace first.") }
-        if value.expiresAt < Date().timeIntervalSince1970 * 1000 + 60_000 {
+        if forceRefresh || value.expiresAt < Date().timeIntervalSince1970 * 1000 + 60_000 {
             // Settings and foreground sync can request access together. Share one
             // refresh so they cannot invalidate each other's new access token.
             if refreshTask == nil {
@@ -149,21 +182,89 @@ import Security
         }
         return value.accessToken
     }
+    private func authorized<T: Decodable & Sendable>(_ path: String, method: String = "GET", body: [String: JSONValue]? = nil) async throws -> T {
+        let token = try await access()
+        do { return try await client.send(path, method: method, body: body, token: token) }
+        catch let failure as APIError where failure.status == 401 {
+            // A long capture or overlapping settings request can outlive an
+            // access token. Refresh once without losing its durable request ID.
+            NativeSyncLog.record("authorization_retry")
+            let renewed = try await access(forceRefresh: session?.accessToken == token)
+            return try await client.send(path, method: method, body: body, token: renewed)
+        }
+    }
+
+    private func sendQueued(_ initial: PendingMutation) async throws -> MutationResult {
+        var operation = initial
+        for attempt in 0..<3 {
+            var body = operation.body; body["requestId"] = .string(operation.id)
+            do { return try await authorized(operation.endpoint, method: "POST", body: body) }
+            catch let failure as APIError where failure.status == 409 {
+                guard TaskEditReconciliation.patch(operation) != nil,
+                      case .string(let id) = operation.body["id"] else { throw failure }
+                let latest: Workspace = try await authorized("api/native/workspace")
+                workspace = latest
+                guard let task = latest.tasks.first(where: { $0.id == id }) else { throw failure }
+                switch TaskEditReconciliation.resolve(operation, latest: task) {
+                case .alreadyApplied:
+                    NativeSyncLog.record("edit_already_applied", count: pending.count)
+                    return MutationResult(state: latest, result: nil)
+                case .retry(let rebased) where attempt < 2:
+                    guard let index = pending.firstIndex(where: { $0.id == operation.id }) else { throw failure }
+                    pending[index] = rebased
+                    guard persist() else { pending[index] = operation; throw failure }
+                    operation = rebased
+                    NativeSyncLog.record("edit_rebased", count: pending.count)
+                default:
+                    NativeSyncLog.record("edit_needs_review", count: pending.count)
+                    throw APIError.response(409, "This task has newer changes. Review the saved task to choose which changes to apply. Your other saved changes are kept.")
+                }
+            }
+        }
+        throw APIError.response(409, "This task is still changing. Review the saved edit before trying again.")
+    }
+
     func sync() async {
-        guard connected, !syncing, !authorizing else { return }
-        syncing = true; defer { syncing = false }
+        guard connected, !authorizing else { return }
+        guard !syncing else { syncRequested = true; return }
+        syncing = true
+        defer {
+            syncing = false
+            if syncRequested {
+                syncRequested = false
+                Task { await sync() }
+            }
+        }
         do {
-            let token = try await access()
             importSharedCaptures()
             if !blockedMutation {
                 while let operation = pending.first {
-                    var body = operation.body; body["requestId"] = .string(operation.id)
+                    if captureReceipt?.id == operation.id { captureReceipt?.phase = .sending }
                     do {
-                        let result: MutationResult = try await client.send(operation.endpoint, method:"POST", body:body, token:token)
+                        let result = try await sendQueued(operation)
+                        var captured: [FTTask]?
+                        if operation.endpoint == "api/native/inbox" {
+                            let group = "capture_" + SHA256.hash(data: Data(((session?.ownerId ?? "") + ":" + operation.id).utf8)).map { String(format: "%02x", $0) }.joined()
+                            guard let confirmed = result.confirmedCapture(group: group) else {
+                                throw APIError.response(503, "Could not confirm the added tasks. Your request is safe on this device. Retry to check it without creating duplicates.")
+                            }
+                            captured = confirmed
+                        }
+                        let beforeAcknowledgment = pending
+                        let acknowledged = pending.first ?? operation
                         workspace = result.state; pending.removeFirst()
+                        if case .string(let id) = acknowledged.body["id"],
+                           let confirmed = result.state.tasks.first(where: { $0.id == id }) {
+                            pending = pending.map { TaskEditReconciliation.advance($0, after: acknowledged, confirmed: confirmed) }
+                        }
                         guard persist() else {
-                            pending.insert(operation, at: 0)
+                            pending = beforeAcknowledgment
                             throw APIError.response(0, storageError ?? "Could not save synchronization progress on this device.")
+                        }
+                        NativeSyncLog.record("mutation_saved", count: pending.count)
+                        if let captured, captureReceipt?.id == operation.id {
+                            captureReceipt?.phase = .saved(captured)
+                            if captureText == captureReceipt?.source { captureText = "" }
                         }
                     } catch let failure as APIError {
                         if failure.status == 409 || failure.status == 400 { blockedMutation = true }
@@ -171,20 +272,61 @@ import Security
                     }
                 }
             }
-            workspace = try await client.send("api/native/workspace", token:token)
+            workspace = try await authorized("api/native/workspace")
             openPendingTask()
             lastSynced = .now; persist(); if !blockedMutation { error = storageError }; updateWidget()
         } catch {
+            NativeSyncLog.record("sync_failed", status: (error as? APIError)?.status, count: pending.count)
             self.error = error.localizedDescription
+            if let receipt = captureReceipt, pending.contains(where: { $0.id == receipt.id }) {
+                captureReceipt?.phase = blockedMutation && pending.first?.id == receipt.id
+                    ? .needsAttention(error.localizedDescription) : .queued(error.localizedDescription)
+            }
             if (error as? APIError)?.status == 401 { connected = false }
-            if blockedMutation, let token = session?.accessToken, let latest: Workspace = try? await client.send("api/native/workspace",token:token) { workspace = latest; persist() }
+            if blockedMutation, let latest: Workspace = try? await authorized("api/native/workspace") { workspace = latest; persist() }
         }
+    }
+    func focusCapture() {
+        guard selectedTask == nil else { return }
+        captureFocused = true
+    }
+    func dismissCaptureFocus() { captureFocused = false }
+    func finishCapture(another: Bool = false) {
+        if captureText == captureReceipt?.source { captureText = "" }
+        captureReceipt = nil
+        if !another { dismissCaptureFocus() }
+    }
+    func editBlockedCapture() {
+        guard blockedMutation, let receipt = captureReceipt, pending.first?.id == receipt.id else { return }
+        // Only a rejected (400/409) request can be edited. Transport failures
+        // retain the same request ID until its committed result is confirmed.
+        let removed = pending.removeFirst()
+        guard persist() else { pending.insert(removed, at: 0); return }
+        captureText = receipt.source; captureReceipt = nil
+        blockedMutation = false; error = storageError
+        Task { await sync() }
+    }
+    func synchronizeDeviceTimeZone() {
+        guard connected, let workspace else { return }
+        let zone = TimeZone.autoupdatingCurrent.identifier
+        guard workspace.settings.timeZone != zone else { return }
+        let alreadyQueued = pending.contains { operation in
+            guard case .object(let settings)? = operation.body["settings"],
+                  case .string(let queuedZone)? = settings["timeZone"] else { return false }
+            return queuedZone == zone
+        }
+        guard !alreadyQueued else { return }
+        mutate(action: "update_settings", title: "Device time zone", fields: ["settings": .object(["timeZone": .string(zone)])])
     }
     @discardableResult func capture(_ source: String) -> Bool {
         let source = source.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !source.isEmpty else { return false }
+        guard !source.isEmpty, captureReceipt == nil else { return false }
         guard source.utf16.count <= 8000 else { error = "Keep a capture under 8,000 characters. Your text is still here."; return false }
-        return enqueue(.init(endpoint:"api/native/inbox",body:["source":.string(source)],title:source))
+        let operation = PendingMutation(endpoint:"api/native/inbox",body:["source":.string(source)],title:source)
+        guard enqueue(operation) else { return false }
+        captureText = source
+        captureReceipt = CaptureReceipt(id: operation.id, source: source, phase: .queued(nil))
+        return true
     }
     @discardableResult func mutate(action: String, title: String, fields: [String: JSONValue] = [:]) -> Bool {
         var body = fields; body["action"] = .string(action)
@@ -197,10 +339,39 @@ import Security
         Task { await sync() }; return true
     }
     @discardableResult func updateTask(_ task: FTTask, fields: [String: JSONValue]) -> Bool {
-        var patch = fields; patch["expectedUpdatedAt"] = .string(task.updatedAt)
-        return mutate(action:"update_task",title:task.title,fields:["id":.string(task.id),"task":.object(patch)])
+        var patch = TaskEditReconciliation.changedFields(fields, from: task)
+        guard !patch.isEmpty else { return true }
+        // Repeated taps while a save is in flight must not queue the same edit.
+        if TaskEditReconciliation.isLatestQueuedPatch(patch, taskID: task.id, operations: pending) { return true }
+        patch["expectedUpdatedAt"] = .string(task.updatedAt)
+        return enqueue(.init(endpoint: "api/native/workspace", body: ["action": .string("update_task"), "id": .string(task.id), "task": .object(patch)], title: task.title, baseTask: task))
     }
-    @discardableResult func complete(_ task: FTTask) -> Bool { updateTask(task,fields:["status":.string(task.status == "done" ? "ready" : "done")]) }
+    @discardableResult func complete(_ task: FTTask) -> Bool {
+        guard canComplete(task) else { return false }
+        let before = TaskCompletionPresentation.task(task, operations: pending, blocked: blockedOperation)
+        let status = before.status == "done" ? "ready" : "done"
+        guard updateTask(before, fields: ["status": .string(status)]) else { return false }
+        // Acknowledge only after the outbox is safely written. Network speed
+        // must not decide when a completion tap becomes visible.
+        let feedback = TaskCompletionFeedback(before: before, status: status, blocks: workspace?.blocks.filter { $0.taskId == task.id } ?? [])
+        completionFeedback[task.id] = feedback
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(450))
+            guard let self, self.completionFeedback[task.id]?.id == feedback.id else { return }
+            self.completionFeedback.removeValue(forKey: task.id)
+        }
+        return true
+    }
+    @discardableResult func deleteProject(_ project: FTProject) -> Bool {
+        mutate(action:"delete_project",title:"Delete \(project.name)",fields:[
+            "id":.string(project.id),
+            "expectedProject":.object([
+                "name":.string(project.name), "shortName":project.shortName.map(JSONValue.string) ?? .null,
+                "description":.string(project.description), "color":.string(project.color),
+                "aliases":.array(project.aliases.map(JSONValue.string))
+            ])
+        ])
+    }
     @discardableResult func postpone(_ task: FTTask, nextWeek: Bool) -> Bool {
         guard let workspace else { return false }
         var calendar = Calendar(identifier:.gregorian); calendar.timeZone = TimeZone(identifier:workspace.settings.timeZone) ?? .current
@@ -217,7 +388,42 @@ import Security
         guard !pending.isEmpty else { return }
         let removed = pending.removeFirst()
         guard persist() else { pending.insert(removed, at: 0); return }
+        if captureReceipt?.id == removed.id {
+            captureText = captureReceipt?.source ?? captureText
+            captureReceipt = nil
+        }
         blockedMutation = false; error = nil; Task { await sync() }
+    }
+    var reviewableTaskConflict: TaskSyncConflict? {
+        guard blockedMutation, let operation = pending.first,
+              TaskEditReconciliation.patch(operation) != nil,
+              case .string(let id) = operation.body["id"],
+              let task = workspace?.tasks.first(where: { $0.id == id }),
+              task.deletedAt == nil, task.status != "archived" else { return nil }
+        return TaskSyncConflict(operation: operation, latest: task)
+    }
+    func reviewSavedTask() { taskConflict = reviewableTaskConflict }
+    @discardableResult func resolveSavedTask(_ conflict: TaskSyncConflict, fields: Set<String>) -> Bool {
+        guard !syncing, let index = pending.firstIndex(where: { $0.id == conflict.id }) else { return false }
+        var patch = conflict.patch.filter { fields.contains($0.key) }
+        let removed = pending[index]
+        if patch.isEmpty {
+            // Only an explicit Keep current choice removes the saved intent.
+            pending.remove(at: index)
+        } else {
+            patch["expectedUpdatedAt"] = .string(conflict.latest.updatedAt)
+            pending[index] = PendingMutation(endpoint: removed.endpoint,
+                body: ["action": .string("update_task"), "id": .string(conflict.latest.id), "task": .object(patch)],
+                title: conflict.latest.title, baseTask: conflict.latest)
+        }
+        guard persist() else {
+            if patch.isEmpty { pending.insert(removed, at: index) } else { pending[index] = removed }
+            return false
+        }
+        taskConflict = nil; blockedMutation = false; error = storageError
+        NativeSyncLog.record("edit_review_resolved", count: pending.count)
+        Task { await sync() }
+        return true
     }
     func retry() { blockedMutation = false; Task { await sync() } }
     func disconnect() async {
@@ -231,9 +437,10 @@ import Security
         Keychain.remove(server); session = nil; connected = false; clearLocalData(); updateWidget()
     }
     private func clearLocalData() {
-        workspace = nil; pending = []; error = nil; blockedMutation = false
-        selectedSection = "today"; selectedTask = nil; capturePresented = false
+        workspace = nil; pending = []; error = nil; blockedMutation = false; completionFeedback = [:]
+        selectedSection = "today"; selectedTask = nil; taskConflict = nil; captureFocused = false; captureText = ""; captureReceipt = nil
         pendingTaskID = nil
+        syncRequested = false
         try? FileManager.default.removeItem(at:cacheURL); try? FileManager.default.removeItem(at:queueURL)
         SharedStorage.unbind()
     }
@@ -265,22 +472,21 @@ import Security
         SharedStorage.savePreview(.init(title:next?.title ?? (connected ? "That’s it for today!" : "Open Followthrough"),taskId:next?.id,project:workspace?.project(next?.projectId)?.name,remaining:next?.remainingLabel,updatedAt:.now))
         WidgetCenter.shared.reloadAllTimelines()
     }
-    func calendars() async throws -> NativeCalendarStatus { try await client.send("api/native/calendars",token:try await access()) }
-    func handoff(_ task: FTTask) async throws -> URL {
+    func calendars() async throws -> NativeCalendarStatus { try await authorized("api/native/calendars") }
+    func saveCalendars(_ fields: [String: JSONValue]) async throws -> NativeCalendarStatus {
+        struct Response: Decodable, Sendable { var status: NativeCalendarStatus }
+        let response: Response = try await authorized("api/native/calendars", method: "POST", body: fields)
+        return response.status
+    }
+
+    func handoff(_ task: FTTask) async throws -> TaskHandoff {
         struct HandoffResponse: Decodable, Sendable { var prompt: String }
-        let response: HandoffResponse = try await client.send("api/native/handoff",method:"POST",body:["id":.string(task.id),"expectedUpdatedAt":.string(task.updatedAt)],token:try await access())
-        #if os(macOS)
-        var parts = URLComponents(string:"codex://new")!
-        parts.queryItems = [URLQueryItem(name:"mode",value:"codex"), URLQueryItem(name:"prompt",value:response.prompt)]
-        #else
-        var parts = URLComponents(string:"https://chatgpt.com/")!
-        parts.queryItems = [URLQueryItem(name:"prompt",value:response.prompt)]
-        #endif
-        return parts.url!
+        let response: HandoffResponse = try await authorized("api/native/handoff",method:"POST",body:["id":.string(task.id),"expectedUpdatedAt":.string(task.updatedAt)])
+        return try TaskHandoff(prompt: response.prompt)
     }
     func open(_ url: URL) {
         if url.host == "auth" { Task { await completeSignIn(url) }; return }
-        if url.host == "capture" { capturePresented = true }
+        if url.host == "capture" { focusCapture() }
         let id = URLComponents(url:url,resolvingAgainstBaseURL:false)?.queryItems?.first(where:{$0.name == "task"})?.value ?? (url.host == "task" ? url.lastPathComponent : nil)
         if let id { pendingTaskID = id; openPendingTask() }
     }

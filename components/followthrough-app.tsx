@@ -1,5 +1,6 @@
 // Created by Cory McCabe
 'use client';
+import { normalizeProjectKeyword, suggestProjectKeywords, uniqueProjectKeywords } from '@/lib/project-keywords';
 import {
   useCallback,
   useEffect,
@@ -46,7 +47,6 @@ import {
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { NativeSelect } from '@/components/ui/native-select';
-import WorkHourSelect from '@/components/work-hour-select';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -64,11 +64,17 @@ import {
 } from '@/lib/model';
 import { localDay } from '@/lib/scheduler';
 import { createPlanRefresh, PLAN_REFRESH_INTERVAL } from '@/lib/plan-refresh';
-import {
-  completedTaskComparator,
-  scheduledTaskComparator,
-} from '@/lib/task-order';
+import { normalizedTaskSearch, tasksForTaskList } from '@/lib/task-search';
+import { SearchHighlightedText, TaskSearchContext } from '@/components/task-search-preview';
+import { scheduledTaskComparator } from '@/lib/task-order';
 import { tasksScheduledToday } from '@/lib/task-availability';
+import { hasUnfinishedPrerequisites, taskPrerequisiteGroups } from '@/lib/task-prerequisites';
+import {
+  createDeviceTimeZoneSync,
+  refreshedWorkHoursDraft,
+  workHoursSettingsChanges,
+  workHoursTimeLabel,
+} from '@/lib/settings-client';
 import { TOOL_DEFINITIONS, toolAction } from '@/lib/tools';
 import ShortcutSettings from '@/components/shortcut-settings';
 import CalendarSettings from '@/components/calendar-settings';
@@ -272,6 +278,38 @@ export default function FollowthroughApp({
     },
     [accept, refresh],
   );
+  useEffect(() => {
+    if (!loaded) return;
+    const syncDeviceTimeZone = createDeviceTimeZoneSync({
+      current: () => stateRef.current.settings.timeZone,
+      canRun: () =>
+        !document.hidden && !busyRef.current && !completingRef.current.size,
+      save: async (settings) => {
+        const previousToday = localDay(
+          Date.now(),
+          stateRef.current.settings.timeZone,
+        );
+        await commit({ action: 'update_settings', settings });
+        setDay((selected) =>
+          selected === previousToday
+            ? localDay(Date.now(), settings.timeZone)
+            : selected,
+        );
+      },
+    });
+    const checkDeviceTimeZone = () => void syncDeviceTimeZone().catch(() => {});
+    const foregroundDeviceTimeZone = () =>
+      void syncDeviceTimeZone(true).catch(() => {});
+    checkDeviceTimeZone();
+    const timer = window.setInterval(checkDeviceTimeZone, 60_000);
+    window.addEventListener('focus', foregroundDeviceTimeZone);
+    document.addEventListener('visibilitychange', foregroundDeviceTimeZone);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', foregroundDeviceTimeZone);
+      document.removeEventListener('visibilitychange', foregroundDeviceTimeZone);
+    };
+  }, [loaded, commit]);
   useEffect(() => {
     let live = true;
     refresh()
@@ -521,40 +559,12 @@ export default function FollowthroughApp({
   const projectsAlphabetically = [...state.projects].sort(
     compareProjectsByName,
   );
-  const visible = state.tasks.filter(
-    (t) =>
-      (statusFilter === 'trash'
-        ? !!t.deletedAt
-        : !t.deletedAt &&
-          (statusFilter === 'all' ||
-            (statusFilter === 'active'
-              ? ['ready', 'waiting'].includes(t.status)
-              : t.status === statusFilter))) &&
-      (projectFilter === 'all' ||
-        (projectFilter === 'none'
-          ? t.projectId === null
-          : t.projectId === projectFilter)) &&
-      (t.title + ' ' + t.notes + ' ' + t.steps.map((s) => s.title).join(' '))
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
   const compareBySchedule = scheduledTaskComparator(state.blocks);
-  if (statusFilter === 'active') {
-    visible.sort(compareBySchedule);
-  } else if (statusFilter === 'done') {
-    visible.sort(completedTaskComparator);
-  } else if (statusFilter === 'all') {
-    const statusOrder = { ready: 0, waiting: 0, done: 1, archived: 2 };
-    visible.sort((a, b) => {
-      const statusDifference = statusOrder[a.status] - statusOrder[b.status];
-      if (statusDifference) return statusDifference;
-      if (['ready', 'waiting'].includes(a.status)) {
-        return compareBySchedule(a, b);
-      }
-      if (a.status === 'done') return completedTaskComparator(a, b);
-      return 0;
-    });
-  }
+  const searching = normalizedTaskSearch(query).length > 0;
+  const visible = tasksForTaskList({
+    tasks: state.tasks, projects: state.projects, blocks: state.blocks,
+    query, statusFilter, projectFilter,
+  });
   const taskById = new Map(state.tasks.map((t) => [t.id, t]));
   const selected = editing
     ? state.tasks.find((t) => t.id === editing)
@@ -604,6 +614,10 @@ export default function FollowthroughApp({
       });
       return;
     }
+    if (hasUnfinishedPrerequisites(task, state.tasks)) {
+      setError('Blocked by unfinished tasks. Complete those tasks first.');
+      return;
+    }
     if (completingRef.current.has(task.id)) return;
     completingRef.current.add(task.id);
     const reducedMotion = window.matchMedia(
@@ -642,13 +656,16 @@ export default function FollowthroughApp({
   };
   const taskRow = (task: Task) => {
     const project = state.projects.find((p) => p.id === task.projectId),
-      blocked = task.blockers.some((id) => taskById.get(id)?.status !== 'done'),
+      blocked = task.status !== 'done' && hasUnfinishedPrerequisites(task, state.tasks),
       warning = state.warnings.find(
         (w) =>
           w.taskId === task.id && ['deadline', 'capacity'].includes(w.reason),
       );
     const planned = state.blocks.find((block) => block.taskId === task.id),
-      completionPhase = completionPhases[task.id];
+      completionPhase = completionPhases[task.id],
+      searchQuery = tab === 'tasks' ? query : '',
+      // Search is global, even when it starts in a project-filtered list.
+      showProjectPrefix = tab !== 'tasks' || searching || projectFilter !== project?.id;
     return (
       <div
         className={
@@ -661,30 +678,31 @@ export default function FollowthroughApp({
           className={
             'task-row ' +
             (task.status === 'done' ? 'completed ' : '') +
+            (blocked ? 'blocked ' : '') +
             (completionPhase ? 'completing' : '')
           }
         >
           {!task.deletedAt && (
             <Checkbox
               className="task-completion"
-              title={task.status === 'done' ? 'Reopen task' : 'Mark complete'}
+              title={blocked ? 'Blocked by unfinished tasks. Complete those tasks first.' : task.status === 'done' ? 'Reopen task' : 'Mark complete'}
               aria-label={
                 task.status === 'done'
                   ? 'Reopen ' + task.title
                   : 'Complete ' + task.title
               }
               checked={task.status === 'done' || Boolean(completionPhase)}
-              disabled={saving && !completionPhase}
+              disabled={blocked || (saving && !completionPhase)}
               onCheckedChange={(checked) =>
                 void setTaskCompletion(task, checked === true).catch(() => {})
               }
             />
           )}
           <button className="task-body" onClick={() => openTask(task.id)}>
-            <strong>{taskLabel(task.title, project)}</strong>
+            <strong><SearchHighlightedText text={taskLabel(task.title, project, showProjectPrefix)} query={searchQuery} /></strong>
             <span className="task-meta">
               {project && (
-                <span style={{ color: project.color }}>{project.name}</span>
+                <span style={{ color: project.color }}><SearchHighlightedText text={project.name} query={searchQuery} /></span>
               )}
               <span>
                 {task.estimateProvisional ? '~' : ''}
@@ -697,18 +715,18 @@ export default function FollowthroughApp({
                   steps
                 </span>
               )}
+              {blocked && (
+                <span className="pill">
+                  <Link2 size={11} />
+                  Blocked
+                </span>
+              )}
               {task.dueDate && <span>Due {dayLabel(task.dueDate)}</span>}
               {planned && (
                 <span>
                   Planned{' '}
                   {dayLabel(localDay(planned.start, state.settings.timeZone))} ·{' '}
                   {time(planned.start)}
-                </span>
-              )}
-              {blocked && (
-                <span className="pill">
-                  <Link2 size={11} />
-                  Blocked
                 </span>
               )}
               {task.status === 'waiting' && (
@@ -721,6 +739,7 @@ export default function FollowthroughApp({
                 </span>
               )}
             </span>
+            <TaskSearchContext task={task} query={searchQuery} />
             {warning && <span className="task-warning">{warning.message}</span>}
           </button>
           <ArrowUpRight className="row-arrow" size={17} />
@@ -926,8 +945,8 @@ export default function FollowthroughApp({
                   </Button>
                 </div>
                 <p className="secondary-text">
-                  {state.settings.workStart}–{state.settings.workEnd} ·{' '}
-                  {state.settings.timeZone.split('/').pop()?.replace('_', ' ')}
+                  {workHoursTimeLabel(state.settings.workStart)}–
+                  {workHoursTimeLabel(state.settings.workEnd)}
                 </p>
                 <div className="agenda">
                   {agenda.length ? (
@@ -944,7 +963,14 @@ export default function FollowthroughApp({
                           <small>{time(event.end)}</small>
                         </span>
                         {event.taskId ? (
-                          <button onClick={() => openTask(event.taskId)}>
+                          <button
+                            onClick={() => openTask(event.taskId)}
+                            style={{
+                              borderLeftColor: state.projects.find(
+                                (project) => project.id === taskById.get(event.taskId)?.projectId,
+                              )?.color,
+                            }}
+                          >
                             <strong>{event.title}</strong>
                             <small>
                               {minutesLabel(
@@ -1018,7 +1044,7 @@ export default function FollowthroughApp({
           <TabsContent value="tasks">
             <div className="page-heading">
               <div>
-                <h1>Your tasks</h1>
+                <h1>{searching ? 'Search results' : 'Your tasks'}</h1>
               </div>
               <Button onClick={navigateToCapture}>
                 <Plus />
@@ -1030,14 +1056,15 @@ export default function FollowthroughApp({
                 <Search size={17} />
                 <Input
                   aria-label="Search tasks"
-                  placeholder="Search tasks and steps"
+                  placeholder="Search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </div>
               <NativeSelect
                 aria-label="Filter project"
-                value={projectFilter}
+                value={searching ? 'all' : projectFilter}
+                disabled={searching}
                 onChange={(e) => setProjectFilter(e.target.value)}
               >
                 <option value="all">All projects</option>
@@ -1050,7 +1077,8 @@ export default function FollowthroughApp({
               </NativeSelect>
               <NativeSelect
                 aria-label="Filter status"
-                value={statusFilter}
+                value={searching ? 'all' : statusFilter}
+                disabled={searching}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="active">Active</option>
@@ -1211,6 +1239,7 @@ export default function FollowthroughApp({
             </DialogDescription>
           </DialogHeader>
           <ProjectForm
+            projects={state.projects}
             key={editingProject?.id || 'new'}
             initial={
               editingProject || {
@@ -1222,7 +1251,7 @@ export default function FollowthroughApp({
             onSave={async (project) => {
               await commit(
                 editingProject
-                  ? { action: 'update_project', id: editingProject.id, project }
+                  ? { action: 'update_project', id: editingProject.id, expectedProject: editingProject, project }
                   : { action: 'create_project', project },
               );
               setProjectDialog(false);
@@ -1288,6 +1317,8 @@ function TaskEditor({
     [blockers, setBlockers] = useState(initial.blockers || []),
     [localError, setLocalError] = useState('');
   const [expectedUpdatedAt] = useState(initial.updatedAt);
+  const prerequisiteGroups = taskPrerequisiteGroups(state.tasks, state.projects, initial.id ?? '', projectId || null);
+  const hasOpenPrerequisites = hasUnfinishedPrerequisites({ blockers }, state.tasks);
   const [codexDraft, setCodexDraft] = useState<{ taskVersion: string; url: string } | null>(null);
   const [codexDraftError, setCodexDraftError] = useState(false);
   const [codexDraftRetry, setCodexDraftRetry] = useState(0);
@@ -1378,7 +1409,8 @@ function TaskEditor({
         <Button
           type="button"
           variant="outline"
-          disabled={saving || !title.trim()}
+          disabled={saving || !title.trim() || (status !== 'done' && hasOpenPrerequisites)}
+          title={status !== 'done' && hasOpenPrerequisites ? 'Blocked by unfinished tasks. Complete those tasks first.' : undefined}
           onClick={(e) => void submit(e, status === 'done' ? 'ready' : 'done')}
         >
           <Check /> {status === 'done' ? 'Reopen task' : 'Mark complete'}
@@ -1483,7 +1515,7 @@ function TaskEditor({
           >
             <option value="ready">Ready</option>
             <option value="waiting">On hold</option>
-            <option value="done">Complete</option>
+            <option value="done" disabled={hasOpenPrerequisites && status !== 'done'}>Complete</option>
             <option value="archived">Archived</option>
           </NativeSelect>
         </Field>
@@ -1517,17 +1549,6 @@ function TaskEditor({
           Allow multiple work sessions
         </label>
       </div>
-      <Field
-        label="Task notes"
-      >
-        <Textarea
-          rows={3}
-          maxLength={10000}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Details, links, or a definition of done"
-        />
-      </Field>
       <div className="editor-section">
         <div className="section-heading">
           <h2>Suggested steps</h2>
@@ -1552,49 +1573,44 @@ function TaskEditor({
           ))}
         </div>
       </div>
+      <Field
+        label="Task notes"
+      >
+        <Textarea
+          rows={3}
+          maxLength={10000}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Details, links, or a definition of done"
+        />
+      </Field>
       <div className="field">
         <span>Blocked by</span>
         <small>
-          These tasks must be completed before this one gets time on the
-          calendar.
+          Tasks selected here must be completed first before this current task
+          gets scheduled on your calendar.
         </small>
         <div className="dependency-list">
-          {state.tasks
-            .filter(
-              (t) =>
-                t.id !== initial.id &&
-                t.status !== 'archived' &&
-                t.status !== 'done' &&
-                !t.deletedAt,
-            )
-            .map((t) => (
-              <div className="check-field" key={t.id}>
-                <Checkbox
-                  id={'dep-' + t.id}
-                  checked={blockers.includes(t.id)}
-                  onCheckedChange={(checked) =>
-                    setBlockers(
-                      checked
-                        ? [...blockers, t.id]
-                        : blockers.filter((id) => id !== t.id),
-                    )
-                  }
-                />
-                <label htmlFor={'dep-' + t.id}>
-                  {taskLabel(
-                    t.title,
-                    state.projects.find((p) => p.id === t.projectId),
-                  )}
-                </label>
-              </div>
-            ))}
-          {!state.tasks.some(
-            (t) =>
-              t.id !== initial.id &&
-              t.status !== 'archived' &&
-              t.status !== 'done' &&
-              !t.deletedAt,
-          ) && <p className="secondary-text">No unfinished tasks available.</p>}
+          {prerequisiteGroups.map((group) => (
+            <section className="dependency-group" key={group.id} aria-labelledby={'prerequisite-project-' + group.id}>
+              <h3 id={'prerequisite-project-' + group.id} style={{ color: group.project?.color }}>
+                <FolderOpen aria-hidden="true" />
+                {group.project?.name || 'No project'}
+              </h3>
+              {group.tasks.length ? group.tasks.map((candidate) => (
+                <div className="check-field" key={candidate.id}>
+                  <Checkbox
+                    id={'dep-' + candidate.id}
+                    checked={blockers.includes(candidate.id)}
+                    onCheckedChange={(checked) => setBlockers((current) => checked
+                      ? [...new Set([...current, candidate.id])]
+                      : current.filter((id) => id !== candidate.id))}
+                  />
+                  <label htmlFor={'dep-' + candidate.id}>{candidate.title}</label>
+                </div>
+              )) : <p className="secondary-text">{group.project ? 'No other open tasks in this project.' : 'No other open tasks without a project.'}</p>}
+            </section>
+          ))}
         </div>
       </div>
       {initial.source && (
@@ -1636,11 +1652,13 @@ function TaskEditor({
 }
 function ProjectForm({
   initial,
+  projects,
   saving,
   onCancel,
   onSave,
 }: {
   initial: Partial<Project>;
+  projects: Project[];
   saving: boolean;
   onCancel: () => void;
   onSave: (project: Partial<Project>) => Promise<void>;
@@ -1652,8 +1670,15 @@ function ProjectForm({
         : '',
     ),
     [color, setColor] = useState(initial.color || COLORS[0]),
-    [aliases, setAliases] = useState(initial.aliases?.join(', ') || ''),
+    [aliases, setAliases] = useState(initial.aliases?.join('\n') || ''),
+    [aliasesEdited, setAliasesEdited] = useState(false),
     [error, setError] = useState('');
+  const suggestions = suggestProjectKeywords(name, shortName, projects, initial.id);
+  const aliasText = !initial.id && !aliasesEdited ? suggestions.join('\n') : aliases;
+  const keywords = uniqueProjectKeywords(aliasText.split(/\r?\n/));
+  const keys = new Set(keywords.map(normalizeProjectKeyword));
+  const available = suggestions.filter(value => !keys.has(normalizeProjectKeyword(value)));
+  const invalidKeywords = keywords.length > 20 || keywords.some(value => value.length > 100);
   return (
     <form
       className="editor-form"
@@ -1664,10 +1689,7 @@ function ProjectForm({
           name,
           shortName,
           color,
-          aliases: aliases
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean),
+          aliases: keywords,
         }).catch((e) => setError(e.message));
       }}
     >
@@ -1708,11 +1730,31 @@ function ProjectForm({
           <span>{color.toUpperCase()}</span>
         </span>
       </Field>
-      <Field
-        label="Other names"
-        hint="Separate aliases with commas, such as MetaNote, Meta Note."
-      >
-        <Input value={aliases} onChange={(e) => setAliases(e.target.value)} />
+      <Field label="Keywords" hint="Other names and dictation variants. One per line; suggestions can be edited or removed.">
+        <Textarea
+          aria-label="Project keywords"
+          rows={4}
+          maxLength={2200}
+          value={aliasText}
+          onChange={(event) => { setAliasesEdited(true); setAliases(event.target.value); }}
+        />
+        <small>{keywords.length}/20 keywords</small>
+        {available.length > 0 && (
+          <div className="flex flex-wrap gap-2" aria-label="Suggested keywords">
+            {available.map(value => (
+              <Button key={value} type="button" variant="outline" size="sm"
+                disabled={keywords.length >= 20}
+                aria-label={`Add suggested keyword ${value}`}
+                onClick={() => {
+                  setAliasesEdited(true);
+                  setAliases([...keywords, value].join('\n'));
+                }}>
+                <Plus size={14} />{value}
+              </Button>
+            ))}
+          </div>
+        )}
+        {invalidKeywords && <p className="form-error" role="alert">Use up to 20 keywords, each at most 100 characters.</p>}
       </Field>
       {error && (
         <p className="form-error" role="alert">
@@ -1728,7 +1770,7 @@ function ProjectForm({
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={saving || !name.trim()}>
+        <Button type="submit" disabled={saving || !name.trim() || invalidKeywords}>
           {saving && <Loader2 className="spin" />}
           {initial.id ? 'Save changes' : 'Create project'}
         </Button>
@@ -1817,6 +1859,14 @@ function SettingsPanel({
 }) {
   const [settings, setSettings] = useState<Settings>(state.settings),
     [error, setError] = useState('');
+  const baseline = useRef(state.settings);
+  useEffect(() => {
+    const previous = baseline.current;
+    setSettings((draft) =>
+      refreshedWorkHoursDraft(draft, previous, state.settings),
+    );
+    baseline.current = state.settings;
+  }, [state.settings]);
   const update = (key: keyof Settings, value: unknown) =>
     setSettings((s) => ({ ...s, [key]: value }));
   return (
@@ -1826,7 +1876,10 @@ function SettingsPanel({
         onSubmit={(e) => {
           e.preventDefault();
           setError('');
-          void commit({ action: 'update_settings', settings })
+          void commit({
+            action: 'update_settings',
+            settings: workHoursSettingsChanges(settings, baseline.current),
+          })
             .then(onSaved)
             .catch((e) => setError(e.message));
         }}
@@ -1836,51 +1889,21 @@ function SettingsPanel({
           Choose when tasks may be scheduled. You can change these hours
           anytime.
         </p>
-        <Field label="Time zone">
-          <Input
-            list="time-zones"
-            value={settings.timeZone}
-            onChange={(e) => update('timeZone', e.target.value)}
-          />
-          <datalist id="time-zones">
-            {[
-              'America/Chicago',
-              'America/New_York',
-              'America/Denver',
-              'America/Los_Angeles',
-              'Europe/London',
-              'UTC',
-            ].map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </datalist>
-        </Field>
-        {state.revision === 0 && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              const localZone =
-                Intl.DateTimeFormat().resolvedOptions().timeZone;
-              if (localZone) update('timeZone', localZone);
-            }}
-          >
-            Use this device’s time zone
-          </Button>
-        )}
         <div className="field-row">
           <Field label="Start">
-            <WorkHourSelect
+            <Input
+              required
+              type="time"
               value={settings.workStart}
-              onChange={(value) => update('workStart', value)}
+              onChange={(e) => update('workStart', e.target.value)}
             />
           </Field>
           <Field label="End">
-            <WorkHourSelect
+            <Input
+              required
+              type="time"
               value={settings.workEnd}
-              onChange={(value) => update('workEnd', value)}
+              onChange={(e) => update('workEnd', e.target.value)}
             />
           </Field>
         </div>

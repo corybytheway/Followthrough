@@ -1,0 +1,13 @@
+{
+  "author": "Cory McCabe",
+  "cases": [
+    {"name":"Meta Note","shortName":"MN","expected":["MetaNote","M N","Minnow","Meta Notes","Metta Note"]},
+    {"name":"Blanc Media","shortName":"BM","expected":["BlancMedia","B M","Blank Media"]},
+    {"name":"HP Studios","shortName":"HPS","expected":["HPStudios","H P S","HP Studio"]},
+    {"name":"CoryMcCabe.com","shortName":"CMC","expected":["Cory McCabe.com","CoryMcCabe dot com","Cory McCabe dot com","C M C"]},
+    {"name":"Carmichael & Zarnubius","shortName":"C&Z","expected":["Carmichael and Zarnubius"]},
+    {"name":"Followthrough","shortName":"Followthrough","expected":["Follow through"]},
+    {"name":"Orbit","shortName":"Orbit","expected":[]},
+    {"name":"⚡️","shortName":"⚡️","expected":[]}
+  ]
+}

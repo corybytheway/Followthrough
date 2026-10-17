@@ -1,5 +1,6 @@
 // Created by Cory McCabe
 import { projectShortName, type Project, type Workspace } from './model';
+import { normalizeProjectKeyword } from './project-keywords';
 import { localDay } from './scheduler';
 import { BASIC_CAPTURE_NOTICE } from './capture-status';
 export const GRANULARITY_RULES = `You are Followthrough, a personal planner. Return a draft, never perform work.
@@ -222,14 +223,16 @@ export function normalizeGeneratedTitle(
     .trim();
 }
 export function basicDraft(source: string, w: Workspace) {
-  const normalized = ` ${source.toLowerCase().replace(/[^a-z0-9.]+/g, ' ')} `;
-  const project = w.projects.find((p) =>
-    [p.name, projectShortName(p), ...p.aliases].some((alias) =>
-      normalized.includes(
-        ` ${alias.toLowerCase().replace(/[^a-z0-9.]+/g, ' ')} `,
-      ),
-    ),
+  const normalized = ` ${normalizeProjectKeyword(source)} `;
+  const matching = w.projects.filter((p) =>
+    [p.name, projectShortName(p), ...p.aliases].some((alias) => {
+      const keyword = normalizeProjectKeyword(alias);
+      return keyword.length > 0 && normalized.includes(` ${keyword} `);
+    }),
   );
+  // Shared keywords are ambiguous. Keep the task unassigned instead of
+  // silently choosing whichever project happens to be first in storage.
+  const project = matching.length === 1 ? matching[0] : undefined;
   const explicitFacts = explicitCaptureFacts(
     source,
     localDay(Date.now(), w.settings.timeZone),

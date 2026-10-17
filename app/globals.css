@@ -135,6 +135,8 @@ body {
 /* Created by Cory McCabe */
 :root {
   --ink: #15243b;
+  --mint: #35eab1;
+  --mint-ink: #006d49;
   --subtle: #617085;
   --blue: #245bdf;
   --line: #e3e8f0;
@@ -169,7 +171,7 @@ body {
 }
 .brand-mark {
   background: var(--ink);
-  color: #c3fa71;
+  color: var(--mint);
   width: 37px;
   height: 37px;
   border-radius: 11px;
@@ -243,7 +245,7 @@ h3 {
   gap: 34px;
 }
 .capture-panel {
-  background: #162942;
+  background: #15243b;
   color: #fff;
   border: 1px solid #1c3555;
   border-radius: 18px;
@@ -297,8 +299,8 @@ h3 {
   cursor: pointer;
 }
 .capture-panel .primary-button {
-  background: #c3fa71;
-  color: #162942;
+  background: var(--mint);
+  color: var(--ink);
 }
 .primary-button:disabled {
   opacity: 0.5;

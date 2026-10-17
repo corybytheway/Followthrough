@@ -17,6 +17,8 @@ export function suggestProjectShortName(name: string): string {
 export function taskLabel(
   title: string,
   project?: Pick<Project, 'name' | 'shortName' | 'aliases'> | string,
+  // Project task views already provide the context; stored titles stay intact.
+  showProjectPrefix = true,
 ): string {
   const shortName =
     typeof project === 'string'
@@ -37,7 +39,7 @@ export function taskLabel(
     ))
   )
     name = name.slice(prefix.length + 2);
-  return '⚡️ ' + (shortName ? shortName + ': ' : '') + name;
+  return '⚡️ ' + (showProjectPrefix && shortName ? shortName + ': ' : '') + name;
 }
 export type Step = { id: string; title: string; done: boolean };
 export type Project = {

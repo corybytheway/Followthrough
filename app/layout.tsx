@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'Followthrough',
-  icons: { icon: '/favicon.svg?v=lightning' },
+  icons: { icon: '/favicon.svg?v=vivid-mint' },
   description:
     'Turn what is on your mind into focused tasks and an adaptable plan for your day.',
 };

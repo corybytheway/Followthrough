@@ -6,12 +6,11 @@ struct TaskEditor: View {
     let task: FTTask
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
-    #if os(macOS)
-    @Environment(\.controlActiveState) private var controlActiveState
-    #endif
     @State private var draft: FTTask
     @State private var confirmDelete = false
+    @State private var confirmDiscard = false
     @State private var handoffError: String?
+    @State private var openingHandoff = false
 
     init(store: WorkspaceStore, task: FTTask) {
         self.store = store
@@ -26,22 +25,28 @@ struct TaskEditor: View {
                     TaskPrimaryActions(
                         completed: task.status == "done",
                         active: task.active,
+                        canComplete: store.canComplete(task),
+                        openingHandoff: openingHandoff,
                         onComplete: { if store.complete(task) { dismiss() } },
                         onHandoff: handoff
                     )
                     if let handoffError { Text(handoffError).foregroundStyle(.red) }
-                    TaskIdentityFields(draft: $draft, projects: store.workspace?.projects ?? [])
-                    TaskPlanningFields(draft: $draft)
-                    TaskNotesField(notes: $draft.notes)
-                    if !draft.steps.isEmpty { SuggestedStepsSection(steps: $draft.steps) }
+                    TaskIdentityFields(draft: $draft, projects: store.workspace?.projectsAlphabetically ?? [])
                     TaskSecondaryActions(
                         canAddTime: draft.estimateMinutes <= 59940 && draft.remainingMinutes <= 59940,
                         onPostpone: { if store.postpone(task, nextWeek: false) { dismiss() } },
                         onNextWeek: { if store.postpone(task, nextWeek: true) { dismiss() } },
                         onAddTime: { draft.estimateMinutes += 60; draft.remainingMinutes += 60 }
                     )
+                    TaskPlanningFields(draft: $draft, canFinish: !hasOpenPrerequisites)
+                    if !draft.steps.isEmpty { SuggestedStepsSection(steps: $draft.steps) }
+                    TaskNotesField(notes: $draft.notes)
                     TaskPrerequisitesSection(
-                        tasks: (store.workspace?.tasks ?? []).filter { $0.id != task.id && $0.deletedAt == nil },
+                        groups: TaskPrerequisites.groups(
+                            tasks: store.presentationWorkspace?.tasks ?? [],
+                            projects: store.workspace?.projects ?? [],
+                            excluding: task.id, projectID: draft.projectId
+                        ),
                         blockers: $draft.blockers
                     )
                     TaskOriginalInput(source: task.source)
@@ -57,20 +62,28 @@ struct TaskEditor: View {
             .navigationTitle("Task details")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    #if os(macOS)
+                    Button("Cancel", action: requestDismiss)
                         .buttonStyle(.bordered)
-                        .buttonBorderShape(.roundedRectangle(radius: 8))
                         .tint(.primary)
+                        .keyboardShortcut(.cancelAction)
+                    #else
+                    EditorCancelButton(onCancel: requestDismiss)
+                    #endif
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save changes", action: save)
+                    #if os(macOS)
+                    Button("Save", action: save)
                         .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.roundedRectangle(radius: 8))
-                        .tint(.followLime)
-                        .foregroundStyle(saveForeground)
+                        .tint(.followMint)
+                        .foregroundStyle(validDraft && hasChanges ? Color.followNavy : Color.secondary)
                         .keyboardShortcut(.defaultAction)
-                        .disabled(!validDraft)
+                        .disabled(!validDraft || !hasChanges)
                         .accessibilityIdentifier("saveTask")
+                    #else
+                    EditorConfirmButton(enabled: validDraft && hasChanges, onSave: save)
+                        .accessibilityIdentifier("saveTask")
+                    #endif
                 }
             }
             .confirmationDialog("Delete this task?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -78,7 +91,14 @@ struct TaskEditor: View {
                     if store.mutate(action: "delete_task", title: task.title, fields: ["id": .string(task.id), "expectedUpdatedAt": .string(task.updatedAt)]) { dismiss() }
                 }
             }
+            .alert("Discard your changes?", isPresented: $confirmDiscard) {
+                Button("Discard changes", role: .destructive) { dismiss() }
+                Button("Keep editing", role: .cancel) { }
+            } message: {
+                Text("Your changes to this task have not been saved.")
+            }
         }
+        .interactiveDismissDisabled(hasChanges)
         #if os(macOS)
         .frame(width: 660, height: 620)
         .font(.system(size: 14))
@@ -91,40 +111,68 @@ struct TaskEditor: View {
         && (1...60000).contains(draft.remainingMinutes)
         && (1...60000).contains(draft.estimateMinutes)
         && !(draft.dueDate != nil && draft.notBefore != nil && draft.dueDate! < draft.notBefore!)
+        && !(draft.status == "done" && hasOpenPrerequisites)
     }
 
-    private var saveForeground: Color {
-        guard validDraft else { return .secondary }
-        #if os(macOS)
-        if controlActiveState == .inactive { return .primary }
-        #endif
-        return .followNavy
+    private var hasOpenPrerequisites: Bool {
+        (store.presentationWorkspace ?? store.workspace)?.hasUnfinishedPrerequisites(for: draft) ?? false
+    }
+
+    private var hasChanges: Bool {
+        editableFields(draft) != editableFields(task)
+    }
+
+    private func requestDismiss() {
+        if hasChanges { confirmDiscard = true }
+        else { dismiss() }
     }
 
     private func handoff() {
+        guard !openingHandoff else { return }
+        openingHandoff = true
+        handoffError = nil
         Task {
             do {
-                handoffError = nil
-                let url = try await store.handoff(task)
-                openURL(url) { accepted in
-                    if !accepted { handoffError = "Could not open the app for this task." }
+                let handoff = try await store.handoff(task)
+                openURL(handoff.appURL) { accepted in
+                    if accepted {
+                        openingHandoff = false
+                    } else if handoff.appURL != handoff.browserURL {
+                        openURL(handoff.browserURL) { browserAccepted in
+                            openingHandoff = false
+                            if !browserAccepted { handoffError = "Could not open ChatGPT. Try again." }
+                        }
+                    } else {
+                        openingHandoff = false
+                        handoffError = "Could not open ChatGPT. Try again."
+                    }
                 }
-            } catch { handoffError = error.localizedDescription }
+            } catch {
+                openingHandoff = false
+                handoffError = error.localizedDescription
+            }
         }
     }
 
     private func save() {
-        if store.updateTask(task, fields: ["title": .string(draft.title), "projectId": draft.projectId.map(JSONValue.string) ?? .null,
-            "notes": .string(draft.notes), "estimateMinutes": .number(Double(draft.estimateMinutes)), "remainingMinutes": .number(Double(draft.remainingMinutes)),
-            "priority": .string(draft.priority.rawValue), "status": .string(draft.status), "dueDate": draft.dueDate.map(JSONValue.string) ?? .null,
-            "notBefore": draft.notBefore.map(JSONValue.string) ?? .null, "splittable": .bool(draft.splittable), "blockers": .array(draft.blockers.map(JSONValue.string)),
-            "steps": .array(draft.steps.map { .object(["id": .string($0.id), "title": .string($0.title), "done": .bool($0.done)]) })]) { dismiss() }
+        guard validDraft && hasChanges else { return }
+        if store.updateTask(task, fields: editableFields(draft)) { dismiss() }
+    }
+
+    private func editableFields(_ task: FTTask) -> [String: JSONValue] {
+        ["title": .string(task.title), "projectId": task.projectId.map(JSONValue.string) ?? .null,
+         "notes": .string(task.notes), "estimateMinutes": .number(Double(task.estimateMinutes)), "remainingMinutes": .number(Double(task.remainingMinutes)),
+         "priority": .string(task.priority.rawValue), "status": .string(task.status), "dueDate": task.dueDate.map(JSONValue.string) ?? .null,
+         "notBefore": task.notBefore.map(JSONValue.string) ?? .null, "splittable": .bool(task.splittable), "blockers": .array(task.blockers.map(JSONValue.string)),
+         "steps": .array(task.steps.map { .object(["id": .string($0.id), "title": .string($0.title), "done": .bool($0.done)]) })]
     }
 }
 
 private struct TaskPrimaryActions: View {
     let completed: Bool
     let active: Bool
+    let canComplete: Bool
+    let openingHandoff: Bool
     let onComplete: () -> Void
     let onHandoff: () -> Void
 
@@ -137,13 +185,17 @@ private struct TaskPrimaryActions: View {
             .buttonStyle(.bordered)
             .buttonBorderShape(.roundedRectangle(radius: 9))
             .tint(.primary)
+            .disabled(!canComplete)
+            .accessibilityHint(!canComplete && !completed ? "Blocked by unfinished tasks. Complete those tasks first." : "")
             Button(action: onHandoff) {
-                Label("Do this for me", systemImage: "sparkles").frame(maxWidth: .infinity)
+                HStack(spacing: 8) {
+                    if openingHandoff { ProgressView().controlSize(.small) }
+                    Label(openingHandoff ? "Opening…" : "Do this for me", systemImage: "sparkles")
+                }.frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.roundedRectangle(radius: 9))
-            .tint(.purple)
-            .disabled(!active)
+            .buttonStyle(FollowthroughActionButtonStyle(fill: .followViolet, foreground: .white))
+            .disabled(!active || openingHandoff)
+            .accessibilityIdentifier("taskHandoff")
         }
         .controlSize(.large)
     }
@@ -170,6 +222,7 @@ private struct TaskIdentityFields: View {
                 }
                 .labelsHidden()
                 .accessibilityLabel("Project")
+                .accessibilityIdentifier("taskProjectPicker")
             }
         }
     }
@@ -177,6 +230,7 @@ private struct TaskIdentityFields: View {
 
 private struct TaskPlanningFields: View {
     @Binding var draft: FTTask
+    let canFinish: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -193,7 +247,7 @@ private struct TaskPlanningFields: View {
                     Picker("Status", selection: $draft.status) {
                         Text("Ready").tag("ready")
                         Text("Waiting").tag("waiting")
-                        Text("Done").tag("done")
+                        Text("Done").tag("done").disabled(!canFinish && draft.status != "done")
                         Text("Archived").tag("archived")
                     }.labelsHidden().accessibilityLabel("Status")
                 }
@@ -202,7 +256,7 @@ private struct TaskPlanningFields: View {
                 OptionalDayField(title: "Deadline", value: $draft.dueDate)
                 OptionalDayField(title: "Start on or after", value: $draft.notBefore)
             }
-            Toggle("Allow multiple work sessions", isOn: $draft.splittable)
+            Toggle("Allow multiple work sessions", isOn: $draft.splittable).tint(.followMint)
                 .toggleStyle(.switch)
         }
         .padding(20)
@@ -306,33 +360,57 @@ private struct TaskSecondaryActions: View {
 }
 
 private struct TaskPrerequisitesSection: View {
-    let tasks: [FTTask]
+    let groups: [TaskPrerequisiteGroup]
     @Binding var blockers: [String]
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Blocked by").font(.headline)
-            Text("These tasks must be completed before this one gets time on the calendar.")
+            Text("Tasks selected here must be completed first before this current task gets scheduled on your calendar.")
                 .font(.callout).foregroundStyle(.secondary)
-            if tasks.isEmpty {
-                Text("No other tasks").foregroundStyle(.secondary)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 20) {
+                    ForEach(groups) { group in
+                        TaskPrerequisiteProjectGroup(group: group, blockers: $blockers)
+                    }
+                }.padding(16)
+            }
+            .frame(maxHeight: 220)
+            .background(Color.card, in: RoundedRectangle(cornerRadius: 12))
+            .accessibilityIdentifier("taskPrerequisites")
+        }
+    }
+}
+
+private struct TaskPrerequisiteProjectGroup: View {
+    let group: TaskPrerequisiteGroup
+    @Binding var blockers: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
+                Image(systemName: "folder.fill").accessibilityHidden(true)
+                if let project = group.project { Text(project.name) }
+                else { Text("No project") }
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(group.project.map { Color(hex: $0.color) } ?? Color.secondary)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("prerequisiteProject_" + (group.project?.id ?? "unassigned"))
+            if group.tasks.isEmpty {
+                Text(group.project == nil ? "No other open tasks without a project." : "No other open tasks in this project.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .padding(.top, 6)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
-                        ForEach(tasks) { candidate in
-                            Toggle(candidate.title, isOn: Binding(
-                                get: { blockers.contains(candidate.id) },
-                                set: { checked in
-                                    if checked { blockers.append(candidate.id) }
-                                    else { blockers.removeAll { $0 == candidate.id } }
-                                }
-                            )).toggleStyle(.checklist)
-                        }
-                    }.padding(16)
+                ForEach(group.tasks) { candidate in
+                    Toggle(candidate.title, isOn: $blockers[prerequisite: candidate.id])
+                        .toggleStyle(.checklist)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .accessibilityIdentifier("prerequisiteTask_" + candidate.id)
                 }
-                .frame(maxHeight: 180)
-                .background(Color.card, in: RoundedRectangle(cornerRadius: 12))
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -383,7 +461,8 @@ struct ChecklistStyle: ToggleStyle {
         Button { configuration.isOn.toggle() } label: {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
-                    .foregroundStyle(configuration.isOn ? Color.followBlue : Color.secondary.opacity(0.6)).font(.title3)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(configuration.isOn ? Color.followNavy : Color.secondary.opacity(0.6), Color.followMint).font(.title3)
                 configuration.label
                     .foregroundStyle(configuration.isOn && strikeWhenChecked ? Color.secondary : Color.primary)
                     .strikethrough(configuration.isOn && strikeWhenChecked)

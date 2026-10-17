@@ -129,3 +129,34 @@ void test('project creation tools accept the same separate name and short name f
   assert.equal(workspace.projects[0].name, 'Behind The Film');
   assert.equal(workspace.projects[0].shortName, 'BTF');
 });
+
+void test('deleting a project preserves its tasks and schedule and is safe to retry', () => {
+  let workspace = newAccountWorkspace();
+  const project = projectInput({ name: 'Temporary project', color: '#FFD60A' }, workspace);
+  workspace.projects.push(project);
+  workspace = applyAction(workspace, { action: 'create_task', task: {
+    title: 'Keep this work', projectId: project.id, source: 'Original context',
+    notes: 'Keep notes', status: 'ready', priority: 'high',
+  } }).workspace;
+  const original = structuredClone(workspace.tasks[0]);
+  workspace.blocks.push({ id: 'block', taskId: original.id, kind: 'task', start: '2026-10-15T15:00:00Z', end: '2026-10-15T15:30:00Z' });
+  const deleted = applyAction(workspace, { action: 'delete_project', id: project.id, expectedProject: project });
+  assert.equal(deleted.workspace.projects.length, 0);
+  assert.deepEqual(deleted.workspace.tasks[0], { ...original, projectId: null, updatedAt: deleted.workspace.tasks[0].updatedAt });
+  assert.deepEqual(deleted.workspace.blocks, workspace.blocks);
+  assert.equal(workspace.projects.length, 1, 'The original snapshot is not mutated');
+  const retried = applyAction(deleted.workspace, { action: 'delete_project', id: project.id, expectedProject: project });
+  assert.equal(retried.result.removed, false);
+  assert.deepEqual(retried.workspace, deleted.workspace);
+});
+
+void test('project deletion rejects stale edits and invalid identifiers', () => {
+  const workspace = newAccountWorkspace();
+  const project = projectInput({ name: 'Reviewed project' }, workspace);
+  workspace.projects.push(project);
+  const changed = applyAction(workspace, { action: 'update_project', id: project.id, project: { name: 'Changed elsewhere' } }).workspace;
+  assert.throws(() => applyAction(changed, { action: 'delete_project', id: project.id, expectedProject: project }),
+    (error: unknown) => (error as { status?: number }).status === 409);
+  assert.equal(changed.projects.length, 1);
+  assert.throws(() => applyAction(workspace, { action: 'delete_project', id: '' }));
+});
