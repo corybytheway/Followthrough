@@ -16,6 +16,7 @@ export type PreparedCapture = {
   notes: string;
   source: string;
   rationale: string;
+  blockedByTaskIndexes: number[];
   captureMode: 'basic' | 'ai';
   mode: string;
 };
@@ -26,6 +27,7 @@ export function fallbackCapture(
 ): PreparedCapture {
   return {
     ...basicDraft(source, workspace),
+    blockedByTaskIndexes: [],
     status: 'ready',
   };
 }

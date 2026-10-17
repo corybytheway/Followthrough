@@ -188,6 +188,7 @@ void test('model title and checklist are saved while original input stays verbat
                     notBefore: null,
                     notes: '',
                     rationale: 'One focused repair.',
+                    blockedByTaskIndexes: [],
                     source: 'The model must not replace the original input.',
                   },
                 ],
@@ -238,6 +239,7 @@ void test('the shared capture pipeline produces several independent tasks with t
     notBefore: null,
     notes: '',
     rationale: 'An independently tracked outcome.',
+    blockedByTaskIndexes: [],
   });
   const fetchMock = t.mock.method(
     globalThis,
