@@ -50,7 +50,7 @@ Pass `--no-session` to the launcher to use browser sign-in or the Keychain sessi
 ## What is implemented
 
 - Shared task/project models and SwiftUI views; native iPhone tabs and Mac sidebar.
-- Mac projects open directly from colored folders in the sidebar. The section's plus creates a project; the project toolbar or context menu opens its editor. iPhone keeps a Projects tab with a remembered grid/list choice, starting in grid view.
+- Mac projects open directly from colored folders in the sidebar. The section's plus creates a project; the project toolbar or context menu opens its editor. iPhone keeps a Projects tab with a remembered grid/list choice, starting in grid view. On both platforms, project task pages have one neutral Project settings menu with a checkable Show completed item, a separator, and Edit project.
 - Project editors offer the selected Electric palette (Blue, Violet, Magenta, Rose, Orange, Lime, Green, and Cyan) and Apple's system color picker. Existing custom colors are retained, and only Save writes the selected color. New projects start with Electric Blue (`#4465FF`).
 - Today, schedule, task search, project editing, task details, suggested-step completion, prerequisites, and expanded selectable original input.
 - Task rows show the server's deadline/capacity warnings, using the same first matching warning as the website. The messages wrap below task metadata in Today, Tasks, and project views.

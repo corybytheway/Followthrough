@@ -353,7 +353,9 @@ struct TasksView: View {
     @State private var editingProject: FTProject?
     var body: some View {
         List {
-            Toggle("Show completed",isOn:$includeCompleted)
+            if workspace.project(projectId) == nil {
+                Toggle("Show completed",isOn:$includeCompleted)
+            }
             ForEach(workspace.tasks.filter { $0.deletedAt == nil && (includeCompleted || $0.active) && (projectId == nil || $0.projectId == projectId) && (search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) || $0.source.localizedCaseInsensitiveContains(search)) }.sorted { $0.priority.rank < $1.priority.rank }) { task in
                 TaskRow(task:task,project:workspace.project(task.projectId),warning:workspace.warnings.first { $0.taskId == task.id && ["deadline", "capacity"].contains($0.reason) }?.message,onSelect:{store.selectedTask = task},onComplete:{store.complete(task)}).listRowInsets(EdgeInsets())
             }
@@ -364,8 +366,18 @@ struct TasksView: View {
         .toolbar {
             if let project = workspace.project(projectId) {
                 ToolbarItem(placement:.primaryAction) {
-                    Button("Project settings",systemImage:"slider.horizontal.3") { editingProject = project }
-                        .accessibilityIdentifier("projectSettings")
+                    Menu {
+                        Toggle("Show completed",isOn:$includeCompleted)
+                        Divider()
+                        Button("Edit project",systemImage:"pencil") { editingProject = project }
+                            .accessibilityIdentifier("editProject")
+                    } label: {
+                        Label("Project settings",systemImage:"slider.horizontal.3")
+                    }
+                    .menuIndicator(.hidden)
+                    .tint(.primary)
+                    .help("Project settings")
+                    .accessibilityIdentifier("projectSettings")
                 }
             }
         }
