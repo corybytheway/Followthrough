@@ -104,6 +104,11 @@ struct CaptureCard: View {
             }
         }
         .task {
+            #if os(macOS)
+            // Let the presented field enter AppKit's focus hierarchy first.
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            #endif
             if focusedPresentation && store.captureReceipt == nil { inputFocused = true }
         }
         .onChange(of: store.captureReceipt?.id) { _, id in
