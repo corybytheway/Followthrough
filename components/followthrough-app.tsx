@@ -1555,8 +1555,8 @@ function TaskEditor({
       <div className="field">
         <span>Blocked by</span>
         <small>
-          These tasks must be completed before this one gets time on the
-          calendar.
+          Tasks selected here must be completed first before this current task
+          gets scheduled on your calendar.
         </small>
         <div className="dependency-list">
           {state.tasks
