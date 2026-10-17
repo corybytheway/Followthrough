@@ -177,7 +177,7 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
           !w.tasks.some((a) => a.id === id && a.status !== 'archived'),
       )
     )
-      throw new InputError('Prerequisites must be other existing tasks.');
+      throw new InputError('Choose other existing tasks in Blocked by.');
     t.blockers = [...new Set(v.blockers as string[])];
   }
   const all = new Map(w.tasks.map((a) => [a.id, a]));
@@ -187,7 +187,7 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
   const walk = (id: string): void => {
     if (visiting.has(id))
       throw new InputError(
-        'These prerequisites would create a circular dependency.',
+        'These blocking tasks would create a circular dependency.',
       );
     if (visited.has(id)) return;
     visiting.add(id);

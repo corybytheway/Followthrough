@@ -145,7 +145,7 @@ export function plan(
         warnings.push({
           taskId: t.id,
           reason: 'blocked',
-          message: 'Waiting for its prerequisite task to be completed.',
+          message: 'Blocked by unfinished tasks.',
         });
         return false;
       }
