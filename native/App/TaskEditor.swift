@@ -311,7 +311,7 @@ private struct TaskPrerequisitesSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Blocked by").font(.headline)
-            Text("These tasks must be completed before this one gets time on the calendar.")
+            Text("Tasks selected here must be completed first before this current task gets scheduled on your calendar.")
                 .font(.callout).foregroundStyle(.secondary)
             if tasks.isEmpty {
                 Text("No other tasks").foregroundStyle(.secondary)
