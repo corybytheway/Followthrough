@@ -1,5 +1,6 @@
 // Created by Cory McCabe
 import type { Workspace } from './model';
+import { captureDependencyIndexes } from './capture-dependencies';
 import {
   InputError,
   integer,
@@ -96,6 +97,11 @@ export function applyAction(
         throw new InputError(
           'Your workspace is too full for every task in this request. Free space and try again.',
         );
+      if (captures.some(({ id }) => w.tasks.some((task) => task.id === id)))
+        throw new InputError('A captured task ID is already in use.');
+      const dependencies = captureDependencyIndexes(
+        captures.map((capture) => capture.task),
+      );
       const tasks = captures.map((capture, index) => {
         const task = taskInput(capture.task, w);
         task.id = capture.id;
@@ -103,8 +109,19 @@ export function applyAction(
         task.captureIndex = index;
         return task;
       });
-      w.tasks.push(...tasks);
-      result = { tasks };
+      // Resolve draft-local references only after every durable ID exists.
+      tasks.forEach((task, index) => {
+        task.blockers = [...new Set([
+          ...task.blockers,
+          ...dependencies[index].map((dependency) => tasks[dependency].id),
+        ])];
+      });
+      const groupWorkspace = { ...w, tasks: [...w.tasks, ...tasks] };
+      const validated = tasks.map((task) =>
+        taskInput({ blockers: task.blockers }, groupWorkspace, task),
+      );
+      w.tasks.push(...validated);
+      result = { tasks: validated };
       break;
     }
     case 'create_task': {
