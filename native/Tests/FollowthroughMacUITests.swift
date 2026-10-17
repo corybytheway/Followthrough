@@ -3,6 +3,45 @@ import XCTest
 
 final class FollowthroughMacUITests: XCTestCase {
 
+    @MainActor func testNewTaskActionsFocusCaptureWithoutClickingTheField() throws {
+        continueAfterFailure = false
+        let app = try localApplication()
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout: 25), app.debugDescription)
+
+        var draft = ""
+        for page in ["Tasks", "Local Studio"] {
+            app.activate()
+            app.buttons[page].firstMatch.click()
+            let pageTitle = app.windows.firstMatch.title
+            for useShortcut in [true, false] {
+                app.activate()
+                if useShortcut {
+                    app.typeKey("n", modifierFlags: .command)
+                } else {
+                    app.buttons["newTask"].click()
+                }
+                let close = app.buttons["Close capture"]
+                XCTAssertTrue(close.waitForExistence(timeout: 5), app.debugDescription)
+                let input = app.textFields["captureInput"]
+                XCTAssertEqual(input.value as? String, draft, "Reopening capture must preserve the draft.")
+                let text = useShortcut ? "Command-N " : "Plus "
+                // Send keys to the app, without clicking or targeting the field.
+                if !draft.isEmpty { app.typeKey("a", modifierFlags: .command) }
+                app.typeText(text)
+                draft = text
+                XCTAssertEqual(input.value as? String, draft, "Capture must accept typing immediately after opening.")
+                record(app, "Mac capture focus " + page + (useShortcut ? " shortcut" : " plus"))
+                app.activate()
+                close.click()
+                XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+                XCTAssertEqual(app.windows.firstMatch.title, pageTitle, "Capture must return to the same page.")
+                XCTAssertTrue(app.buttons["newTask"].isHittable)
+            }
+        }
+    }
+
     @MainActor func testSelectedSidebarItemsScrollToTopWithoutResettingState() throws {
         continueAfterFailure = false
         let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-tab-reselection-ios-fixture.json")
