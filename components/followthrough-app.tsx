@@ -1553,7 +1553,7 @@ function TaskEditor({
         </div>
       </div>
       <div className="field">
-        <span>Prerequisites</span>
+        <span>Blocked by</span>
         <small>
           These tasks must be completed before this one gets time on the
           calendar.

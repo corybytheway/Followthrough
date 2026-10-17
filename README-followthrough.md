@@ -10,7 +10,7 @@ The locally runnable SwiftUI iPhone and Mac apps are in [`native/`](native/READM
 
 - Persistent projects, tasks, estimates, dates, priorities, notes, and checklist completion.
 - One outcome per task; calendar sessions are separate from checklist steps and task identity.
-- Task prerequisites, completion, reopening, holding, archiving, search, and project filtering.
+- Task blockers (`Blocked by`), completion, reopening, holding, archiving, search, and project filtering.
 - Scheduling within configurable local work hours, work days, breaks, and session lengths.
 - Meeting avoidance using manual busy times and selected Google/iCloud calendars; deadline and capacity warnings.
 - Google OAuth with offline access, encrypted per-account credentials, calendar selection, and task blocks on each account's primary Google calendar. iCloud uses an app-specific password and CalDAV.
@@ -46,7 +46,7 @@ The original owner's encrypted OpenAI connection is shared server-side with beta
 
 - `python3 scripts/verify-shortcut-local.py`: authentication, direct durable saves, no workspace-reading permission for the capture key, automatic planning, Unicode, duplicate/concurrent retries, invalid actions, key rotation, rate limiting, and revocation. Test records are removed from local D1.
 
-- npm test: domain and provider-contract checks covering task granularity, conflicts, deadlines, priority, missed sessions, preserved current sessions, prerequisites, cycles, time zones/DST, breaks, unschedulable work, progress, invalid input, basic capture, and tool semantics.
+- npm test: domain and provider-contract checks covering task granularity, conflicts, deadlines, priority, missed sessions, preserved current sessions, blockers, cycles, time zones/DST, breaks, unschedulable work, progress, invalid input, basic capture, and tool semantics.
 - npm exec tsx -- scripts/verify-local.ts: local-only HTTP checks for authentication, durable state, idempotency, stale revisions, stale task edits, origin checks, invalid input, dependency release, checklist completion, MCP listing, and exports.
 - npm run lint: app and domain code. Unmodified generated shadcn components and its mobile hook are excluded because their scaffold contains lint violations; no vendor components were rewritten.
 - All four WebMCP actions were exercised in a supported browser context with valid and invalid inputs and saved-state readback. No broad visual browser QA or iPhone verification was performed.

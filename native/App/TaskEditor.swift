@@ -310,7 +310,7 @@ private struct TaskPrerequisitesSection: View {
     @Binding var blockers: [String]
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Prerequisites").font(.headline)
+            Text("Blocked by").font(.headline)
             Text("These tasks must be completed before this one gets time on the calendar.")
                 .font(.callout).foregroundStyle(.secondary)
             if tasks.isEmpty {

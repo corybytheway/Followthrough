@@ -52,7 +52,7 @@ Pass `--no-session` to the launcher to use browser sign-in or the Keychain sessi
 - Shared task/project models and SwiftUI views; native iPhone tabs and Mac sidebar.
 - Mac projects open directly from colored folders in the sidebar. The section's plus creates a project; the project toolbar or context menu opens its editor. iPhone keeps a Projects tab with a remembered grid/list choice, starting in grid view.
 - Project editors offer the selected Electric palette (Blue, Violet, Magenta, Rose, Orange, Lime, Green, and Cyan) and Apple's system color picker. Existing custom colors are retained, and only Save writes the selected color. New projects start with Electric Blue (`#4465FF`).
-- Today, schedule, task search, project editing, task details, suggested-step completion, prerequisites, and expanded selectable original input.
+- Today, schedule, task search, project editing, task details, suggested-step completion, `Blocked by`, and expanded selectable original input.
 - Task rows show the server's deadline/capacity warnings, using the same first matching warning as the website. The messages wrap below task metadata in Today, Tasks, and project views.
 - Capture on Today; Return submits and Shift-Return adds a line. Mac Command-N opens quick capture, Command-Return submits it, and Command-R synchronizes. A menu-bar entry provides quick capture and the next task.
 - Task completion, postponement, next-workweek move, adding an hour, deletion, and the full-context handoff to Codex on Mac and ChatGPT on iPhone. The handoff starts with a request to plan before acting; the app does not assert that a URL can force the recipient's native Plan-mode setting.
