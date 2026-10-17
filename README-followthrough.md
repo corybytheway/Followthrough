@@ -11,6 +11,7 @@ The locally runnable SwiftUI iPhone and Mac apps are in [`native/`](native/READM
 - Persistent projects, tasks, estimates, dates, priorities, notes, and checklist completion.
 - One outcome per task; calendar sessions are separate from checklist steps and task identity.
 - Task blockers (`Blocked by`), completion, reopening, holding, archiving, search, and project filtering.
+- Capture separates distinct deliverable handoffs, such as edit/export → upload → send link, and saves their `Blocked by` prerequisites together. Closely coupled actions for one outcome remain checklist steps; independent tasks are not chained just because they appear in order.
 - Scheduling within configurable local work hours, work days, breaks, and session lengths.
 - Meeting avoidance using manual busy times and selected Google/iCloud calendars; deadline and capacity warnings.
 - Google OAuth with offline access, encrypted per-account credentials, calendar selection, and task blocks on each account's primary Google calendar. iCloud uses an app-specific password and CalDAV.
