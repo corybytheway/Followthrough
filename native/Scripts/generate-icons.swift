@@ -1,5 +1,5 @@
 // Created by Cory McCabe
-// Rasterize the existing Followthrough favicon geometry for native icon assets.
+// Rasterize the existing Followthrough bolt geometry with the current mint brand color for native icon assets.
 import AppKit
 import Foundation
 
@@ -21,7 +21,7 @@ func render(_ pixels: Int, mac: Bool) throws -> String {
     for (index,point) in [NSPoint(x:36,y:12),NSPoint(x:18,y:35),NSPoint(x:30,y:35),NSPoint(x:28,y:52),NSPoint(x:47,y:27),NSPoint(x:35,y:27)].enumerated() {
         if index == 0 { bolt.move(to:point) } else { bolt.line(to:point) }
     }
-    bolt.close(); color(0xc3fa71).setFill(); bolt.fill()
+    bolt.close(); color(0x35eab1).setFill(); bolt.fill()
     NSGraphicsContext.restoreGraphicsState()
     let filename="\(mac ? "mac" : "ios")-\(pixels).png"
     try image.representation(using:.png,properties:[:])!.write(to:directory.appendingPathComponent(filename))

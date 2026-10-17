@@ -2,6 +2,7 @@
 import { env } from 'cloudflare:workers';
 import {
   emptyCalendarConnection,
+  calendarAccountIdentities,
   type CalendarConnection,
   type CalendarCredentials,
   type CalendarStatus,
@@ -81,6 +82,7 @@ export async function calendarStatus(owner: string): Promise<CalendarStatus> {
   const sharedApp = await sharedGoogleApp(owner);
   return {
     ...connection,
+    taskOutputProviders: ['google', 'icloud'],
     backgroundConfigured: backgroundConfigured(calendarConfig(), owner),
     backgroundHealthy:
       connection.syncEnabled &&
@@ -92,7 +94,7 @@ export async function calendarStatus(owner: string): Promise<CalendarStatus> {
     googleConnected: !!credentials.google?.refreshToken,
     icloudConnected: !!credentials.icloud,
     zohoConnected: !!credentials.zoho,
-    zohoAccount: credentials.zoho?.username,
+    ...calendarAccountIdentities(connection, credentials),
     callbackUrl: callbackUrl(),
   };
 }

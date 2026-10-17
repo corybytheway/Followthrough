@@ -242,6 +242,28 @@ await test('blocked work becomes schedulable only after prerequisite completion'
   w.tasks[0].status = 'done';
   assert.ok(plan(w, NOW).blocks.some((b) => b.taskId === dependent.id));
 });
+await test('a blocked task cannot be completed through either task action', () => {
+  const w = example(60);
+  const dependent = taskInput(
+    { title: 'Send the independent deliverable', blockers: [w.tasks[0].id] },
+    w,
+  );
+  w.tasks.push(dependent);
+  assert.throws(
+    () => applyAction(w, { action: 'complete_task', id: dependent.id }),
+    /Blocked by unfinished tasks/,
+  );
+  assert.throws(
+    () => applyAction(w, { action: 'update_task', id: dependent.id, task: { status: 'done' } }),
+    /Blocked by unfinished tasks/,
+  );
+  assert.equal(w.tasks[1].status, 'ready');
+  const afterPrerequisite = applyAction(w, { action: 'complete_task', id: w.tasks[0].id }).workspace;
+  assert.equal(
+    applyAction(afterPrerequisite, { action: 'complete_task', id: dependent.id }).workspace.tasks[1].status,
+    'done',
+  );
+});
 await test('circular dependencies are rejected without mutating the workspace', () => {
   const w = example(60);
   w.tasks.push(

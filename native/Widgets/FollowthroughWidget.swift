@@ -14,7 +14,7 @@ struct TaskWidgetView: View {
     var body: some View {
         VStack(alignment:.leading,spacing:10) {
             HStack {
-                Image(systemName:"bolt.fill").foregroundStyle(.yellow)
+                Image(systemName:"bolt.fill").foregroundStyle(Color.followAccent)
                 Text(family == .systemSmall ? "Next up" : "Followthrough").font(.caption.bold())
                 Spacer(minLength:0)
                 if family != .systemSmall {

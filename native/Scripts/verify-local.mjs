@@ -28,6 +28,11 @@ const a=await session('Mac local validation'),b=await session('iPhone local vali
 async function mutate(body,token=a.accessToken) {const r=await call('/api/native/workspace',{token,body:{requestId:randomUUID(),...body}});assert.equal(r.status,200,JSON.stringify(r.data));return r.data.state}
 let state=await mutate({action:'update_settings',settings:{timeZone:'America/Chicago',workStart:'09:00',workEnd:'22:00',workDays:[0,1,2,3,4,5,6],maxBlockMinutes:90,breakMinutes:15}});
 if(!state.projects.some(p=>p.name==='Local Studio'))state=await mutate({action:'create_project',project:{name:'Local Studio',shortName:'Studio',description:'Isolated native development tasks',aliases:[],color:'#7652DB'}});
+// Enough isolated projects for the list/grid bottom-clearance UI regression.
+for(let i=1;i<=22;i++) {
+ const name=i===22?'Scroll QA 22 Final Project':`Scroll QA ${String(i).padStart(2,'0')}`;
+ if(!state.projects.some(p=>p.name===name))state=await mutate({action:'create_project',project:{name,description:i%3===0?'Isolated scroll verification project with wrapping descriptive text.':'',aliases:[],color:i===22?'#FFD60A':'#4465FF'}});
+}
 const requestId='native-local-e2e-'+randomUUID();const source='Review the local Followthrough prototype for Local Studio. Check task capture, calendar scheduling, and the original context. This is isolated test data.';
 let captured=await call('/api/native/inbox',{token:a.accessToken,body:{requestId,source}});assert.equal(captured.status,200,JSON.stringify(captured.data));
 const group='capture_'+createHash('sha256').update(a.ownerId+':'+requestId).digest('hex');

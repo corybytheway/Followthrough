@@ -14,8 +14,8 @@ def quote(v):
     return json.dumps(str(v))
 def plist(name,values):
     path=root/'Config'/name; path.write_bytes(plistlib.dumps(values)); return 'Config/'+name
-base={'CFBundleDisplayName':'Followthrough','CFBundleDevelopmentRegion':'en','CFBundleExecutable':'$(EXECUTABLE_NAME)','CFBundleIdentifier':'$(PRODUCT_BUNDLE_IDENTIFIER)','CFBundleInfoDictionaryVersion':'6.0','CFBundleName':'$(PRODUCT_NAME)','CFBundleShortVersionString':'0.1','CFBundleVersion':'1','FollowthroughAppGroup':'$(FOLLOWTHROUGH_APP_GROUP)'}
-appinfo={**base,'CFBundlePackageType':'APPL','CFBundleDisplayName':'$(FOLLOWTHROUGH_DISPLAY_NAME)','CFBundleURLTypes':[{'CFBundleURLName':'Followthrough','CFBundleURLSchemes':['followthrough']}], 'NSCalendarsFullAccessUsageDescription':'Check which calendars are available on this device. No events are changed by this check.', 'NSCalendarsUsageDescription':'Check access to your device calendars.', 'NSAppTransportSecurity':{'NSAllowsLocalNetworking':True},'UILaunchScreen':{},'UIApplicationSceneManifest':{'UIApplicationSupportsMultipleScenes':True},'UISupportedInterfaceOrientations':['UIInterfaceOrientationPortrait','UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight']}
+base={'CFBundleDisplayName':'Followthrough','CFBundleDevelopmentRegion':'en','CFBundleExecutable':'$(EXECUTABLE_NAME)','CFBundleIdentifier':'$(PRODUCT_BUNDLE_IDENTIFIER)','CFBundleInfoDictionaryVersion':'6.0','CFBundleName':'$(PRODUCT_NAME)','CFBundleShortVersionString':'$(MARKETING_VERSION)','CFBundleVersion':'$(CURRENT_PROJECT_VERSION)','FollowthroughAppGroup':'$(FOLLOWTHROUGH_APP_GROUP)'}
+appinfo={**base,'CFBundlePackageType':'APPL','CFBundleDisplayName':'$(FOLLOWTHROUGH_DISPLAY_NAME)','CFBundleURLTypes':[{'CFBundleURLName':'Followthrough','CFBundleURLSchemes':['followthrough']}], 'NSCalendarsFullAccessUsageDescription':'Check which calendars are available on this device. No events are changed by this check.', 'NSCalendarsUsageDescription':'Check access to your device calendars.', 'NSAppTransportSecurity':{'NSAllowsLocalNetworking':True},'LSApplicationCategoryType':'public.app-category.productivity','ITSAppUsesNonExemptEncryption':False,'UISupportedInterfaceOrientations~ipad':['UIInterfaceOrientationPortrait','UIInterfaceOrientationPortraitUpsideDown','UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],'UILaunchScreen':{},'UIApplicationSceneManifest':{'UIApplicationSupportsMultipleScenes':False},'UISupportedInterfaceOrientations':['UIInterfaceOrientationPortrait','UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight']}
 plist('App.plist',appinfo)
 plist('Widget.plist',{**base,'CFBundlePackageType':'XPC!','NSExtension':{'NSExtensionPointIdentifier':'com.apple.widgetkit-extension'}})
 plist('Share.plist',{**base,'CFBundlePackageType':'XPC!','NSExtension':{'NSExtensionPointIdentifier':'com.apple.share-services','NSExtensionPrincipalClass':'$(PRODUCT_MODULE_NAME).ShareViewController','NSExtensionAttributes':{'NSExtensionActivationRule':{'NSExtensionActivationSupportsText':True,'NSExtensionActivationSupportsWebURLWithMaxCount':1}}}})
@@ -30,13 +30,14 @@ plist('ExtensionIOSDevice.entitlements',{'com.apple.security.application-groups'
 allfiles=sorted(set([str(p.relative_to(root)) for p in root.glob('*/*.swift')]+['Tests/FollowthroughUITests.swift']))
 refs={f:add('file'+f,'PBXFileReference',lastKnownFileType='sourcecode.swift',path=f,sourceTree='<group>') for f in allfiles}
 refs['Assets.xcassets']=add('assets','PBXFileReference',lastKnownFileType='folder.assetcatalog',path='Assets.xcassets',sourceTree='<group>')
+refs['Config/PrivacyInfo.xcprivacy']=add('privacy','PBXFileReference',lastKnownFileType='text.xml',path='Config/PrivacyInfo.xcprivacy',sourceTree='<group>')
 productrefs=[]; targets=[]
 project_id=ident('project')
-common={'SWIFT_VERSION':'5.0','CLANG_ENABLE_MODULES':'YES','ENABLE_USER_SCRIPT_SANDBOXING':'YES','SWIFT_STRICT_CONCURRENCY':'targeted','CODE_SIGN_IDENTITY':'-','CODE_SIGN_STYLE':'Manual','DEVELOPMENT_TEAM':'','MACOSX_DEPLOYMENT_TARGET':'15.0','IPHONEOS_DEPLOYMENT_TARGET':'18.0','GENERATE_INFOPLIST_FILE':'NO','CURRENT_PROJECT_VERSION':'1','MARKETING_VERSION':'0.1','ENABLE_HARDENED_RUNTIME':'YES','SWIFT_EMIT_LOC_STRINGS':'YES'}
+common={'SWIFT_VERSION':'5.0','CLANG_ENABLE_MODULES':'YES','ENABLE_USER_SCRIPT_SANDBOXING':'YES','SWIFT_STRICT_CONCURRENCY':'targeted','CODE_SIGN_IDENTITY':'-','CODE_SIGN_STYLE':'Manual','DEVELOPMENT_TEAM':'','MACOSX_DEPLOYMENT_TARGET':'15.0','IPHONEOS_DEPLOYMENT_TARGET':'18.0','GENERATE_INFOPLIST_FILE':'NO','CURRENT_PROJECT_VERSION':'2','MARKETING_VERSION':'1.0','ENABLE_HARDENED_RUNTIME':'YES','SWIFT_EMIT_LOC_STRINGS':'YES'}
 def configs(key,settings,release=None):
     ids=[]
     for name in ['Debug','Release']:
-        config={**settings,'SWIFT_OPTIMIZATION_LEVEL':'-Onone' if name=='Debug' else '-O','SWIFT_ACTIVE_COMPILATION_CONDITIONS':'DEBUG' if name=='Debug' else '', 'DEBUG_INFORMATION_FORMAT':'dwarf'}
+        config={**settings,'SWIFT_OPTIMIZATION_LEVEL':'-Onone' if name=='Debug' else '-O','SWIFT_ACTIVE_COMPILATION_CONDITIONS':'DEBUG' if name=='Debug' else '', 'DEBUG_INFORMATION_FORMAT':'dwarf' if name=='Debug' else 'dwarf-with-dsym'}
         if name == 'Release': config.update(release or {})
         ids.append(add(key+name,'XCBuildConfiguration',name=name,buildSettings=config))
     return add(key+'list','XCConfigurationList',buildConfigurations=ids,defaultConfigurationIsVisible=0,defaultConfigurationName='Debug')
@@ -45,7 +46,7 @@ def target(name,platform,kind,files,extensions=[]):
     product=add(name+'product','PBXFileReference',explicitFileType='wrapper.app-extension' if ext else 'wrapper.application',path=('Followthrough Local' if not ext else name)+('.appex' if ext else '.app'),sourceTree='BUILT_PRODUCTS_DIR')
     productrefs.append(product)
     builds=[add(name+f,'PBXBuildFile',fileRef=refs[f]) for f in files]
-    resources=[] if ext else [add(name+'assets','PBXBuildFile',fileRef=refs['Assets.xcassets'])]
+    resources=[] if ext else [add(name+'assets','PBXBuildFile',fileRef=refs['Assets.xcassets']),add(name+'privacy','PBXBuildFile',fileRef=refs['Config/PrivacyInfo.xcprivacy'])]
     phases=[add(name+'sources','PBXSourcesBuildPhase',buildActionMask=2147483647,files=builds,runOnlyForDeploymentPostprocessing=0),add(name+'frameworks','PBXFrameworksBuildPhase',buildActionMask=2147483647,files=[],runOnlyForDeploymentPostprocessing=0),add(name+'resources','PBXResourcesBuildPhase',buildActionMask=2147483647,files=resources,runOnlyForDeploymentPostprocessing=0)]
     deps=[]
     if extensions:
@@ -77,10 +78,11 @@ def target(name,platform,kind,files,extensions=[]):
     if platform=='mac':
         # Keep Debug's local identity and connected workspace; Release matches ASC.
         release={'PRODUCT_BUNDLE_IDENTIFIER':'com.ethos.followthrough'+('.'+kind if ext else ''),'CODE_SIGN_STYLE':'Automatic','FOLLOWTHROUGH_APP_GROUP':'group.com.ethos.followthrough','FOLLOWTHROUGH_DISPLAY_NAME':'Followthrough','CODE_SIGN_ENTITLEMENTS':'Config/'+('ExtensionMacRelease.entitlements' if ext else 'AppMacRelease.entitlements')}
+    if not ext: release['PRODUCT_NAME']='Followthrough'
     t=add(name,'PBXNativeTarget',name=name,productName=name,productReference=product,productType='com.apple.product-type.app-extension' if ext else 'com.apple.product-type.application',buildConfigurationList=configs(name,settings,release),buildPhases=phases,buildRules=[],dependencies=deps)
     targets.append(t)
     return t
-model=['Shared/Models.swift']
+model=['Shared/Models.swift','Shared/BrandColors.swift']
 widget=model+['Widgets/FollowthroughWidget.swift']
 target('FollowthroughWidgetsMac','mac','widgets',widget)
 target('FollowthroughWidgetsIOS','ios','widgets',widget)
@@ -109,5 +111,5 @@ for name in ['FollowthroughMac','FollowthroughIOS']:
     testname='FollowthroughUITests' if name=='FollowthroughIOS' else 'FollowthroughMacUITests'
     testaction = f'<TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{ident(testname)}" BuildableName="{testname}.xctest" BlueprintName="{testname}" ReferencedContainer="container:Followthrough.xcodeproj"/></TestableReference></Testables></TestAction>'
     (schemes/(name+'.xcscheme')).write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
-<Scheme LastUpgradeVersion="2700" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="NO" buildForAnalyzing="YES">{ref}</BuildActionEntry></BuildActionEntries></BuildAction>{testaction}<LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0">{ref}</BuildableProductRunnable></LaunchAction><AnalyzeAction buildConfiguration="Debug"/></Scheme>''')
+<Scheme LastUpgradeVersion="2700" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{ref}</BuildActionEntry></BuildActionEntries></BuildAction>{testaction}<LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0">{ref}</BuildableProductRunnable></LaunchAction><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>''')
 print('Generated',p)

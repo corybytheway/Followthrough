@@ -177,8 +177,34 @@ export function applyAction(
     case 'update_project': {
       const i = w.projects.findIndex((p) => p.id === v.id);
       if (i < 0) throw new InputError('Project not found.');
+      if (v.expectedProject !== undefined) {
+        const expected = object(v.expectedProject), current = w.projects[i];
+        const fields = ['name', 'shortName', 'description', 'color', 'aliases'] as const;
+        if (fields.some((field) => JSON.stringify(expected[field] ?? null) !== JSON.stringify(current[field] ?? null)))
+          throw Object.assign(new InputError('This project changed. Review it before saving.'), { status: 409 });
+      }
       w.projects[i] = projectInput(v.project, w, w.projects[i]);
       result = { project: w.projects[i] };
+      break;
+    }
+    case 'delete_project': {
+      const id = text(v.id, 'Project ID', 100, true);
+      const project = w.projects.find((p) => p.id === id);
+      if (!project) { result = { removed: false }; break; }
+      if (v.expectedProject !== undefined) {
+        const expected = object(v.expectedProject);
+        const fields = ['name', 'shortName', 'description', 'color', 'aliases'] as const;
+        if (fields.some((field) => JSON.stringify(expected[field] ?? null) !== JSON.stringify(project[field] ?? null)))
+          throw Object.assign(new InputError('This project changed. Review it before deleting.'), { status: 409 });
+      }
+      w.projects = w.projects.filter((p) => p.id !== id);
+      for (const task of w.tasks) {
+        if (task.projectId === id) {
+          task.projectId = null;
+          task.updatedAt = now;
+        }
+      }
+      result = { removed: true };
       break;
     }
     case 'update_settings':

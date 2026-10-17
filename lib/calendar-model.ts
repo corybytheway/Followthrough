@@ -43,6 +43,7 @@ export type CalendarConnection = {
   lastError: string | null;
 };
 export type CalendarStatus = CalendarConnection & {
+  taskOutputProviders: ('google' | 'icloud')[];
   backgroundConfigured: boolean;
   backgroundHealthy: boolean;
   available: boolean;
@@ -51,9 +52,53 @@ export type CalendarStatus = CalendarConnection & {
   googleConnected: boolean;
   icloudConnected: boolean;
   zohoConnected: boolean;
+  googleAccount?: string;
+  icloudAccount?: string;
   zohoAccount?: string;
   callbackUrl: string;
 };
+export function calendarSelectionMatches(
+  connection: CalendarConnection,
+  expected: unknown,
+): boolean {
+  if (!expected || typeof expected !== 'object' || Array.isArray(expected))
+    return false;
+  const snapshot = expected as Record<string, unknown>;
+  return (
+    [
+      'selectedGoogle',
+      'selectedIcloud',
+      'selectedZoho',
+      'ignoreAllDayGoogle',
+      'ignoreAllDayIcloud',
+      'ignoreAllDayZoho',
+    ] as const
+  ).every((key) => {
+    const value = snapshot[key];
+    if (!Array.isArray(value) || value.some((id) => typeof id !== 'string'))
+      return false;
+    const expectedIds = new Set(value);
+    const currentIds = new Set(connection[key]);
+    return (
+      expectedIds.size === currentIds.size &&
+      [...expectedIds].every((id) => currentIds.has(id))
+    );
+  });
+}
+export function calendarAccountIdentities(
+  connection: CalendarConnection,
+  credentials: CalendarCredentials,
+): Pick<CalendarStatus, 'googleAccount' | 'icloudAccount' | 'zohoAccount'> {
+  const primary = credentials.google?.refreshToken
+    ? connection.googleCalendars.find((calendar) => calendar.primary)?.id
+    : undefined;
+  return {
+    googleAccount:
+      primary && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(primary) ? primary : undefined,
+    icloudAccount: credentials.icloud?.username,
+    zohoAccount: credentials.zoho?.username,
+  };
+}
 export function emptyCalendarConnection(): CalendarConnection {
   return {
     marker: crypto.randomUUID(),

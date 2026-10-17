@@ -1,6 +1,7 @@
 // Created by Cory McCabe
 import Foundation
 import Security
+import OSLog
 
 enum APIError: LocalizedError {
     case response(Int, String)
@@ -39,8 +40,17 @@ struct APIClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if let body { request.httpBody = try JSONEncoder().encode(body) }
-        let (data, response) = try await Self.session.data(for: request)
+        let data: Data, rawResponse: URLResponse
+        do { (data, rawResponse) = try await Self.session.data(for: request) }
+        catch {
+            NativeSyncLog.record("transport_failed", path: path, method: method, status: (error as NSError).code)
+            throw error
+        }
+        let response = rawResponse
         guard let response = response as? HTTPURLResponse else { throw APIError.response(0, "The server did not return a response.") }
+        if method != "GET" || !(200..<300).contains(response.statusCode) {
+            NativeSyncLog.record("response", path: path, method: method, status: response.statusCode)
+        }
         guard (200..<300).contains(response.statusCode) else {
             let message = (try? JSONDecoder().decode([String: String].self, from: data))?["error"] ?? "The server could not complete the request (\(response.statusCode))."
             throw APIError.response(response.statusCode, message)
@@ -70,4 +80,21 @@ enum Keychain {
         } else if update != errSecSuccess { throw APIError.response(0, "Could not update the device session.") }
     }
     static func remove(_ account: String) { SecItemDelete([kSecClass as String:kSecClassGenericPassword, kSecAttrService as String:service, kSecAttrAccount as String:account] as CFDictionary) }
+}
+
+
+/// Bounded, content-free diagnostics for Xcode/Console and device investigation.
+/// Never record task text, account identifiers, request bodies, or credentials.
+enum NativeSyncLog {
+    private static let logger = Logger(subsystem: "com.ethos.followthrough", category: "Synchronization")
+    private static let lock = NSLock()
+    static func record(_ event: String, path: String = "", method: String = "", status: Int? = nil, count: Int? = nil) {
+        let line = "\(ISO8601DateFormatter().string(from: .now)) \(event) \(method) \(path) status=\(status.map(String.init) ?? "-") pending=\(count.map(String.init) ?? "-")"
+        logger.info("\(line, privacy: .public)")
+        lock.lock(); defer { lock.unlock() }
+        let url = SharedStorage.directory.appendingPathComponent("sync-diagnostics.log")
+        let previous = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        let lines = (previous.split(separator: "\n").suffix(149).map(String.init) + [line]).joined(separator: "\n") + "\n"
+        try? Data(lines.utf8).write(to: url, options: .atomic)
+    }
 }

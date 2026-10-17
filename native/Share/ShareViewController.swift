@@ -42,5 +42,6 @@ struct ShareCaptureView: View {
                     ToolbarItem(placement:.confirmationAction) { Button("Save") { do { try SharedStorage.capture(text); finish() } catch { self.error = error.localizedDescription } }.disabled(text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty) }
                 }
         }
+        .tint(.followBlue)
     }
 }

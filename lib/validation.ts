@@ -8,6 +8,8 @@ import {
   type Task,
   type Workspace,
 } from './model';
+import { suggestProjectKeywords, uniqueProjectKeywords } from './project-keywords';
+import { hasUnfinishedPrerequisites } from './task-prerequisites';
 export class InputError extends Error {
   status = 400;
 }
@@ -180,6 +182,8 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
       throw new InputError('Choose other existing tasks in Blocked by.');
     t.blockers = [...new Set(v.blockers as string[])];
   }
+  if (t.status === 'done' && hasUnfinishedPrerequisites(t, w.tasks))
+    throw new InputError('Blocked by unfinished tasks. Complete those tasks first.');
   const all = new Map(w.tasks.map((a) => [a.id, a]));
   all.set(t.id, t);
   const visiting = new Set<string>(),
@@ -216,15 +220,17 @@ export function projectInput(
     )
   )
     throw new InputError('A project with this name already exists.');
-  const aliases = v.aliases === undefined ? existing?.aliases || [] : v.aliases;
-  if (!Array.isArray(aliases) || aliases.length > 20)
-    throw new InputError('Use up to 20 project aliases.');
   const shortName =
     v.shortName === undefined
       ? existing
         ? projectShortName(existing)
         : suggestProjectShortName(name)
       : text(v.shortName, 'Short name', 100) || suggestProjectShortName(name);
+  const aliases = v.aliases === undefined
+    ? existing?.aliases ?? suggestProjectKeywords(name, shortName, w.projects)
+    : v.aliases;
+  if (!Array.isArray(aliases) || aliases.length > 20)
+    throw new InputError('Use up to 20 project keywords.');
   const color =
     v.color === undefined
       ? existing?.color || COLORS[w.projects.length % COLORS.length]
@@ -239,7 +245,7 @@ export function projectInput(
       v.description === undefined
         ? existing?.description || ''
         : text(v.description, 'Project description', 2000),
-    aliases: aliases.map((a) => text(a, 'Alias', 100, true)),
+    aliases: uniqueProjectKeywords(aliases.map((a) => text(a, 'Keyword', 100, true))),
     color,
   };
 }

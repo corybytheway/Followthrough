@@ -20,6 +20,7 @@ import { zohoCalendars, zohoServer } from '@/lib/zoho-calendar';
 import { randomToken, hash, pkceChallenge } from '@/lib/calendar-security';
 import { readWorkspace, saveCalendarAvailability } from '@/lib/store';
 import { syncCalendars } from '@/lib/calendar-sync';
+import { calendarSelectionMatches } from '@/lib/calendar-model';
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'no-store' };
 export async function GET(request: Request) {
@@ -176,6 +177,16 @@ export async function POST(request: Request) {
           break;
         }
         case 'save_selection': {
+          if (
+            input.expectedSelection !== undefined &&
+            !calendarSelectionMatches(connection, input.expectedSelection)
+          )
+            throw Object.assign(
+              new InputError(
+                'Calendar selections changed on another device. Reload calendars and try again.',
+              ),
+              { status: 409 },
+            );
           for (const [key, choices, max] of [
             ['selectedGoogle', connection.googleCalendars, 50],
             ['selectedIcloud', connection.icloudCalendars, 20],

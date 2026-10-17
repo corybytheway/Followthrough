@@ -42,8 +42,8 @@ next-env.d.ts
 !.env.example
 *.tsbuildinfo
 /native/.build/
-/native/DerivedData/
-/native/DerivedDataDevice/
+/native/Scripts/__pycache__/
+/native/DerivedData*/
 /native/local-session.json
 xcuserdata/
 
