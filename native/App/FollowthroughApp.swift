@@ -10,6 +10,7 @@ import AppIntents
             WorkspaceWindowContent(store: store)
         }
         .defaultSize(width: 1180, height: 820)
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Capture a task") { store.focusCapture() }.keyboardShortcut("n")
@@ -59,6 +60,8 @@ struct RootView: View {
                         WorkspaceSection(store: store, section: store.selectedSection)
                             .toolbar { WorkspaceSaveToolbar(store: store) }
                     }
+                    // Keep the workspace readable even when the sidebar is widened.
+                    .frame(minWidth: 580)
                 }
                 #else
                 IOSWorkspaceNavigation(store: store)
