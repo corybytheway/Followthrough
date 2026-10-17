@@ -33,7 +33,7 @@ refs['Assets.xcassets']=add('assets','PBXFileReference',lastKnownFileType='folde
 refs['Config/PrivacyInfo.xcprivacy']=add('privacy','PBXFileReference',lastKnownFileType='text.xml',path='Config/PrivacyInfo.xcprivacy',sourceTree='<group>')
 productrefs=[]; targets=[]
 project_id=ident('project')
-common={'SWIFT_VERSION':'5.0','CLANG_ENABLE_MODULES':'YES','ENABLE_USER_SCRIPT_SANDBOXING':'YES','SWIFT_STRICT_CONCURRENCY':'targeted','CODE_SIGN_IDENTITY':'-','CODE_SIGN_STYLE':'Manual','DEVELOPMENT_TEAM':'','MACOSX_DEPLOYMENT_TARGET':'15.0','IPHONEOS_DEPLOYMENT_TARGET':'18.0','GENERATE_INFOPLIST_FILE':'NO','CURRENT_PROJECT_VERSION':'2','MARKETING_VERSION':'1.0','ENABLE_HARDENED_RUNTIME':'YES','SWIFT_EMIT_LOC_STRINGS':'YES'}
+common={'SWIFT_VERSION':'5.0','CLANG_ENABLE_MODULES':'YES','ENABLE_USER_SCRIPT_SANDBOXING':'YES','SWIFT_STRICT_CONCURRENCY':'targeted','CODE_SIGN_IDENTITY':'-','CODE_SIGN_STYLE':'Manual','DEVELOPMENT_TEAM':'','MACOSX_DEPLOYMENT_TARGET':'15.0','IPHONEOS_DEPLOYMENT_TARGET':'18.0','GENERATE_INFOPLIST_FILE':'NO','CURRENT_PROJECT_VERSION':'3','MARKETING_VERSION':'1.0','ENABLE_HARDENED_RUNTIME':'YES','SWIFT_EMIT_LOC_STRINGS':'YES'}
 def configs(key,settings,release=None):
     ids=[]
     for name in ['Debug','Release']:

@@ -4,6 +4,7 @@ import SwiftUI
 #if os(iOS)
 struct IOSWorkspaceNavigation: View {
     @Bindable var store: WorkspaceStore
+    @State private var captureTabSelected = false
 
     var body: some View {
         TabView(selection: sectionSelection) {
@@ -29,15 +30,23 @@ struct IOSWorkspaceNavigation: View {
             }
         }
         .tabViewStyle(.tabBarOnly)
+        .onChange(of: captureTabSelected) { _, selected in
+            guard selected else { return }
+            // Let TabView observe the tap before restoring its selection.
+            // Rejecting the binding write alone leaves its native controller
+            // showing the empty action tab despite the unchanged store.
+            captureTabSelected = false
+            store.focusCapture()
+        }
     }
 
     private var sectionSelection: Binding<String> {
         Binding(
-            get: { store.selectedSection },
+            get: { captureTabSelected ? "capture" : store.selectedSection },
             set: { section in
                 // Capture is an action over the current page, so it must not
                 // select an empty tab or discard a pushed project page.
-                if section == "capture" { store.focusCapture() }
+                if section == "capture" { captureTabSelected = true }
                 else { store.selectSection(section) }
             }
         )

@@ -120,11 +120,13 @@ final class FollowthroughUITests: XCTestCase {
         for (name, item) in zip(names, tabs) {
             XCTAssertTrue(item.exists && item.isHittable, "\(name) must be reachable in the vertical bar.")
         }
+        record("Duo vertical tab order")
         for (upper, lower) in zip(tabs, tabs.dropFirst()) {
-            XCTAssertLessThan(upper.frame.maxY, lower.frame.minY, "The vertical bar must keep its top-to-bottom order, with New task last.")
+            // Native controls expand their accessibility hit areas beyond
+            // the visible glyphs, so adjacent hit frames can overlap.
+            XCTAssertLessThan(upper.frame.midY, lower.frame.midY, "The vertical bar must keep its top-to-bottom order, with New task last.")
             XCTAssertEqual(upper.frame.midX, lower.frame.midX, accuracy: 8)
         }
-        record("Duo vertical tab order")
 
         tapTab("Tasks")
         tapTab("Projects")
