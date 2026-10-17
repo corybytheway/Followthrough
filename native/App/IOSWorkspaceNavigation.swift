@@ -33,6 +33,7 @@ struct IOSWorkspaceNavigation: View {
             }
         }
         .tabViewStyle(.tabBarOnly)
+        .tint(.followBlue)
         .onChange(of: captureTabSelected) { _, selected in
             guard selected else { return }
             // Let TabView observe the tap before restoring its selection.

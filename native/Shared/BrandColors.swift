@@ -10,6 +10,15 @@ extension Color {
     static var followAccent: Color { followAdaptiveColor(light: 0x006D49, dark: 0x35EAB1) }
     static var followBlue: Color { followAdaptiveColor(light: 0x245BDF, dark: 0x7AA2FF) }
 
+    /// iOS Settings actions use brighter green on light surfaces and mint on dark surfaces.
+    static var followSettingsAccent: Color {
+        #if os(iOS)
+        followAdaptiveColor(light: 0x00865E, dark: 0x35EAB1)
+        #else
+        followAccent
+        #endif
+    }
+
     private static func followAdaptiveColor(light: UInt32, dark: UInt32) -> Color {
         #if os(iOS)
         Color(uiColor: UIColor { traits in
