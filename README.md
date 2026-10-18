@@ -6,6 +6,8 @@ Followthrough brings task capture, project organization, and calendar planning t
 
 **Swift · SwiftUI · iOS · macOS · Apple Shortcuts · Web**
 
+[Visit the Followthrough website](https://follow.corymccabe.com/) · [Open the web app (invite-only beta)](https://followthrough.corymccabe.com/)
+
 Created by Cory McCabe.
 
 ## Built for iPhone and Mac
