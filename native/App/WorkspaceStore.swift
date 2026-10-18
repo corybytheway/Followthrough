@@ -7,6 +7,15 @@ import Security
 
 @MainActor @Observable final class WorkspaceStore: NSObject {
     var workspace: Workspace?
+    var suggestions: SuggestionResponse?
+    var suggestionsError: String?
+    var suggestionSyncError: String? { suggestionsError ?? suggestions?.status.error }
+    var suggestionsConnected = false
+    var updatingSuggestions = false
+    private(set) var suggestionAcceptanceFeedback: [String: SuggestionAcceptanceFeedback] = [:]
+    var presentationSuggestions: [TaskSuggestion] {
+        SuggestionAcceptanceFeedback.presenting(suggestions?.suggestions ?? [], holding: suggestionAcceptanceFeedback)
+    }
     var pending: [PendingMutation] = []
     var error: String?
     var syncing = false
@@ -39,6 +48,8 @@ import Security
     @ObservationIgnored private var refreshTask: Task<NativeSession, Error>?
     @ObservationIgnored private var syncRequested = false
     @ObservationIgnored private var pendingTaskID: String?
+    @ObservationIgnored private var lastSuggestionRevision: Int?
+    @ObservationIgnored private var suggestionRefreshTask: Task<SuggestionResponse, Error>?
 
     var cacheURL: URL { SharedStorage.directory.appendingPathComponent("workspace.json") }
     var queueURL: URL { SharedStorage.directory.appendingPathComponent("outbox.json") }
@@ -94,6 +105,89 @@ import Security
         synchronizeDeviceTimeZone()
     }
     private var identity: String { server + ":" + (session?.ownerId ?? "") }
+    private var suggestionCacheURL: URL { SharedStorage.directory.appendingPathComponent("suggestions.sealed") }
+    private var suggestionCacheKey: SymmetricKey? {
+        session.map { SymmetricKey(data: SHA256.hash(data: Data($0.refreshToken.utf8))) }
+    }
+    private func loadSuggestionCache() -> SuggestionResponse? {
+        guard let key = suggestionCacheKey,
+              let data = try? Data(contentsOf: suggestionCacheURL),
+              let box = try? AES.GCM.SealedBox(combined: data),
+              let plain = try? AES.GCM.open(box, using: key, authenticating: Data(identity.utf8)),
+              let cache = try? JSONDecoder().decode(CachedSuggestions.self, from: plain), cache.identity == identity else { return nil }
+        var response = cache.response
+        response.suggestions.removeAll { $0.expired() }
+        if response.suggestions.count != cache.response.suggestions.count { saveSuggestionCache(response) }
+        return response
+    }
+    private func saveSuggestionCache(_ response: SuggestionResponse) {
+        guard let key = suggestionCacheKey,
+              let data = try? JSONEncoder().encode(CachedSuggestions(identity: identity, response: response)),
+              let sealed = try? AES.GCM.seal(data, using: key, authenticating: Data(identity.utf8)).combined else { return }
+        try? sealed.write(to: suggestionCacheURL, options: .atomic)
+        try? FileManager.default.removeItem(at: SharedStorage.directory.appendingPathComponent("suggestions.json"))
+    }
+    func refreshSuggestions(check: Bool = false, force: Bool = false) async {
+        guard session != nil, !updatingSuggestions, suggestionRefreshTask == nil else { return }
+        if suggestions == nil { suggestions = loadSuggestionCache() }
+        let requestedRevision = workspace?.revision
+        let refresh = Task<SuggestionResponse, Error> { @MainActor in
+            do {
+                return try await authorized("api/native/suggestions", method: check ? "POST" : "GET", body: check ? ["action": .string("refresh"), "force": .bool(force)] : nil)
+            } catch let failure as APIError where check && failure.status == 409 {
+                // Another check owns the lock. Read the saved queue quietly.
+                return try await authorized("api/native/suggestions")
+            }
+        }
+        suggestionRefreshTask = refresh
+        defer { suggestionRefreshTask = nil }
+        do {
+            let result = try await refresh.value
+            // An explicit decision owns the next response; a background read
+            // must never overwrite its accepted/dismissed state.
+            guard !updatingSuggestions else { return }
+            suggestions = result; suggestionsConnected = true; suggestionsError = nil
+            if check { lastSuggestionRevision = requestedRevision }
+            saveSuggestionCache(result)
+        } catch {
+            guard !updatingSuggestions else { return }
+            if (error as? APIError)?.status == 404 { suggestions = nil; suggestionsError = nil }
+            else if suggestions?.status.available == true { suggestionsError = error.localizedDescription }
+            suggestionsConnected = false
+        }
+    }
+    @discardableResult func applySuggestion(_ suggestion: TaskSuggestion, action: String, vote: String? = nil, drafts: [SuggestionDraft]? = nil) async -> Bool {
+        guard !updatingSuggestions else { return false }
+        updatingSuggestions = true; defer { updatingSuggestions = false }
+        // Taps during a check are honored after that check releases its lock.
+        // Background checks never disable or dim suggestion controls.
+        if let refresh = suggestionRefreshTask { _ = try? await refresh.value }
+        do {
+            var body: [String: JSONValue] = ["action": .string(action), "id": .string(suggestion.id), "version": .number(Double(suggestion.version))]
+            if let vote { body["vote"] = .string(vote) }
+            if let drafts { body["drafts"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(drafts)) }
+            let result: SuggestionResponse = try await authorized("api/native/suggestions", method: "POST", body: body)
+            if action == "accept" {
+                let followingIDs = presentationSuggestions.drop { $0.id != suggestion.id }.dropFirst().map(\.id)
+                let feedback = SuggestionAcceptanceFeedback(before: suggestion, followingIDs: followingIDs)
+                suggestionAcceptanceFeedback[suggestion.id] = feedback
+                Task { [weak self] in
+                    try? await Task.sleep(for: TaskCompletionFeedback.acknowledgmentDuration)
+                    guard let self, self.suggestionAcceptanceFeedback[suggestion.id]?.id == feedback.id else { return }
+                    self.suggestionAcceptanceFeedback.removeValue(forKey: suggestion.id)
+                }
+            }
+            suggestions = result
+            suggestionsConnected = true; suggestionsError = nil
+            if let suggestions { saveSuggestionCache(suggestions) }
+            if action == "accept" { await sync() }
+            return true
+        } catch { suggestionsError = error.localizedDescription; return false }
+    }
+    func resetSuggestionFeedback() async {
+        do { suggestions = try await authorized("api/native/suggestions", method: "POST", body: ["action": .string("reset_feedback")]); suggestionsError = nil }
+        catch { suggestionsError = error.localizedDescription }
+    }
     func connect(to destination: String? = nil) {
         do {
             guard !authorizing, !syncing, refreshTask == nil else { return }
@@ -273,6 +367,7 @@ import Security
                 }
             }
             workspace = try await authorized("api/native/workspace")
+            await refreshSuggestions(check: suggestions?.status.available == true && lastSuggestionRevision != workspace?.revision && selectedSection == "today")
             openPendingTask()
             lastSynced = .now; persist(); if !blockedMutation { error = storageError }; updateWidget()
         } catch {
@@ -356,7 +451,7 @@ import Security
         let feedback = TaskCompletionFeedback(before: before, status: status, blocks: workspace?.blocks.filter { $0.taskId == task.id } ?? [])
         completionFeedback[task.id] = feedback
         Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(450))
+            try? await Task.sleep(for: TaskCompletionFeedback.acknowledgmentDuration)
             guard let self, self.completionFeedback[task.id]?.id == feedback.id else { return }
             self.completionFeedback.removeValue(forKey: task.id)
         }
@@ -437,6 +532,10 @@ import Security
         Keychain.remove(server); session = nil; connected = false; clearLocalData(); updateWidget()
     }
     private func clearLocalData() {
+        suggestions = nil; suggestionsError = nil; suggestionsConnected = false
+        suggestionAcceptanceFeedback = [:]
+        lastSuggestionRevision = nil
+        try? FileManager.default.removeItem(at: suggestionCacheURL)
         workspace = nil; pending = []; error = nil; blockedMutation = false; completionFeedback = [:]
         selectedSection = "today"; selectedTask = nil; taskConflict = nil; captureFocused = false; captureText = ""; captureReceipt = nil
         pendingTaskID = nil

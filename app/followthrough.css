@@ -1,4 +1,237 @@
 /* Created by Cory McCabe */
+.suggestions-panel {
+  margin: 22px 0;
+}
+.suggestions-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  font-weight: 650;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 8px 0;
+  cursor: pointer;
+}
+.suggestions-heading svg {
+  transform: rotate(-90deg);
+  flex-shrink: 0;
+}
+.suggestions-heading svg.expanded {
+  transform: none;
+}
+.suggestion-count {
+  margin-left: auto;
+  color: var(--subtle);
+  font-size: 13px;
+}
+.suggestions-caption {
+  color: var(--subtle);
+  font-size: 12px;
+  margin: 6px 0;
+}
+.suggestion-item {
+  margin: 8px 0;
+}
+.suggestion-card {
+  padding: 10px 14px 12px 28px;
+  margin: 0;
+  background: var(--card, white);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.suggestion-card-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.suggestion-title {
+  margin: 0;
+  font: inherit;
+  font-weight: 650;
+  font-size: 16px;
+  line-height: 1.4;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 4px 0;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.suggestion-project-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin: 0 7px 1px 0;
+  border-radius: 50%;
+}
+.suggestion-decisions {
+  display: flex;
+  flex-shrink: 0;
+  margin-right: -7px;
+}
+.app-shell .suggestion-decisions button {
+  position: relative;
+  min-width: 44px;
+  min-height: 44px !important;
+  width: 44px;
+  padding: 0;
+  background: transparent;
+}
+.suggestion-decisions button:first-child::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  background: var(--mint);
+  border-radius: 50%;
+  z-index: 0;
+}
+.suggestion-decisions button:first-child svg {
+  position: relative;
+  color: var(--ink);
+  z-index: 1;
+}
+.suggestion-metadata {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: var(--subtle);
+}
+.suggestion-metadata > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.suggestion-meta-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.suggestion-priority-high,
+.suggestion-priority-top {
+  color: #9a6400;
+  font-weight: 600;
+}
+.suggestion-source {
+  display: inline-block;
+  white-space: nowrap;
+  font-size: inherit;
+  color: var(--subtle);
+}
+.suggestion-source img {
+  display: inline-block;
+  object-fit: contain;
+  vertical-align: middle;
+  margin-inline: 4px 6px;
+}
+.suggestion-reason {
+  white-space: pre-line;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--subtle);
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+.suggestion-based-on {
+  font-weight: 600;
+}
+.suggestion-connector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 3px 3px;
+  color: var(--subtle);
+  font-size: 11px;
+}
+.suggestion-connector::before,
+.suggestion-connector::after {
+  content: '';
+  height: 1px;
+  background: var(--line);
+}
+.suggestion-connector::before {
+  width: 12px;
+}
+.suggestion-connector::after {
+  flex: 1;
+}
+.suggestion-feedback {
+  padding-inline: 28px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  margin-top: -6px;
+  font-size: 11px;
+  color: var(--subtle);
+}
+.suggestion-feedback > span {
+  margin-right: auto;
+  padding-top: 12px;
+}
+.app-shell .suggestion-feedback button {
+  min-width: 44px;
+  width: 44px;
+  min-height: 44px !important;
+  padding: 12px 0 0;
+  align-items: flex-start;
+}
+.suggestion-feedback button[aria-pressed='true'] {
+  background: var(--mint);
+  color: var(--ink);
+}
+.suggestion-feedback-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.suggestion-feedback-actions > [data-slot='button'] {
+  min-height: 40px;
+  padding-inline: 12px;
+}
+.suggestion-feedback-primary {
+  background: var(--mint);
+  color: var(--ink);
+}
+.suggestion-feedback-primary:hover {
+  background: color-mix(in srgb, var(--mint) 90%, var(--ink));
+}
+.suggestion-feedback-cancel {
+  background: var(--line);
+  color: var(--ink);
+}
+.suggestion-feedback-cancel:hover {
+  background: color-mix(in srgb, var(--line) 85%, var(--subtle));
+}
+.suggestion-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 16px 0;
+}
+.suggestion-consent input {
+  margin-top: 4px;
+}
+@media (max-width: 480px) {
+  .suggestion-card {
+    padding: 9px 10px 12px 24px;
+  }
+  .suggestion-feedback {
+    padding-inline: 24px 10px;
+  }
+  .suggestion-title {
+    font-size: 15px;
+  }
+}
 button {
   font: inherit;
 }

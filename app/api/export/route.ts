@@ -1,6 +1,10 @@
 // Created by Cory McCabe
 import { requireOwner, fail } from '@/lib/http';
 import { snapshot } from '@/lib/store';
+import {
+  exportSuggestionData,
+  suggestionsAvailable,
+} from '@/lib/suggestion-store';
 export const dynamic = 'force-dynamic';
 const escapeICS = (value: string) =>
   value
@@ -12,17 +16,30 @@ const stamp = (value: string) =>
   new Date(value).toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
 export async function GET(request: Request) {
   try {
-    const state = await snapshot(await requireOwner(request)),
+    const owner = await requireOwner(request),
+      state = await snapshot(owner),
       format = new URL(request.url).searchParams.get('format');
     if (format !== 'ics')
-      return new Response(JSON.stringify(state, null, 2), {
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Disposition':
-            'attachment; filename="followthrough-backup.json"',
-          'Cache-Control': 'no-store',
+      return new Response(
+        JSON.stringify(
+          {
+            ...state,
+            ...(suggestionsAvailable(owner)
+              ? { suggestionData: await exportSuggestionData(owner) }
+              : {}),
+          },
+          null,
+          2,
+        ),
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Disposition':
+              'attachment; filename="followthrough-backup.json"',
+            'Cache-Control': 'no-store',
+          },
         },
-      });
+      );
     const lines = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',

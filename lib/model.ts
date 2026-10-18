@@ -39,7 +39,9 @@ export function taskLabel(
     ))
   )
     name = name.slice(prefix.length + 2);
-  return '⚡️ ' + (showProjectPrefix && shortName ? shortName + ': ' : '') + name;
+  return (
+    '⚡️ ' + (showProjectPrefix && shortName ? shortName + ': ' : '') + name
+  );
 }
 export type Step = { id: string; title: string; done: boolean };
 export type Project = {
@@ -51,6 +53,12 @@ export type Project = {
   color: string;
 };
 export type Task = {
+  behavior?: {
+    deferredAt?: string[];
+    lastProgressAt?: string;
+    readySince?: string;
+  };
+  provenance?: { suggestionId: string; kind: string; url?: string };
   deletedAt?: string;
   statusBeforeDelete?: Task['status'];
   captureMode?: 'basic' | 'ai';

@@ -2572,4 +2572,177 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertTrue(result.waitForExistence(timeout: 10))
         record("Device calendar read-only result")
     }
+
+    func testSuggestedTaskSourceUsesFullWidthOnIPhone17() throws {
+        let native = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        guard let data = try? Data(contentsOf: native.appendingPathComponent("local-session-ios.json")),
+              let fixture = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              fixture["ownerId"] as? String == "local_seedy" else {
+            throw XCTSkip("Source layout verification requires the isolated synthetic owner.")
+        }
+        app.terminate()
+        app.launchArguments = ["-server", "http://localhost:4319"]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = data.base64EncodedString()
+        app.launch()
+        let disclosure = app.buttons["suggestionsDisclosure"]
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 45))
+        if disclosure.value as? String != "Expanded" { disclosure.tap() }
+        record("iPhone17 Suggested tasks 09 full width top")
+        let distance = max(0, disclosure.frame.midY - app.frame.height * 0.15)
+        if distance > 0 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -distance)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+        XCTAssertTrue(disclosure.isHittable)
+        record("iPhone17 Suggested tasks 10 full width cards")
+        let sources = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Based on: Gmail")).allElementsBoundByIndex.filter { $0.isHittable }
+        XCTAssertEqual(sources.count, 2, "Both linked Gmail tasks must retain their source context.")
+        let trailingAction = app.buttons["Dismiss linked suggestions"].firstMatch
+        XCTAssertTrue(trailingAction.exists)
+        for source in sources {
+            XCTAssertEqual(source.frame.maxX, trailingAction.frame.maxX, accuracy: 1, "Source evidence must use the card width beneath the trailing actions.")
+        }
+    }
+
+    func testSuggestedTasksNativeParityOnIPhone17() throws {
+        let native = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        guard let data = try? Data(contentsOf: native.appendingPathComponent("local-session-ios.json")),
+              let fixture = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              fixture["ownerId"] as? String == "local_seedy" else {
+            throw XCTSkip("Suggestion UI verification requires the isolated synthetic owner.")
+        }
+        app.terminate()
+        app.launchArguments = ["-server", "http://localhost:4319"]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = data.base64EncodedString()
+        app.launch()
+        let disclosure = app.buttons["suggestionsDisclosure"]
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 45))
+        if disclosure.value as? String == "Expanded" { disclosure.tap() }
+        XCTAssertEqual(disclosure.value as? String, "Collapsed")
+        record("iPhone17 Suggested tasks 01 collapsed")
+
+        disclosure.tap()
+        XCTAssertEqual(disclosure.value as? String, "Expanded")
+        let more = app.buttons.matching(NSPredicate(format: "label == %@", "Suggest more like this")).firstMatch
+        XCTAssertTrue(more.waitForExistence(timeout: 15))
+        // A short drag avoids swiping past the Gmail footer when the source
+        // paragraph gains a line near the bottom toolbar.
+        let initialDistance = max(0, disclosure.frame.midY - app.frame.height * 0.15)
+        if initialDistance > 0 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -initialDistance)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+        XCTAssertTrue(more.isHittable)
+        record("iPhone17 Suggested tasks 02 expanded cards")
+        let evidence = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Based on:")).allElementsBoundByIndex.filter { $0.isHittable }
+        XCTAssertFalse(evidence.isEmpty, "At least one visible card must explain its source.")
+        XCTAssertTrue(evidence.contains { $0.label.contains("“") }, "A full source label must name the original task or email subject.")
+        for label in evidence {
+            XCTAssertGreaterThan(label.frame.width, 0)
+            XCTAssertGreaterThanOrEqual(label.frame.minX, app.frame.minX)
+            XCTAssertLessThanOrEqual(label.frame.maxX, app.frame.maxX)
+        }
+        let gmailRows = evidence.filter { $0.label.contains("Gmail") }
+        XCTAssertFalse(gmailRows.isEmpty, "The synthetic Gmail source row must be visible for its width check.")
+        let trailingAction = app.buttons["Dismiss linked suggestions"].firstMatch
+        XCTAssertTrue(trailingAction.exists)
+        for row in gmailRows {
+            XCTAssertEqual(row.frame.maxX, trailingAction.frame.maxX, accuracy: 1, "Source evidence must use the card width beneath the trailing actions.")
+        }
+
+        for vote in ["more", "less"] {
+            let label = "Suggest \(vote) like this"
+            let feedback = app.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
+            scrollTo(feedback)
+            feedback.tap()
+            let heading = app.staticTexts[label + "?"]
+            XCTAssertTrue(heading.waitForExistence(timeout: 10))
+            let cancel = app.buttons["Cancel"].firstMatch
+            XCTAssertTrue(cancel.waitForExistence(timeout: 10))
+            XCTAssertTrue(cancel.isHittable, "Feedback cancellation must be visible on iPhone 17.")
+            let confirm = try XCTUnwrap(app.buttons.matching(NSPredicate(format: "label == %@", label)).allElementsBoundByIndex.first { $0.isHittable })
+            XCTAssertLessThanOrEqual(confirm.frame.maxX, app.frame.maxX)
+            XCTAssertLessThanOrEqual(confirm.frame.maxY, app.frame.maxY)
+            record("iPhone17 Suggested tasks 03 feedback " + vote)
+            cancel.tap()
+            XCTAssertTrue(heading.waitForNonExistence(timeout: 10))
+        }
+
+        for _ in 0..<8 {
+            if disclosure.isHittable { break }
+            app.swipeDown()
+        }
+        XCTAssertTrue(disclosure.isHittable)
+        disclosure.tap()
+        XCTAssertEqual(disclosure.value as? String, "Collapsed")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 30))
+        XCTAssertEqual(disclosure.value as? String, "Collapsed")
+        record("iPhone17 Suggested tasks 04 collapsed after relaunch")
+        disclosure.tap()
+        XCTAssertEqual(disclosure.value as? String, "Expanded")
+        record("iPhone17 Suggested tasks 07 final expanded top")
+        let desiredHeadingY = app.frame.height * 0.15
+        let distance = max(0, disclosure.frame.midY - desiredHeadingY)
+        if distance > 0 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+            let end = start.withOffset(CGVector(dx: 0, dy: -distance))
+            start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+        XCTAssertTrue(disclosure.isHittable, "The source cards should remain below the visible Suggested tasks heading.")
+        record("iPhone17 Suggested tasks 08 final cards focused")
+    }
+
+
+    func testSuggestedTaskCheckAcceptsDirectlyOnIPhone17() async throws {
+        let native = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        guard let data = try? Data(contentsOf: native.appendingPathComponent("local-session-ios.json")),
+              let fixture = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              fixture["ownerId"] as? String == "local_seedy",
+              let token = fixture["accessToken"] as? String,
+              FileManager.default.fileExists(atPath: "/private/tmp/followthrough-iphone17-before-directaccept.sqlite") else {
+            throw XCTSkip("Direct acceptance requires the synthetic owner and its explicit local backup.")
+        }
+        func tasks() async throws -> [[String: Any]] {
+            var request = URLRequest(url: URL(string: "http://localhost:4319/api/native/workspace")!)
+            request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+            let (responseData, response) = try await URLSession.shared.data(for: request)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+            let workspace = try XCTUnwrap(JSONSerialization.jsonObject(with: responseData) as? [String: Any])
+            return try XCTUnwrap(workspace["tasks"] as? [[String: Any]])
+        }
+        let before = try await tasks()
+        let beforeIDs = Set(before.compactMap { $0["id"] as? String })
+        XCTAssertEqual(beforeIDs.count, before.count)
+        XCTAssertFalse(before.contains { ($0["title"] as? String) == "Check the mail" && ($0["status"] as? String) != "done" && ($0["status"] as? String) != "archived" && ($0["deletedAt"] == nil || $0["deletedAt"] is NSNull) }, "The synthetic task must not already be active.")
+
+        app.terminate()
+        app.launchArguments = ["-server", "http://localhost:4319"]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = data.base64EncodedString()
+        app.launch()
+        let disclosure = app.buttons["suggestionsDisclosure"]
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 30))
+        if disclosure.value as? String != "Expanded" { disclosure.tap() }
+        let accept = app.buttons["acceptSuggestion_Check the mail"]
+        if !accept.exists {
+            let showMore = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Show ")).firstMatch
+            scrollTo(showMore)
+            showMore.tap()
+        }
+        XCTAssertTrue(accept.waitForExistence(timeout: 10))
+        scrollTo(accept)
+        record("iPhone17 Suggested tasks 05 direct accept before")
+        accept.tap()
+        XCTAssertTrue(accept.waitForNonExistence(timeout: 20))
+        XCTAssertFalse(app.navigationBars["Review"].exists, "The checkmark must accept directly without a review sheet.")
+        let after = try await tasks()
+        let added = after.filter { task in !beforeIDs.contains(task["id"] as? String ?? "") }
+        XCTAssertEqual(added.count, 1)
+        XCTAssertEqual(added.first?["title"] as? String, "Check the mail")
+        record("iPhone17 Suggested tasks 06 direct accept result")
+        let result: [String: Any] = ["beforeTaskCount": before.count, "afterTaskCount": after.count, "addedTaskIds": added.compactMap { $0["id"] as? String }]
+        try JSONSerialization.data(withJSONObject: result, options: .prettyPrinted).write(to: URL(fileURLWithPath: "/private/tmp/followthrough-iphone17-direct-accept-result.json"), options: .atomic)
+    }
+
 }

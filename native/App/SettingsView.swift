@@ -13,6 +13,20 @@ struct SettingsView: View {
     var body: some View {
         Form {
             WorkHoursSettings(store: store, settings: settings)
+            if store.suggestions?.status.available == true {
+                Section("Task suggestions") {
+                    Text("Suggestions recognize your routines, remember workflows, and help with tasks that keep moving later. Review each before changing your plan.").font(.callout).foregroundStyle(.secondary)
+                    if let status = store.suggestions?.status {
+                        LabeledContent("Gmail review", value: status.gmailEnabled ? status.googleAccount : "Off")
+                        if let error = status.error { Text(error).font(.caption).foregroundStyle(.secondary) }
+                    }
+                    if let base = try? store.client.baseURL {
+                        Link("Manage Gmail suggestions", destination: base.appendingPathComponent("settings"))
+                    }
+                    Text("Optional read-only Gmail review sends selected email text to OpenAI. Read the notice and opt in before connecting.").font(.caption).foregroundStyle(.secondary)
+                    Button("Reset suggestion preferences") { Task { await store.resetSuggestionFeedback() } }.disabled(store.suggestions?.status.feedbackCount == 0)
+                }
+            }
             Section("Calendar connections") {
                 if let status = calendarStatus {
                     CalendarAccountRow(name: "Google Calendar", account: status.googleAccount ?? status.googlePrimaryEmail, connected: status.googleConnected)

@@ -1,6 +1,7 @@
 // Created by Cory McCabe
 import type { Workspace } from './model';
 import { captureDependencyIndexes } from './capture-dependencies';
+import { recordTaskBehavior, eligibleTask } from './suggestion-engine';
 import {
   InputError,
   integer,
@@ -23,7 +24,14 @@ export function applyAction(
     case 'delete_task': {
       const task = w.tasks.find((t) => t.id === v.id);
       if (!task) throw new InputError('Task not found.');
-      if (v.expectedUpdatedAt !== undefined && v.expectedUpdatedAt !== task.updatedAt) throw Object.assign(new InputError('This task changed. Review it before deleting.'), { status: 409 });
+      if (
+        v.expectedUpdatedAt !== undefined &&
+        v.expectedUpdatedAt !== task.updatedAt
+      )
+        throw Object.assign(
+          new InputError('This task changed. Review it before deleting.'),
+          { status: 409 },
+        );
       if (!task.deletedAt) {
         task.statusBeforeDelete = task.status;
         task.status = 'archived';
@@ -111,10 +119,12 @@ export function applyAction(
       });
       // Resolve draft-local references only after every durable ID exists.
       tasks.forEach((task, index) => {
-        task.blockers = [...new Set([
-          ...task.blockers,
-          ...dependencies[index].map((dependency) => tasks[dependency].id),
-        ])];
+        task.blockers = [
+          ...new Set([
+            ...task.blockers,
+            ...dependencies[index].map((dependency) => tasks[dependency].id),
+          ]),
+        ];
       });
       const groupWorkspace = { ...w, tasks: [...w.tasks, ...tasks] };
       const validated = tasks.map((task) =>
@@ -149,6 +159,15 @@ export function applyAction(
           { status: 409 },
         );
       w.tasks[i] = taskInput(v.task, w, w.tasks[i]);
+      recordTaskBehavior(
+        workspace.tasks[i],
+        w.tasks[i],
+        now,
+        w.settings.timeZone,
+        workspace.tasks[i].blockers.some(
+          (id) => !w.tasks.some((t) => t.id === id && t.status === 'done'),
+        ),
+      );
       result = { task: w.tasks[i] };
       break;
     }
@@ -178,6 +197,7 @@ export function applyAction(
           'Mark the task complete if the outcome is finished, or update the remaining estimate.',
         );
       t.remainingMinutes = left;
+      t.behavior = { ...t.behavior, lastProgressAt: now };
       t.updatedAt = now;
       w.blocks = w.blocks.filter((b) => b.taskId !== t.id);
       result = { task: t };
@@ -195,10 +215,26 @@ export function applyAction(
       const i = w.projects.findIndex((p) => p.id === v.id);
       if (i < 0) throw new InputError('Project not found.');
       if (v.expectedProject !== undefined) {
-        const expected = object(v.expectedProject), current = w.projects[i];
-        const fields = ['name', 'shortName', 'description', 'color', 'aliases'] as const;
-        if (fields.some((field) => JSON.stringify(expected[field] ?? null) !== JSON.stringify(current[field] ?? null)))
-          throw Object.assign(new InputError('This project changed. Review it before saving.'), { status: 409 });
+        const expected = object(v.expectedProject),
+          current = w.projects[i];
+        const fields = [
+          'name',
+          'shortName',
+          'description',
+          'color',
+          'aliases',
+        ] as const;
+        if (
+          fields.some(
+            (field) =>
+              JSON.stringify(expected[field] ?? null) !==
+              JSON.stringify(current[field] ?? null),
+          )
+        )
+          throw Object.assign(
+            new InputError('This project changed. Review it before saving.'),
+            { status: 409 },
+          );
       }
       w.projects[i] = projectInput(v.project, w, w.projects[i]);
       result = { project: w.projects[i] };
@@ -207,12 +243,30 @@ export function applyAction(
     case 'delete_project': {
       const id = text(v.id, 'Project ID', 100, true);
       const project = w.projects.find((p) => p.id === id);
-      if (!project) { result = { removed: false }; break; }
+      if (!project) {
+        result = { removed: false };
+        break;
+      }
       if (v.expectedProject !== undefined) {
         const expected = object(v.expectedProject);
-        const fields = ['name', 'shortName', 'description', 'color', 'aliases'] as const;
-        if (fields.some((field) => JSON.stringify(expected[field] ?? null) !== JSON.stringify(project[field] ?? null)))
-          throw Object.assign(new InputError('This project changed. Review it before deleting.'), { status: 409 });
+        const fields = [
+          'name',
+          'shortName',
+          'description',
+          'color',
+          'aliases',
+        ] as const;
+        if (
+          fields.some(
+            (field) =>
+              JSON.stringify(expected[field] ?? null) !==
+              JSON.stringify(project[field] ?? null),
+          )
+        )
+          throw Object.assign(
+            new InputError('This project changed. Review it before deleting.'),
+            { status: 409 },
+          );
       }
       w.projects = w.projects.filter((p) => p.id !== id);
       for (const task of w.tasks) {
@@ -271,6 +325,12 @@ export function applyAction(
       break;
     default:
       throw new InputError('Choose a supported Followthrough action.');
+  }
+  for (const task of w.tasks) {
+    const before = workspace.tasks.find((t) => t.id === task.id);
+    if (before && !eligibleTask(before, workspace) && eligibleTask(task, w)) {
+      task.behavior = { ...task.behavior, readySince: now, deferredAt: [] };
+    }
   }
   return { workspace: w, result };
 }

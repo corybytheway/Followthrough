@@ -210,7 +210,7 @@ struct WorkspaceSaveStatus: View {
 
     private var saving: Bool { store.connected && store.syncing && !store.pending.isEmpty && !store.blockedMutation }
     private var needsAttention: Bool {
-        store.error != nil || store.blockedMutation || !store.connected || (!store.pending.isEmpty && !saving)
+        store.error != nil || store.suggestionSyncError != nil || store.blockedMutation || !store.connected || (!store.pending.isEmpty && !saving)
     }
 
     private var statusSize: CGFloat {
@@ -257,7 +257,7 @@ private struct WorkspaceSaveDetails: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if let error = store.error {
+            if let error = store.error ?? store.suggestionSyncError {
                 Label(store.blockedMutation ? "Review saved changes" : "Could not sync", systemImage: "exclamationmark.icloud")
                     .font(.headline)
                 Text(error).font(.callout).foregroundStyle(Color.secondary)
@@ -275,7 +275,7 @@ private struct WorkspaceSaveDetails: View {
             if !store.connected {
                 Button("Reconnect") { store.connect() }
                     .disabled(store.authorizing)
-            } else if store.error != nil || !store.pending.isEmpty || store.blockedMutation {
+            } else if store.error != nil || store.suggestionSyncError != nil || !store.pending.isEmpty || store.blockedMutation {
                 Button("Retry") { store.retry() }
                     .disabled(store.syncing)
             }
@@ -441,7 +441,10 @@ struct TodayView: View {
             }.padding(24).frame(maxWidth:1300).environment(\.timeZone,TimeZone(identifier:workspace.settings.timeZone) ?? .current)
                 .id("todayTop")
         }.background(Color.canvas).navigationTitle(TodayHeading.title(timeZone:workspace.settings.timeZone))
-        .refreshable { await store.sync() }
+        .refreshable {
+            await store.sync()
+            await store.refreshSuggestions(check: true, force: true)
+        }
         .modifier(SectionScrollToTop(store: store, section: "today", anchor: "todayTop"))
     }
 }
@@ -459,6 +462,8 @@ struct TodayTasks: View {
     var body: some View {
         VStack(alignment:.leading,spacing:24) {
             CaptureCard(store:store)
+            TaskSuggestionsView(store: store)
+                .task(id: workspace.revision) { await store.refreshSuggestions(check: true) }
             HStack(alignment:.firstTextBaseline) {
                 Text(workspace.todayTasks.isEmpty ? "That’s it for today!" : "Followthrough on these first").font(.system(size:18,weight:.semibold))
                 Spacer(minLength:12)
@@ -476,6 +481,7 @@ struct TodayTasks: View {
             }
         }
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: workspace.todayTasks.map(\.id))
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: store.presentationSuggestions.map(\.id))
     }
 }
 struct TaskRow: View {

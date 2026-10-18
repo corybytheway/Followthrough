@@ -47,6 +47,8 @@ Use an available booted simulator from `xcrun simctl list devices available`; do
 
 Pass `--no-session` to the launcher to use browser sign-in or the Keychain session instead of the optional test credential file. Stop a previously launched Mac instance before relaunching it.
 
+For an isolated visual review, Mac and simulator Debug builds accept a simple storage label through `FOLLOWTHROUGH_LOCAL_STORAGE` (for example, `suggested-tasks-mac`). This keeps the local session/cache/outbox under `Application Support/Followthrough Reviews/<label>` instead of the normal app-group location. Labels allow letters, digits, underscores and hyphens only. This override is excluded from Release and physical-device builds. Keep the server/session pointed at the disposable loopback workspace as well; storage isolation does not change the connected account.
+
 ## What is implemented
 
 - Shared task/project models and SwiftUI views; native iPhone tabs and Mac sidebar.

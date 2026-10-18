@@ -45,12 +45,44 @@ export async function DELETE(request: Request) {
         }
       }
       if (credentials.icloud) {
-        const ids = new Set([connection.icloudOutputCalendarId, connection.previousOutput?.provider === 'icloud' ? connection.previousOutput.id : null].filter((id): id is string => !!id));
-        for (const id of ids) { try { await reconcileIcloud(credentials.icloud, id, connection.marker, [], []); } catch { calendarCleanupPending = true; } }
+        const ids = new Set(
+          [
+            connection.icloudOutputCalendarId,
+            connection.previousOutput?.provider === 'icloud'
+              ? connection.previousOutput.id
+              : null,
+          ].filter((id): id is string => !!id),
+        );
+        for (const id of ids) {
+          try {
+            await reconcileIcloud(
+              credentials.icloud,
+              id,
+              connection.marker,
+              [],
+              [],
+            );
+          } catch {
+            calendarCleanupPending = true;
+          }
+        }
       }
       await env.DB.batch([
-        env.DB.prepare('DELETE FROM native_sessions WHERE owner_id = ?').bind(owner),
-        env.DB.prepare('DELETE FROM native_codes WHERE owner_id = ?').bind(owner),
+        env.DB.prepare(
+          'DELETE FROM task_suggestion_states WHERE owner_id = ?',
+        ).bind(owner),
+        env.DB.prepare(
+          'DELETE FROM task_suggestion_locks WHERE owner_id = ?',
+        ).bind(owner),
+        env.DB.prepare(
+          'DELETE FROM task_suggestion_suppressions WHERE owner_id = ?',
+        ).bind(owner),
+        env.DB.prepare('DELETE FROM native_sessions WHERE owner_id = ?').bind(
+          owner,
+        ),
+        env.DB.prepare('DELETE FROM native_codes WHERE owner_id = ?').bind(
+          owner,
+        ),
         env.DB.prepare('DELETE FROM workspaces WHERE owner_id = ?').bind(owner),
         env.DB.prepare(
           'DELETE FROM shortcut_connections WHERE owner_id = ?',
@@ -69,7 +101,9 @@ export async function DELETE(request: Request) {
         ),
         env.DB.prepare('DELETE FROM ai_usage WHERE owner_id = ?').bind(owner),
         env.DB.prepare('DELETE FROM codex_jobs WHERE owner_id = ?').bind(owner),
-        env.DB.prepare('DELETE FROM codex_devices WHERE owner_id = ?').bind(owner),
+        env.DB.prepare('DELETE FROM codex_devices WHERE owner_id = ?').bind(
+          owner,
+        ),
       ]);
     });
     return Response.json(
