@@ -348,6 +348,12 @@ export default function CalendarSettings() {
                 </Button>
               </div>
             )}
+            {status.googleConnected && !status.syncEnabled && status.outputProvider !== 'icloud' && (
+              <p>
+                Google is connected, but task blocks are not being sent yet.
+                Turn on calendar sync below to add them to your calendar.
+              </p>
+            )}
             {status.googleConnected && (
               <Button
                 variant="outline"
@@ -743,7 +749,7 @@ export default function CalendarSettings() {
                         }, 'Your calendar and Followthrough plan are synced.')
                       }
                     >
-                      {status.outputCalendarId
+                      {status.lastSync
                         ? 'Resume sync'
                         : 'Start calendar sync'}
                     </Button>
