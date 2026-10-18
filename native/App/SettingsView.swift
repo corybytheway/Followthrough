@@ -13,6 +13,9 @@ struct SettingsView: View {
     var body: some View {
         Form {
             WorkHoursSettings(store: store, settings: settings)
+            #if os(macOS)
+            MenuBarAppearanceSettings()
+            #endif
             Section("Calendar connections") {
                 if let status = calendarStatus {
                     CalendarAccountRow(name: "Google Calendar", account: status.googleAccount ?? status.googlePrimaryEmail, connected: status.googleConnected)
@@ -105,6 +108,19 @@ struct SettingsView: View {
         calendarAccess.refresh()
     }
 }
+
+#if os(macOS)
+private struct MenuBarAppearanceSettings: View {
+    @AppStorage(MenuBarIconAppearance.monochromeDefaultsKey) private var monochrome = false
+
+    var body: some View {
+        Section("Menu bar") {
+            Toggle("Monochrome icon", isOn: $monochrome)
+                .accessibilityIdentifier("monochromeMenuBarIcon")
+        }
+    }
+}
+#endif
 
 private struct WorkHoursSettings: View {
     let store: WorkspaceStore

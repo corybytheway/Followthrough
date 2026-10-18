@@ -1,11 +1,14 @@
 // Created by Cory McCabe
 import SwiftUI
 
-/// Mint is the action fill; blue is navigation selection. The darker mint
-/// foreground keeps links and small text legible on light surfaces.
+/// Mint and navy form the action palette; blue is navigation selection.
+/// Darker green keeps links and small text legible on light surfaces.
 extension Color {
     static let followMint = Color(hex: "#35EAB1")
     static let followNavy = Color(hex: "#15243B")
+    /// Filled actions invert the brand pair between light and dark surfaces.
+    static var followPrimaryFill: Color { followAdaptiveColor(light: 0x15243B, dark: 0x35EAB1) }
+    static var followPrimaryText: Color { followAdaptiveColor(light: 0x35EAB1, dark: 0x15243B) }
     static let followViolet = Color(hex: "#7948CF")
     static var followAccent: Color { followAdaptiveColor(light: 0x006D49, dark: 0x35EAB1) }
     static var followBlue: Color { followAdaptiveColor(light: 0x245BDF, dark: 0x7AA2FF) }
