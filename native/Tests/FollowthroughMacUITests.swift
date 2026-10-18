@@ -3,6 +3,71 @@ import XCTest
 
 final class FollowthroughMacUITests: XCTestCase {
 
+    @MainActor func testShortcutFocusesMenuBarAndKeepsDraft() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", "http://127.0.0.1:4399"]
+        app.launchEnvironment.removeValue(forKey: "FOLLOWTHROUGH_SESSION")
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["Connect your workspace"].waitForExistence(timeout: 10))
+        app.typeKey("f", modifierFlags: [.control, .option])
+        let input = app.textFields["menuBarCaptureInput"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5), app.debugDescription)
+        input.typeText("Menu bar focused draft")
+        XCTAssertEqual(input.value as? String, "Menu bar focused draft")
+        XCTAssertFalse(app.textFields["captureInput"].exists)
+        input.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+        app.typeKey("f", modifierFlags: [.control, .option])
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, "Menu bar focused draft")
+        input.typeKey(.rightArrow, modifierFlags: [])
+        input.typeText(" preserved")
+        XCTAssertEqual(input.value as? String, "Menu bar focused draft preserved")
+        record(app, "Menu bar shortcut immediately typeable and preserved draft")
+    }
+
+    @MainActor func testGlobalShortcutOpensMenuBarWithoutWorkspaceWindow() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", "http://127.0.0.1:4399"]
+        app.launchEnvironment.removeValue(forKey: "FOLLOWTHROUGH_SESSION")
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["Connect your workspace"].waitForExistence(timeout: 10))
+
+        // The shortcut must work from another app, with the workspace closed.
+        app.typeKey("w", modifierFlags: .command)
+        let finder = XCUIApplication(bundleIdentifier: "com.apple.finder")
+        finder.activate()
+        finder.typeKey("f", modifierFlags: [.control, .option])
+        let input = app.textFields["menuBarCaptureInput"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(app.buttons["Connect your workspace"].isHittable,
+                       "The shortcut must not reopen the workspace window.")
+        let draft = "Menu bar shortcut draft"
+        input.typeText(draft)
+        XCTAssertEqual(input.value as? String, draft, "Typing must work without clicking the field.")
+        record(app, "Global shortcut menu bar from Finder with workspace closed")
+
+        input.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+        finder.activate()
+        finder.typeKey("f", modifierFlags: [.control, .option])
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, draft, "Reopening must preserve the draft.")
+        input.typeKey(.rightArrow, modifierFlags: [])
+        input.typeText(" preserved")
+        XCTAssertEqual(input.value as? String, draft + " preserved")
+        // Pressing again while open must refocus, rather than dismissing it.
+        app.typeKey("f", modifierFlags: [.control, .option])
+        XCTAssertTrue(input.exists)
+        XCTAssertFalse(app.buttons["Connect your workspace"].isHittable)
+        record(app, "Global shortcut menu bar repeated press preserves draft")
+    }
+
+
     @MainActor func testTodayCaptureScrollsToTopAndPreservesCurrentPage() throws {
         continueAfterFailure = false
         let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-add-task-scroll-fixture.json")
@@ -359,7 +424,7 @@ final class FollowthroughMacUITests: XCTestCase {
     }
 
     @MainActor private func record(_ app: XCUIApplication, _ name: String) {
-        let shot = app.windows.firstMatch.screenshot()
+        let shot = app.windows.firstMatch.exists ? app.windows.firstMatch.screenshot() : XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(screenshot:shot); attachment.name=name; attachment.lifetime = .keepAlways; add(attachment)
         let hierarchy = XCTAttachment(string:app.debugDescription); hierarchy.name=name+" hierarchy"; hierarchy.lifetime = .keepAlways; add(hierarchy)
         let directory=URL(fileURLWithPath:"/tmp/followthrough-mac-evidence",isDirectory:true)

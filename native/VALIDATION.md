@@ -332,3 +332,9 @@ This later pass used the canonical `main` checkout and does not replace the hist
 
 - The approved focused card shadow combines a broad 36-point blur at 26% black with a soft 12-point blur at 12% black. It is shared by Today and floating capture; idle cards remain flat.
 - Signed Mac and physical iPhone builds passed and launched. Direct Mac capture inspection and a conventional iPhone 17e / iOS 27.0 Today screenshot verified the stronger soft edge without clipping. The iPhone screenshot smoke passed 1/1 with no runtime warnings: /tmp/followthrough-capture-dual-shadow-ios.xcresult. Physical-screen appearance was not separately captured.
+
+## 2026-10-18 — Mac menu bar capture shortcut
+
+- Control–Option–F now opens the status-item popover and requests field focus without opening or activating the workspace. Clicking the menu bar icon uses the same presentation. The app remains running when its last workspace window closes. Each reopening creates a fresh hosting view while retaining the workspace-owned draft; repeated presses while open refocus the existing field. The compact composer vertically centers its text field and send button.
+- The signed Mac build passed. An earlier closed-window run reached the menu bar field from Finder and accepted typing without a click, but failed in the screenshot helper, which now supports a popover without a workspace window. A focused test then exposed a reopening issue; fresh hosting views address that path.
+- Full final UI verification remains incomplete. The final two-test run lost its accessibility connection and reported “Not authorized for performing UI testing actions.” Result: `/tmp/followthrough-menu-bar-fixed.xcresult`. Tests use an unused loopback origin and do not submit captures. No release operation was performed during validation.
