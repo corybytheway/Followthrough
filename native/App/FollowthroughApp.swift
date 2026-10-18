@@ -382,7 +382,11 @@ private struct TaskSyncConflictView: View {
         Button {
             if store.resolveSavedTask(conflict, fields: selectedFields) { dismiss() }
         } label: {
-            Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(Color.followPrimaryText)
+            Image(systemName: "checkmark")
+                .renderingMode(.original)
+                .symbolRenderingMode(.palette)
+                .fontWeight(.semibold)
+                .foregroundStyle(Color.followPrimaryText)
         }
         .tint(.followPrimaryFill)
         .disabled(selectedFields.isEmpty || store.syncing)

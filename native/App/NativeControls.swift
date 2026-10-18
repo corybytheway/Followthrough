@@ -175,16 +175,21 @@ struct EditorConfirmButton: View {
         Group {
             if #available(iOS 26, macOS 26, *) {
                 Button(role: .confirm, action: onSave) {
-                    Label("Save changes", systemImage: "checkmark")
+                    // Preserve the adaptive glyph colors in native toolbars.
+                    Image(systemName: "checkmark")
+                        .renderingMode(.original)
+                        .symbolRenderingMode(.palette)
                         .foregroundStyle(enabled ? Color.followPrimaryText : Color.secondary)
                 }
                 .labelStyle(.iconOnly)
             } else {
                 Button(action: onSave) {
-                    Label("Save changes", systemImage: "checkmark")
+                    Image(systemName: "checkmark")
+                        .renderingMode(.original)
+                        .symbolRenderingMode(.palette)
                         .foregroundStyle(enabled ? Color.followPrimaryText : Color.secondary)
                 }
-                    .labelStyle(.iconOnly)
+                .labelStyle(.iconOnly)
             }
         }
         .modifier(FollowthroughProminentToolbarStyle())
