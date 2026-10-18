@@ -73,10 +73,12 @@ struct TaskEditor: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     #if os(macOS)
-                    Button("Save", action: save)
+                    Button(action: save) {
+                        Text("Save")
+                            .foregroundStyle(validDraft && hasChanges ? Color.followPrimaryText : Color.secondary)
+                    }
                         .buttonStyle(.borderedProminent)
                         .tint(.followPrimaryFill)
-                        .foregroundStyle(validDraft && hasChanges ? Color.followPrimaryText : Color.secondary)
                         .keyboardShortcut(.defaultAction)
                         .disabled(!validDraft || !hasChanges)
                         .accessibilityIdentifier("saveTask")

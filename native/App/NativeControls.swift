@@ -176,16 +176,19 @@ struct EditorConfirmButton: View {
             if #available(iOS 26, macOS 26, *) {
                 Button(role: .confirm, action: onSave) {
                     Label("Save changes", systemImage: "checkmark")
+                        .foregroundStyle(enabled ? Color.followPrimaryText : Color.secondary)
                 }
                 .labelStyle(.iconOnly)
             } else {
-                Button("Save changes", systemImage: "checkmark", action: onSave)
+                Button(action: onSave) {
+                    Label("Save changes", systemImage: "checkmark")
+                        .foregroundStyle(enabled ? Color.followPrimaryText : Color.secondary)
+                }
                     .labelStyle(.iconOnly)
             }
         }
         .modifier(FollowthroughProminentToolbarStyle())
         .tint(.followPrimaryFill)
-        .foregroundStyle(enabled ? Color.followPrimaryText : Color.secondary)
         .keyboardShortcut(.defaultAction)
         .disabled(!enabled)
         .accessibilityLabel("Save changes")

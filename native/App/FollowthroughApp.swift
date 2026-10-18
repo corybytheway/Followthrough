@@ -1138,10 +1138,11 @@ private struct ProjectColorPalette: View {
                 .safeAreaInset(edge:.bottom,spacing:0) {
                     HStack {
                         Spacer()
-                        Button("Done") { showingCustomColor = false }
+                        Button { showingCustomColor = false } label: {
+                            Text("Done").foregroundStyle(Color.followPrimaryText)
+                        }
                             .buttonStyle(.borderedProminent)
                             .tint(.followPrimaryFill)
-                            .foregroundStyle(Color.followPrimaryText)
                             .controlSize(.large)
                             .accessibilityIdentifier("doneProjectColorPicker")
                     }
