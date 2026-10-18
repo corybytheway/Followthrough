@@ -10,7 +10,7 @@ import {
   suggestionScore,
 } from './suggestion-engine';
 import { hasExistingSuggestionProjects } from './suggestion-model';
-import { acceptedSuggestionDraft } from './suggestion-acceptance';
+import { acceptedSuggestionDraft, easierStartSteps } from './suggestion-acceptance';
 import { splitSuggestionCandidate, partitionSuggestionDrafts } from './suggestion-groups';
 import type {
   SuggestionCandidate,
@@ -471,19 +471,7 @@ export async function suggestionAction(owner: string, raw: unknown) {
               ),
               { status: 409 },
             );
-          const next = target.steps.find((s) => !s.done);
-          const steps = next
-            ? target.steps.map((s) =>
-                s.id === next.id ? { ...s, title: drafts[0].title } : s,
-              )
-            : [
-                ...target.steps,
-                {
-                  id: crypto.randomUUID(),
-                  title: drafts[0].title,
-                  done: false,
-                },
-              ];
+          const steps = easierStartSteps(target.steps, drafts[0].title, crypto.randomUUID());
           mutation = {
             action: 'update_task',
             id: target.id,

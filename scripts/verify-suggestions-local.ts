@@ -430,6 +430,10 @@ assert.equal(
   saved.tasks.find((t: Task) => t.id === avoided.id)!.steps[0].title,
   modified[0].title,
 );
+assert.deepEqual(
+  saved.tasks.find((t: Task) => t.id === avoided.id)!.steps.slice(1),
+  avoided.steps,
+);
 // Denied Gmail consent must not replace or discard existing Calendar credentials.
 const oauthState = 'synthetic-consent-denial';
 const connectionRow = sql(
