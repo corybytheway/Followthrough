@@ -15,6 +15,7 @@ import {
 } from '@/lib/google-calendar';
 import { hash } from '@/lib/calendar-security';
 import { InputError } from '@/lib/validation';
+import { shouldStartGoogleSyncOnConnect } from '@/lib/calendar-model';
 export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   let success = false;
@@ -71,6 +72,7 @@ export async function GET(request: Request) {
       );
       if (!primary)
         throw new InputError('Google did not return your primary calendar.');
+      const startSync = shouldStartGoogleSyncOnConnect(connection);
       credentials.google.refreshToken = tokens.refresh_token;
       credentials.google.scopes = tokens.scope?.split(' ') || GOOGLE_SCOPES;
       if (
@@ -81,6 +83,7 @@ export async function GET(request: Request) {
       connection.outputCalendarId = primary.id;
       connection.outputCalendarName = primary.summary;
       connection.outputOnPrimary = true;
+      if (startSync) connection.syncEnabled = true;
       connection.googleCalendars = calendarChoices(calendars);
       connection.selectedGoogle = [
         ...new Set([

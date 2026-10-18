@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   calendarAccountIdentities,
   emptyCalendarConnection,
+  shouldStartGoogleSyncOnConnect,
   type CalendarCredentials,
 } from '../lib/calendar-model';
 
@@ -27,6 +28,19 @@ void test('calendar identities use provider account metadata and never include c
   for (const value of ['client-id', 'client-secret', 'refresh-token', 'apple-password', 'zoho-password']) {
     assert.ok(!JSON.stringify(identities).includes(value));
   }
+});
+
+void test('first Google connection starts task publication without resuming a paused connection', () => {
+  const connection = emptyCalendarConnection();
+  assert.equal(shouldStartGoogleSyncOnConnect(connection), true);
+  connection.outputCalendarId = 'owner@example.com';
+  assert.equal(shouldStartGoogleSyncOnConnect(connection), false);
+  connection.outputCalendarId = null;
+  connection.lastSync = '2026-10-17T00:00:00.000Z';
+  assert.equal(shouldStartGoogleSyncOnConnect(connection), false);
+  connection.lastSync = null;
+  connection.outputProvider = 'icloud';
+  assert.equal(shouldStartGoogleSyncOnConnect(connection), false);
 });
 
 void test('Google account is absent when disconnected or when primary id is not an account email', () => {
