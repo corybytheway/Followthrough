@@ -3,7 +3,6 @@ import { requireOwner, fail } from '@/lib/http';
 import { snapshot } from '@/lib/store';
 import {
   exportSuggestionData,
-  suggestionsAvailable,
 } from '@/lib/suggestion-store';
 export const dynamic = 'force-dynamic';
 const escapeICS = (value: string) =>
@@ -19,14 +18,13 @@ export async function GET(request: Request) {
     const owner = await requireOwner(request),
       state = await snapshot(owner),
       format = new URL(request.url).searchParams.get('format');
-    if (format !== 'ics')
+    if (format !== 'ics') {
+      const suggestionData = await exportSuggestionData(owner);
       return new Response(
         JSON.stringify(
           {
             ...state,
-            ...(suggestionsAvailable(owner)
-              ? { suggestionData: await exportSuggestionData(owner) }
-              : {}),
+            ...(suggestionData ? { suggestionData } : {}),
           },
           null,
           2,
@@ -40,6 +38,7 @@ export async function GET(request: Request) {
           },
         },
       );
+    }
     const lines = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',

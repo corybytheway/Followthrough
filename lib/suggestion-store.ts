@@ -133,13 +133,18 @@ async function rememberSuppression(owner: string, item: TaskSuggestion) {
     .run();
 }
 export async function exportSuggestionData(owner: string) {
+  // Data access survives pilot rollback or reassignment; keep every query owner-scoped.
+  const stored = await env.DB.prepare(
+    'SELECT payload FROM task_suggestion_states WHERE owner_id = ?',
+  ).bind(owner).first<{ payload: string }>();
   const suppressions = await env.DB.prepare(
     'SELECT suggestion_id,state,accepted_task_ids,expires_at FROM task_suggestion_suppressions WHERE owner_id = ? AND expires_at > ?',
   )
     .bind(owner, Date.now())
     .all();
+  if (!stored && !suppressions.results.length) return null;
   return {
-    ...(await readSuggestions(owner)),
+    ...(stored ? await unseal<SuggestionState>(stored.payload, encryptionKey(), `suggestions:${owner}`) : emptyState()),
     suppressions: suppressions.results,
   };
 }
