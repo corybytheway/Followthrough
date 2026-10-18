@@ -55,6 +55,9 @@ struct RootView: View {
                 #if os(macOS)
                 NavigationSplitView {
                     SidebarView(store: store)
+                        .blur(radius: store.captureFocused && store.selectedSection == "today" ? 8 : 0)
+                        .disabled(store.captureFocused)
+                        .accessibilityHidden(store.captureFocused)
                 } detail: {
                     NavigationStack {
                         WorkspaceSection(store: store, section: store.selectedSection)
@@ -68,12 +71,7 @@ struct RootView: View {
                 #endif
             }
         }
-        .blur(radius: store.captureFocused ? 8 : 0)
-        .allowsHitTesting(!store.captureFocused)
-        .accessibilityHidden(store.captureFocused)
-        .overlay {
-            if store.captureFocused { CaptureFocusOverlay(store: store) }
-        }
+        .modifier(CapturePresentation(store: store))
         .sheet(item: $store.selectedTask) { TaskEditor(store: store, task: $0) }
         .onChange(of: phase) { _, value in
             if value == .active { Task { await store.sync(); store.synchronizeDeviceTimeZone() } }
@@ -417,32 +415,64 @@ private struct TaskSyncConflictView: View {
 struct TodayView: View {
     @Bindable var store: WorkspaceStore
     let workspace: Workspace
+    private var navigationHeading: String {
+        #if os(macOS)
+        ""
+        #else
+        TodayHeading.title(timeZone:workspace.settings.timeZone)
+        #endif
+    }
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:28) {
                 #if os(macOS)
                 TodayHeading(timeZone:workspace.settings.timeZone)
+                    .blur(radius: store.captureFocused ? 8 : 0)
+                    .accessibilityHidden(store.captureFocused)
                 #endif
                 #if os(macOS)
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment:.top,spacing:24) {
                         TodayTasks(store:store,workspace:workspace).frame(minWidth:420,maxWidth:.infinity)
                         DaySchedule(workspace:workspace,onSelect:{store.selectedTask = $0}).frame(width:300)
+                            .blur(radius: store.captureFocused ? 8 : 0)
+                            .disabled(store.captureFocused).accessibilityHidden(store.captureFocused)
                     }
                     VStack(alignment:.leading,spacing:24) {
                         TodayTasks(store:store,workspace:workspace)
                         DaySchedule(workspace:workspace,onSelect:{store.selectedTask = $0})
+                            .blur(radius: store.captureFocused ? 8 : 0)
+                            .disabled(store.captureFocused).accessibilityHidden(store.captureFocused)
                     }
                 }
                 #else
                 TodayTasks(store:store,workspace:workspace)
                 DaySchedule(workspace:workspace,onSelect:{store.selectedTask = $0})
+                    .blur(radius: store.captureFocused ? 8 : 0)
+                    .disabled(store.captureFocused).accessibilityHidden(store.captureFocused)
                 #endif
             }.padding(24).frame(maxWidth:1300).environment(\.timeZone,TimeZone(identifier:workspace.settings.timeZone) ?? .current)
+                #if os(iOS)
+                .background {
+                    IOSCaptureScrollToTop(focused: store.captureFocused && store.selectedSection == "today",
+                                          requestID: store.captureFocusRequestID)
+                }
+                #endif
                 .id("todayTop")
-        }.background(Color.canvas).navigationTitle(TodayHeading.title(timeZone:workspace.settings.timeZone))
+        }
+        .transformAnchorPreference(key: CaptureFocusBounds.self, value: .bounds) { value, anchor in
+            value.viewport = anchor
+        }
+        .background(Color.canvas).navigationTitle(navigationHeading)
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.large)
+        #endif
         .refreshable { await store.sync() }
+        #if os(macOS)
+        .modifier(SectionScrollToTop(store: store, section: "today", anchor: "todayTop", captureAnchor: "todayTop"))
+        #else
         .modifier(SectionScrollToTop(store: store, section: "today", anchor: "todayTop"))
+        #endif
     }
 }
 struct TodayHeading: View {
@@ -458,7 +488,21 @@ struct TodayTasks: View {
     let workspace: Workspace
     var body: some View {
         VStack(alignment:.leading,spacing:24) {
-            CaptureCard(store:store)
+            InlineCaptureCard(store: store)
+            TodayTaskList(store: store, workspace: workspace)
+                .blur(radius: store.captureFocused ? 8 : 0)
+                .disabled(store.captureFocused)
+                .accessibilityHidden(store.captureFocused)
+        }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: workspace.todayTasks.map(\.id))
+    }
+}
+struct TodayTaskList: View {
+    @Bindable var store: WorkspaceStore
+    let workspace: Workspace
+
+    var body: some View {
+        VStack(alignment:.leading,spacing:24) {
             HStack(alignment:.firstTextBaseline) {
                 Text(workspace.todayTasks.isEmpty ? "That’s it for today!" : "Followthrough on these first").font(.system(size:18,weight:.semibold))
                 Spacer(minLength:12)
@@ -475,7 +519,6 @@ struct TodayTasks: View {
                     .overlay { RoundedRectangle(cornerRadius:18).strokeBorder(.primary.opacity(0.06),lineWidth:1) }
             }
         }
-        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: workspace.todayTasks.map(\.id))
     }
 }
 struct TaskRow: View {

@@ -2,6 +2,10 @@
 import SwiftUI
 
 #if os(iOS)
+extension EnvironmentValues {
+    @Entry var workspaceKeyboardVisible = false
+}
+
 struct IOSWorkspaceNavigation: View {
     @Bindable var store: WorkspaceStore
     @State private var captureTabSelected = false
@@ -34,6 +38,7 @@ struct IOSWorkspaceNavigation: View {
         }
         .tabViewStyle(.tabBarOnly)
         .tint(.followBlue)
+        .modifier(IOSKeyboardVisibility())
         .onChange(of: captureTabSelected) { _, selected in
             guard selected else { return }
             // Let TabView observe the tap before restoring its selection.
@@ -54,6 +59,27 @@ struct IOSWorkspaceNavigation: View {
                 else { store.selectSection(section) }
             }
         )
+    }
+}
+
+private struct IOSKeyboardVisibility: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var visible = false
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.workspaceKeyboardVisible, visible)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) {
+                setVisible(true, notification: $0)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) {
+                setVisible(false, notification: $0)
+            }
+    }
+
+    private func setVisible(_ value: Bool, notification: Notification) {
+        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: duration)) { visible = value }
     }
 }
 
@@ -103,6 +129,7 @@ private struct IOSAdaptiveNavigationInset: ViewModifier {
 
 private struct IOSNavigationInset: ViewModifier {
     @Bindable var store: WorkspaceStore
+    @Environment(\.workspaceKeyboardVisible) private var keyboardVisible
     var usesVerticalBar = false
 
     func body(content: Content) -> some View {
@@ -110,23 +137,25 @@ private struct IOSNavigationInset: ViewModifier {
         // receive the inset rather than losing it at a hosting boundary.
         // Keep the content's identity stable while the bar moves, so pushed
         // project pages and per-tab scroll positions survive pose changes.
-        content.safeAreaInset(edge: .bottom, spacing: usesVerticalBar ? 0 : 8) {
-            if !usesVerticalBar {
+        content.safeAreaInset(edge: .bottom, spacing: usesVerticalBar || keyboardVisible ? 0 : 8) {
+            if !usesVerticalBar && !keyboardVisible {
                 IOSNavigationBar(selection: store.selectedSection, onSelect: store.selectSection) { store.focusCapture() }
                     .padding(.horizontal, 12)
                     .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .toolbarVisibility(usesVerticalBar ? .visible : .hidden, for: .tabBar)
+        .toolbarVisibility(usesVerticalBar && !keyboardVisible ? .visible : .hidden, for: .tabBar)
     }
 }
 
 @available(iOS 27.1, *)
 private struct IOSCaptureTabSurfaceContext: View {
     @Environment(\.toolbarVerticalEdge) private var verticalEdge
+    @Environment(\.workspaceKeyboardVisible) private var keyboardVisible
 
     var body: some View {
-        IOSCaptureTabSurface(enabled: verticalEdge != nil)
+        IOSCaptureTabSurface(enabled: verticalEdge != nil && !keyboardVisible)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
@@ -159,6 +188,21 @@ private struct IOSCaptureTabSurface: UIViewControllerRepresentable {
             view = UIView()
             view.backgroundColor = .clear
             view.isUserInteractionEnabled = false
+        }
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            NotificationCenter.default.addObserver(self, selector: #selector(keyboardDidHide),
+                                                  name: UIResponder.keyboardDidHideNotification, object: nil)
+        }
+
+        deinit { NotificationCenter.default.removeObserver(self) }
+
+        @objc private func keyboardDidHide(_ notification: Notification) {
+            // The bar can finish moving after the bridge's last layout pass.
+            // Measure its final native frame without delaying input or motion.
+            tabBarController?.view.layoutIfNeeded()
+            refreshSurface()
         }
 
         override func viewDidAppear(_ animated: Bool) {

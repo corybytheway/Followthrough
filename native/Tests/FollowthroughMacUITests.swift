@@ -3,6 +3,116 @@ import XCTest
 
 final class FollowthroughMacUITests: XCTestCase {
 
+    @MainActor func testTodayCaptureScrollsToTopAndPreservesCurrentPage() throws {
+        continueAfterFailure = false
+        let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-add-task-scroll-fixture.json")
+        guard let data = try? Data(contentsOf: fixtureURL),
+              let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let server = fixture["server"] as? String,
+              ["127.0.0.1", "localhost"].contains(URL(string: server)?.host ?? ""),
+              let session = fixture["session"] as? [String: Any] else {
+            throw XCTSkip("Requires the isolated read-only capture fixture with scheduled rows.")
+        }
+        let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", server]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = try JSONSerialization.data(withJSONObject: session).base64EncodedString()
+        app.launch()
+        defer { app.terminate() }
+
+        let input = app.textFields["captureInput"]
+        let close = app.buttons["Close capture"]
+        XCTAssertTrue(input.waitForExistence(timeout: 25), app.debugDescription)
+        let fixtureTask = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "completeTask_capture-qa-")).firstMatch
+        XCTAssertTrue(fixtureTask.waitForExistence(timeout: 10))
+        let scroll = app.scrollViews.containing(.textField, identifier: "captureInput").firstMatch
+        let originalTop = input.frame.minY
+        scroll.scroll(byDeltaX: 0, deltaY: -160)
+        XCTAssertLessThan(input.frame.minY, originalTop - 10, "The inline card must scroll with Today.")
+        app.buttons["Today"].firstMatch.click()
+        let returnedToTop = NSPredicate { _, _ in input.isHittable && abs(input.frame.minY - originalTop) < 5 }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: returnedToTop, evaluatedWith: nil)], timeout: 5), .completed)
+        let inlineFrame = input.frame
+        XCTAssertEqual(app.textFields.matching(identifier: "captureInput").count, 1)
+        record(app, "Single capture Mac 01 inline Today")
+        app.activate()
+        input.click()
+        XCTAssertTrue(close.waitForExistence(timeout: 5), app.debugDescription)
+        let draft = "Read-only capture draft"
+        input.typeText(draft)
+        XCTAssertEqual(input.value as? String, draft, "Typing must be accepted immediately after focus.")
+        XCTAssertEqual(app.textFields.matching(identifier: "captureInput").count, 1)
+        XCTAssertEqual(input.frame.minY, inlineFrame.minY, accuracy: 1, "A visible Today editor must focus in place.")
+        XCTAssertEqual(input.frame.width, inlineFrame.width, accuracy: 1, "Focus must retain the inline card's width.")
+        record(app, "Single capture Mac 02 focused Today")
+        app.activate()
+        close.click()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(input.isHittable)
+        XCTAssertEqual(input.value as? String, draft)
+
+        scroll.scroll(byDeltaX: 0, deltaY: -700)
+        XCTAssertFalse(input.isHittable, "Exercise adding when Today's editor is offscreen.")
+        app.activate()
+        app.windows.firstMatch.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        var previousFrame = CGRect.null
+        var stableFrames = 0
+        let revealedCapture = NSPredicate { _, _ in
+            let frame = close.frame
+            stableFrames = frame == previousFrame ? stableFrames + 1 : 0
+            previousFrame = frame
+            return input.isHittable && close.isHittable && stableFrames >= 2
+                && abs(input.frame.minY - originalTop) < 2
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: revealedCapture, evaluatedWith: nil)], timeout: 5), .completed,
+                       "Command-N must return Today to the very top, including the date above the editor.")
+        XCTAssertEqual(input.value as? String, draft)
+        record(app, "Today capture Mac full top after Command-N")
+        close.click()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        for distance in [-160.0, -700.0] {
+            scroll.scroll(byDeltaX: 0, deltaY: distance)
+            XCTAssertLessThan(input.frame.minY, originalTop - 10, "Exercise capture from partial and offscreen positions.")
+            app.activate()
+            app.windows.firstMatch.typeKey("n", modifierFlags: .command)
+            // A repeated request must also work while capture is focused.
+            app.activate()
+            app.windows.firstMatch.typeKey("n", modifierFlags: .command)
+            let backAtTop = NSPredicate { _, _ in
+                input.isHittable && close.isHittable && abs(input.frame.minY - originalTop) < 2
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: backAtTop, evaluatedWith: nil)], timeout: 5), .completed,
+                           "Every Command-N request must return to the full Today top even when capture is already focused.")
+            XCTAssertEqual(app.textFields.matching(identifier: "captureInput").count, 1)
+            XCTAssertEqual(input.value as? String, draft)
+            close.click()
+            XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        }
+        XCTAssertEqual(app.sheets.count, 0, "Closing capture must not activate content behind it.")
+
+        for page in ["Tasks", "Release QA", "Settings"] {
+            app.activate()
+            app.buttons[page].firstMatch.click()
+            let pageTitle = app.windows.firstMatch.title
+            XCTAssertFalse(input.exists, "Only Today has an inline capture editor.")
+            app.activate()
+            app.windows.firstMatch.typeKey("n", modifierFlags: .command)
+            XCTAssertTrue(close.waitForExistence(timeout: 5))
+            XCTAssertEqual(app.textFields.matching(identifier: "captureInput").count, 1)
+            XCTAssertEqual(input.value as? String, draft)
+            record(app, "Single capture Mac over " + page)
+            close.click()
+            XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+            XCTAssertFalse(input.exists)
+            XCTAssertEqual(app.windows.firstMatch.title, pageTitle, "Capture must return to the same page.")
+        }
+        XCTAssertTrue(app.descendants(matching: .any)["workStartPicker"].firstMatch.isHittable)
+        app.buttons["Today"].firstMatch.click()
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, draft)
+        record(app, "Single capture Mac 03 returned Today")
+    }
+
     @MainActor func testNewTaskActionsFocusCaptureWithoutClickingTheField() throws {
         continueAfterFailure = false
         let app = try localApplication()

@@ -880,10 +880,10 @@ export default function FollowthroughApp({
                     onKeyDown={(event) =>
                       handleCaptureKeyDown(event, () => void capture())
                     }
-                    placeholder="I need to reply to Samuel's email, edit a view that'll take 4 hours, but the top priority is fix the faucet leak downstairs which should take about 1.5 hours."
+                    placeholder="Describe a task, or several, in a single prompt. Rambling and details encouraged."
                   />
                   <div className="capture-footer">
-                    <span>One request. Every independent outcome.</span>
+                    <span>Enter to add</span>
                     <Button
                       className="capture-button"
                       disabled={saving || !source.trim()}
