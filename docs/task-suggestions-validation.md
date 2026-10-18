@@ -4,7 +4,7 @@ Author: Cory McCabe
 
 ## Local implementation
 
-Branch `feature/task-suggestions` in the isolated managed worktree. The existing checkout and its unpublished edits are preserved. No GitHub push or merge has been performed. The owner pilot service rollout is recorded below; Gmail account permission has not been granted.
+Branch `feature/task-suggestions` in the isolated managed worktree. The existing checkout and its unpublished edits are preserved. The owner pilot service rollout and later Gmail activation are recorded below. Historical check counts and deployment notes describe their respective revisions; the current PR checks are listed at the end.
 
 The feature requires `SUGGESTIONS_PILOT_ENABLED=true` and an authenticated owner matching `CALENDAR_BACKGROUND_OWNER_ID`. The flag defaults to false. Gmail has a separate explicit consent and enablement state; local routine, workflow and smaller-start suggestions do not require Gmail.
 
@@ -64,3 +64,9 @@ Both signed native builds passed. `native/Scripts/verify-suggestion-acceptance.s
 ## Wider rollout
 
 Keep the owner gate until quality review passes. Wider availability must wait for the applicable [Gmail restricted-scope verification and security assessment](https://developers.google.com/workspace/gmail/api/auth/scopes). The privacy notice explains Google Limited Use and [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data); `store: false` alone does not establish Zero Data Retention.
+
+## PR preparation — 2026-10-18
+
+Reconciled the full feature with current `origin/main`, preserving the newer inline capture/focus, Mac appearance preference and first-Google-connection sync behavior. Updated the isolated Google callback harness for the optional Gmail dependencies. All **232 tests**, TypeScript checking, the production web build, and signed Debug builds for macOS and physical iOS passed. Repository-wide lint still reports existing issues outside this feature, including the Google callback harness Function constructor, Codex handoff effect, and older test/scripts. The new checklist validator lint finding was fixed.
+
+The current pilot uses five-minute Gmail checks and a five-day inactivity threshold for testing. Feedback sits outside the card with the approved compact spacing. The three-card approval image is a temporary web preview at iPhone width using repeated sample cards, not a native-device screenshot or added account data. Native accessibility-size rendering, VoiceOver, and the broader live-provider quality matrix remain follow-up QA; builds do not establish those checks.
