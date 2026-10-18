@@ -312,3 +312,23 @@ This later pass used the canonical `main` checkout and does not replace the hist
 - Focused Mac and iPhone simulator UI regressions passed, including Projects in both Grid and List layouts and the complete Settings header below the navigation bar. The tests use opt-in, isolated loopback fixtures; normal runs skip them when those fixtures are absent. Result bundles are /tmp/followthrough-tab-reselection-mac-pass.xcresult, /tmp/followthrough-tab-reselection-ios-verified.xcresult, /tmp/followthrough-tab-reselection-ios-settings-final.xcresult, and /tmp/followthrough-tab-reselection-ios-projects-restarted.xcresult.
 - Signed Mac, iPhone simulator, and physical-iPhone Debug builds passed. The physical update installed over com.ethos.followthrough and launched on the connected iPhone 17e without resetting its stored data. Physical-screen behavior was not separately inspected.
 - Before committing the accumulated native and web changes, all 170 JavaScript tests, TypeScript validation, the web production build, and all nine standalone shared-model regression runners passed. Lint was compared with origin/main; existing baseline failures are recorded in the pull request.
+
+
+## Today capture returns to the full top — October 17, 2026
+
+- Opening capture on Today targets the full page top, including the date, with the existing 160 ms animation and immediate input focus. Each capture request has an identity so repeated requests still scroll when capture is already focused. Keyboard/window viewport changes retain the top alignment, and Reduce Motion continues to remove the animation.
+- The Mac regression passed 1/1 in 71.981 seconds: partial and deep scrolling, repeated Command-N, a single editor, retained draft, and capture over other pages. Direct Mac UI checks also verified Command-N from both scroll positions, repeated shortcuts, the blurred date above the card, and Escape dismissal. Result: /tmp/followthrough-today-top-mac-scroll.xcresult.
+- The iOS regression passed 1/1 in 80.997 seconds with no runtime warnings: partial and deep scrolling restored the full date and original top padding; increasing keyboard height by 40 points retained that position and kept submit visible. Result: /tmp/followthrough-today-full-top-ios-final.xcresult. Tests used the isolated read-only loopback fixture.
+
+
+## Expanded iPhone date after opening capture — October 17, 2026
+
+- Reproduced the collapsed-title bug on a conventional iPhone 17e simulator running iOS 27.0, the latest installed runtime compatible with that device. The earlier Duo regression did not cover this layout. After partial scroll and Add, the date was 20.67 points high rather than the original 40.67; navigation height was 54 instead of 106, and card Y was 125 instead of 177.
+- Scrolling to the SwiftUI content ID or scroll edge, and the native current adjusted inset, all left the title collapsed. Today now remembers the expanded native top inset for the viewport and restores it on capture requests and keyboard frame changes. The iOS-only bridge keeps the original card and 160 ms transition. The Mac path is unchanged.
+- The strengthened iPhone regression passed 1/1 in 64.761 seconds, starting its first capture from an idle partial scroll without an earlier focus. Both partial and deep scroll cases restored the large date, navigation height, and original card Y; increasing keyboard height by 51 points retained that position and a visible submit button. Result: /tmp/followthrough-expanded-date-remembered.xcresult.
+
+
+## Focused capture shadow — October 17, 2026
+
+- The approved focused card shadow combines a broad 36-point blur at 26% black with a soft 12-point blur at 12% black. It is shared by Today and floating capture; idle cards remain flat.
+- Signed Mac and physical iPhone builds passed and launched. Direct Mac capture inspection and a conventional iPhone 17e / iOS 27.0 Today screenshot verified the stronger soft edge without clipping. The iPhone screenshot smoke passed 1/1 with no runtime warnings: /tmp/followthrough-capture-dual-shadow-ios.xcresult. Physical-screen appearance was not separately captured.

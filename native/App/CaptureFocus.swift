@@ -1,19 +1,132 @@
 // Created by Cory McCabe
 import SwiftUI
 
-struct CaptureFocusOverlay: View {
+struct CaptureFocusAnchors {
+    var card: Anchor<CGRect>?
+    var viewport: Anchor<CGRect>?
+}
+
+struct CaptureFocusBounds: PreferenceKey {
+    static let defaultValue = CaptureFocusAnchors()
+
+    static func reduce(value: inout CaptureFocusAnchors, nextValue: () -> CaptureFocusAnchors) {
+        let next = nextValue()
+        if let card = next.card { value.card = card }
+        if let viewport = next.viewport { value.viewport = viewport }
+    }
+}
+
+/// Today's editor keeps its identity and position when it receives focus.
+struct InlineCaptureCard: View {
+    @Bindable var store: WorkspaceStore
+
+    var body: some View {
+        CaptureCard(store: store, focusedPresentation: store.captureFocused && store.selectedSection == "today")
+            .id("todayCapture")
+            .anchorPreference(key: CaptureFocusBounds.self, value: .bounds) {
+                CaptureFocusAnchors(card: $0)
+            }
+    }
+}
+
+private struct CaptureCardShadow: ViewModifier {
+    var visible = true
+
+    func body(content: Content) -> some View {
+        content
+            .shadow(color: .black.opacity(visible ? 0.26 : 0), radius: 36, x: 0, y: 8)
+            .shadow(color: .black.opacity(visible ? 0.12 : 0), radius: 12, x: 0, y: 4)
+    }
+}
+
+struct CapturePresentation: ViewModifier {
     @Bindable var store: WorkspaceStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var focusesToday: Bool { store.selectedSection == "today" && store.workspace != nil }
+
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: store.captureFocused && !focusesToday ? 8 : 0)
+            .allowsHitTesting(!store.captureFocused || focusesToday)
+            .accessibilityHidden(store.captureFocused && !focusesToday)
+            .overlayPreferenceValue(CaptureFocusBounds.self) { anchors in
+                if store.captureFocused {
+                    if focusesToday {
+                        if let card = anchors.card {
+                            CaptureTodaySpotlight(store: store, card: card, viewport: anchors.viewport)
+                                .transition(.opacity)
+                        }
+                    } else {
+                        CaptureFocusOverlay(store: store)
+                            .transition(.opacity)
+                    }
+                }
+            }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: store.captureFocused)
+    }
+}
+
+private struct CaptureTodaySpotlight: View {
+    let store: WorkspaceStore
+    let card: Anchor<CGRect>
+    let viewport: Anchor<CGRect>?
+
     var body: some View {
-        ZStack {
+        GeometryReader { geometry in
+            let cardFrame = geometry[card]
+            let visibleFrame = viewport.map { cardFrame.intersection(geometry[$0]) } ?? cardFrame
+            let mask = CaptureSpotlightMask(cardFrame: visibleFrame)
+
             Color.black.opacity(0.3)
-                .ignoresSafeArea()
+                .mask { mask.fill(style: FillStyle(eoFill: true)) }
+                .contentShape(mask, eoFill: true)
                 .onTapGesture { store.dismissCaptureFocus() }
-            CaptureCard(store: store, focusedPresentation: true)
-                .frame(maxWidth: 600)
-                .padding(24)
-                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
+                .accessibilityHidden(true)
+        }
+        .ignoresSafeArea()
+    }
+}
+
+private struct CaptureSpotlightMask: Shape {
+    let cardFrame: CGRect
+
+    func path(in rect: CGRect) -> Path {
+        Path { path in
+            path.addRect(rect)
+            if !cardFrame.isNull, !cardFrame.isEmpty {
+                path.addRoundedRect(in: cardFrame, cornerSize: CGSize(width: 22, height: 22))
+            }
+        }
+    }
+}
+
+private struct CaptureFocusOverlay: View {
+    @Bindable var store: WorkspaceStore
+    @State private var height: CGFloat = 224
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture { store.dismissCaptureFocus() }
+                ScrollView {
+                    CaptureCard(store: store, focusedPresentation: true)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { value in
+                            if value.isFinite, value > 0 { height = value }
+                        }
+                        .transition(.identity)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollIndicators(.hidden)
+                .frame(width: min(600, max(1, geometry.size.width - 48)),
+                       height: min(height, max(1, geometry.size.height - 48)))
+                .clipShape(RoundedRectangle(cornerRadius: 22))
+                .modifier(CaptureCardShadow())
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
@@ -30,6 +143,7 @@ struct CaptureCard: View {
                 Text("What do you need to do?")
                     .font(.system(size: 19, weight: .semibold))
                 Spacer(minLength: 8)
+                #if os(macOS)
                 if focusedPresentation {
                     Button { store.dismissCaptureFocus() } label: {
                         Image(systemName: "xmark").font(.system(size: 16, weight: .medium))
@@ -40,7 +154,12 @@ struct CaptureCard: View {
                     .foregroundStyle(.white.opacity(0.75))
                     .keyboardShortcut(.cancelAction)
                     .accessibilityLabel("Close capture")
+                } else {
+                    // Reserve the same header space without an idle control.
+                    Color.clear.frame(width: 44, height: 44)
+                        .accessibilityHidden(true)
                 }
+                #endif
             }
             if focusedPresentation, let receipt = store.captureReceipt {
                 CaptureReceiptContent(
@@ -60,9 +179,8 @@ struct CaptureCard: View {
                 .accessibilityIdentifier("captureReceipt")
             } else {
                 TextField("What do you need to do?", text: $store.captureText,
-                      prompt: Text("Describe a task, or get a few things off your mind…").foregroundStyle(.white.opacity(0.65)), axis: .vertical)
+                      prompt: Text("Describe a task, or several, in a single prompt. Rambling and details encouraged.").foregroundStyle(.white.opacity(0.65)), axis: .vertical)
                 .font(.system(size: 16))
-                .lineSpacing(5)
                 .lineLimit(3...6)
                 .textFieldStyle(.plain)
                 .focused($inputFocused)
@@ -79,11 +197,8 @@ struct CaptureCard: View {
                 }
                 HStack {
                 #if os(macOS)
-                Text("Enter to add · Shift-Enter for a new line")
-                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.7)).lineLimit(2)
-                #else
-                Text("Give it a place in your day.")
-                    .font(.caption).foregroundStyle(.white.opacity(0.7))
+                Text("Enter to add")
+                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.7))
                 #endif
                 Spacer()
                 Button(action: submit) { Label("Add to plan", systemImage: "arrow.up.right").fixedSize() }
@@ -96,21 +211,29 @@ struct CaptureCard: View {
         }
         .padding(24)
         .foregroundStyle(.white)
-        .background(Color.followNavy, in: RoundedRectangle(cornerRadius: 22))
+        .background {
+            RoundedRectangle(cornerRadius: 22)
+                .fill(Color.followNavy)
+                .modifier(CaptureCardShadow(visible: focusedPresentation))
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("captureCard")
+        #if os(macOS)
+        .defaultFocus($inputFocused, focusedPresentation && store.captureReceipt == nil)
+        #endif
         .onChange(of: inputFocused) { _, focused in
             if focused && !focusedPresentation {
-                inputFocused = false
                 store.focusCapture()
             }
         }
-        .task {
-            #if os(macOS)
-            // Let the presented field enter AppKit's focus hierarchy first.
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            #endif
+        .onChange(of: focusedPresentation, initial: true) { _, focused in
+            inputFocused = focused && store.captureReceipt == nil
+        }
+        #if os(macOS)
+        .onChange(of: store.captureFocusRequestID) {
             if focusedPresentation && store.captureReceipt == nil { inputFocused = true }
         }
+        #endif
         .onChange(of: store.captureReceipt?.id) { _, id in
             inputFocused = focusedPresentation && id == nil
         }
