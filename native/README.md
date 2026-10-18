@@ -154,3 +154,7 @@ iOS Settings actions use brighter green (`#00865E`) text in Light and mint in Da
 
 
 Task search is global while a non-whitespace query is present, including completed and archived tasks across projects. It searches titles, project names/calendar labels, notes, original input, and suggested steps. Normal filters return when the query is cleared. Outstanding results come first, followed by completed results in newest-completion order. Run search checks with `xcrun swiftc native/Shared/Models.swift native/Scripts/verify-task-search.swift -o /tmp/followthrough-task-search` and `/tmp/followthrough-task-search`.
+
+## Mac global capture shortcut
+
+Control–Option–F opens the menu bar popover from any app while Followthrough is running, including when its workspace window is hidden or closed. The task field is immediately ready for typing; repeated presses preserve the draft and refocus the field. Clicking the menu bar icon uses the same popover. Command–N continues to open capture inside the workspace. Return submits and Shift–Return inserts a new line. Existing capture submission, result review, task-edit protection, and queue behavior are retained.

@@ -1,5 +1,204 @@
 // Created by Cory McCabe
 import SwiftUI
+#if os(macOS)
+import Carbon
+
+@MainActor final class FollowthroughMacAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+}
+
+/// Registers only the capture chord, without monitoring other keyboard input.
+@MainActor @Observable final class MacCaptureShortcut {
+    private(set) var isRegistered = false
+    private(set) var registrationFailed = false
+    private(set) var activationCount = 0
+    @ObservationIgnored var onCapture: (() -> Void)?
+    @ObservationIgnored private var hotKey: EventHotKeyRef?
+    @ObservationIgnored private var handler: EventHandlerRef?
+    private nonisolated static let signature: OSType = 0x46544350 // FTCP
+
+    func register() {
+        guard !isRegistered else { return }
+        registrationFailed = false
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        let status = InstallEventHandler(GetApplicationEventTarget(), { _, event, context in
+            guard let event, let context else { return OSStatus(eventNotHandledErr) }
+            var identifier = EventHotKeyID()
+            let status = GetEventParameter(event, EventParamName(kEventParamDirectObject),
+                                           EventParamType(typeEventHotKeyID), nil,
+                                           MemoryLayout<EventHotKeyID>.size, nil, &identifier)
+            guard status == noErr, identifier.signature == MacCaptureShortcut.signature,
+                  identifier.id == 1 else { return OSStatus(eventNotHandledErr) }
+            let shortcut = Unmanaged<MacCaptureShortcut>.fromOpaque(context).takeUnretainedValue()
+            Task { @MainActor in
+                shortcut.activationCount += 1
+                shortcut.onCapture?()
+            }
+            return noErr
+        }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &handler)
+        guard status == noErr else { registrationFailed = true; return }
+        let result = RegisterEventHotKey(UInt32(kVK_ANSI_F), UInt32(controlKey | optionKey),
+                                         EventHotKeyID(signature: Self.signature, id: 1),
+                                         GetApplicationEventTarget(), OptionBits(kEventHotKeyExclusive), &hotKey)
+        isRegistered = result == noErr
+        if !isRegistered {
+            if let handler { RemoveEventHandler(handler) }
+            handler = nil
+            registrationFailed = true
+        }
+    }
+
+    deinit {
+        if let hotKey { UnregisterEventHotKey(hotKey) }
+        if let handler { RemoveEventHandler(handler) }
+    }
+}
+
+/// App-owned status item and shortcut survive closing the workspace window.
+@MainActor @Observable final class MacMenuBarCapture: NSObject {
+    private(set) var focusRequestID = 0
+    @ObservationIgnored private var statusItem: NSStatusItem?
+    @ObservationIgnored private let popover = NSPopover()
+    @ObservationIgnored private var makeContent: (() -> NSViewController)?
+
+    func install(store: WorkspaceStore, openMainWindow: @escaping () -> Void) {
+        guard statusItem == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = item
+        item.button?.target = self
+        item.button?.action = #selector(togglePopover)
+        item.button?.setAccessibilityLabel("Followthrough")
+        item.button?.setAccessibilityIdentifier("followthroughMenuBar")
+        popover.behavior = .transient
+        popover.animates = false
+        makeContent = { [weak self] in
+            guard let self else { return NSViewController() }
+            return NSHostingController(rootView:
+                MenuBarContent(store: store, menuBar: self, openMainWindow: { [weak self] in
+                    self?.popover.performClose(nil)
+                    openMainWindow()
+                })
+            )
+        }
+    }
+
+    func updateIcon(monochrome: Bool) {
+        statusItem?.button?.image = monochrome ? MenuBarIconAppearance.monochromeImage : MenuBarIconAppearance.mintImage
+    }
+
+    func showCapture() {
+        guard let button = statusItem?.button else { return }
+        if !popover.isShown {
+            // Reattach a fresh hosting view after dismissal. The workspace owns
+            // the draft, so reopening restores its text with fresh field focus.
+            popover.contentViewController = makeContent?()
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
+        popover.contentViewController?.view.window?.makeKey()
+        focusRequestID += 1
+    }
+
+    @objc private func togglePopover() {
+        if popover.isShown { popover.performClose(nil) }
+        else { showCapture() }
+    }
+}
+
+struct MacCaptureShortcutHost: View {
+    let store: WorkspaceStore
+    let shortcut: MacCaptureShortcut
+    let menuBar: MacMenuBarCapture
+    @Environment(\.openWindow) private var openWindow
+    @AppStorage(MenuBarIconAppearance.monochromeDefaultsKey) private var monochrome = false
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .task {
+                menuBar.install(store: store) {
+                    openWindow(id: "main")
+                    NSApplication.shared.activate()
+                }
+                menuBar.updateIcon(monochrome: monochrome)
+                shortcut.onCapture = { [menuBar] in menuBar.showCapture() }
+                shortcut.register()
+            }
+            .onChange(of: monochrome) { _, value in menuBar.updateIcon(monochrome: value) }
+    }
+}
+
+struct MacCaptureShortcutLesson: View {
+    @Environment(MacCaptureShortcut.self) private var shortcut
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Add a task from any app", systemImage: "keyboard")
+                .font(.headline)
+            Text("Control + Option + F")
+                .font(.title3.monospaced().weight(.semibold))
+                .accessibilityLabel("Control, Option, F")
+            if shortcut.registrationFailed {
+                Text("The shortcut is unavailable. Another app may be using it. Close that app, then try again.")
+                    .font(.callout).foregroundStyle(.secondary)
+                Button("Try again") { shortcut.register() }
+            } else if shortcut.activationCount > 0 {
+                Label("You’ve got it! Connect your workspace to add your first task.", systemImage: "checkmark.circle.fill")
+                    .font(.callout)
+                    .accessibilityIdentifier("captureShortcutPracticed")
+            } else {
+                Text("Try it now. After connecting, press these keys in any app to open menu bar task entry.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            Text("Keep Followthrough running in the menu bar to use the shortcut.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Color.followBlue.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("captureShortcutLesson")
+    }
+}
+
+private struct MacCaptureKeyboardHints: View {
+    @Environment(MacCaptureShortcut.self) private var shortcut
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                Text("Enter to add")
+                Text("·").accessibilityHidden(true)
+                MacCaptureGlobalHint(isRegistered: shortcut.isRegistered)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Enter to add")
+                MacCaptureGlobalHint(isRegistered: shortcut.isRegistered)
+            }
+        }
+        .font(.system(size: 12))
+        .foregroundStyle(.white.opacity(0.7))
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct MacCaptureGlobalHint: View {
+    let isRegistered: Bool
+
+    var body: some View {
+        if isRegistered {
+            Text("⌃⌥F from anywhere")
+                .accessibilityLabel("Control, Option, F to add a task from anywhere")
+                .help("Control–Option–F opens menu bar task entry from any app while Followthrough is running.")
+                .accessibilityIdentifier("captureGlobalShortcutHint")
+        } else {
+            Text("Global shortcut unavailable")
+                .help("Another app may be using Control–Option–F. Close that app and reopen Followthrough to try again.")
+                .accessibilityIdentifier("captureGlobalShortcutUnavailable")
+        }
+    }
+}
+#endif
 
 struct CaptureFocusAnchors {
     var card: Anchor<CGRect>?
@@ -197,7 +396,7 @@ struct CaptureCard: View {
                 }
                 HStack {
                 #if os(macOS)
-                Text("Enter to add")
+                MacCaptureKeyboardHints()
                     .font(.system(size: 12)).foregroundStyle(.white.opacity(0.7))
                 #endif
                 Spacer()
