@@ -22,6 +22,7 @@ import Security
     var connected = false
     var authorizing = false
     var captureFocused = false
+    private(set) var captureFocusRequestID = UUID()
     var captureText = ""
     var captureReceipt: CaptureReceipt?
     var selectedTask: FTTask?
@@ -384,12 +385,20 @@ import Security
     func focusCapture() {
         guard selectedTask == nil else { return }
         captureFocused = true
+        captureFocusRequestID = UUID()
     }
-    func dismissCaptureFocus() { captureFocused = false }
+    func dismissCaptureFocus() {
+        captureFocused = false
+        // A confirmed result belongs to the capture the user just finished.
+        // Keep drafts and unconfirmed requests available for editing/retry.
+        if case .saved = captureReceipt?.phase {
+            finishCapture()
+        }
+    }
     func finishCapture(another: Bool = false) {
         if captureText == captureReceipt?.source { captureText = "" }
         captureReceipt = nil
-        if !another { dismissCaptureFocus() }
+        if !another { captureFocused = false }
     }
     func editBlockedCapture() {
         guard blockedMutation, let receipt = captureReceipt, pending.first?.id == receipt.id else { return }

@@ -1,22 +1,145 @@
 // Created by Cory McCabe
 import SwiftUI
 
+#if os(iOS)
+import UIKit
+
+/// Lives inside Today's scroll content so the native large-title inset is included.
+struct IOSCaptureScrollToTop: UIViewRepresentable {
+    let focused: Bool
+    let requestID: UUID
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeUIView(context: Context) -> CaptureScrollAnchor { CaptureScrollAnchor() }
+
+    func updateUIView(_ view: CaptureScrollAnchor, context: Context) {
+        view.update(focused: focused, requestID: requestID, reduceMotion: reduceMotion)
+    }
+
+    final class CaptureScrollAnchor: UIView {
+        private var capturing = false
+        private var requestID: UUID?
+        private var reduceMotion = false
+        private var needsReveal = false
+        private struct Viewport: Hashable {
+            let width: CGFloat
+            let safeAreaTop: CGFloat
+        }
+        private var expandedInsets: [Viewport: CGFloat] = [:]
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged),
+                                                   name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        deinit { NotificationCenter.default.removeObserver(self) }
+
+        func update(focused: Bool, requestID: UUID, reduceMotion: Bool) {
+            let requested = focused && (!capturing || self.requestID != requestID)
+            capturing = focused
+            self.requestID = requestID
+            self.reduceMotion = reduceMotion
+            if !focused { needsReveal = false }
+            if requested {
+                needsReveal = true
+                // Run after SwiftUI has updated the editor's first responder.
+                DispatchQueue.main.async { [weak self] in self?.revealIfNeeded() }
+            }
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            rememberExpandedInset()
+            if window != nil { revealIfNeeded() }
+        }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            rememberExpandedInset()
+            revealIfNeeded()
+        }
+        @objc private func keyboardChanged(_ notification: Notification) {
+            guard capturing else { return }
+            needsReveal = true
+            revealIfNeeded()
+        }
+
+        private var enclosingScrollView: UIScrollView? {
+            var ancestor = superview
+            while let view = ancestor, !(view is UIScrollView) { ancestor = view.superview }
+            return ancestor as? UIScrollView
+        }
+
+        private func viewport(for scroll: UIScrollView) -> Viewport {
+            Viewport(width: scroll.bounds.width, safeAreaTop: window?.safeAreaInsets.top ?? 0)
+        }
+
+        private func rememberExpandedInset() {
+            guard let scroll = enclosingScrollView, window != nil else { return }
+            let key = viewport(for: scroll)
+            expandedInsets[key] = max(expandedInsets[key] ?? 0, scroll.adjustedContentInset.top)
+        }
+
+        private func revealIfNeeded() {
+            guard capturing, needsReveal, let scroll = enclosingScrollView else { return }
+            needsReveal = false
+            rememberExpandedInset()
+            // A collapsed navigation bar reports a smaller adjusted inset.
+            // Restore the expanded edge measured before Today was scrolled.
+            let top = expandedInsets[viewport(for: scroll)] ?? scroll.adjustedContentInset.top
+            let target = CGPoint(x: scroll.contentOffset.x, y: -top)
+            guard abs(scroll.contentOffset.y - target.y) > 0.5 else { return }
+            if reduceMotion {
+                scroll.setContentOffset(target, animated: false)
+            } else {
+                UIView.animate(withDuration: 0.16, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+                    scroll.setContentOffset(target, animated: false)
+                    scroll.layoutIfNeeded()
+                }
+            }
+        }
+    }
+}
+#endif
+
 /// Respond to an explicit repeat tap without resetting the page's local state.
 struct SectionScrollToTop: ViewModifier {
     let store: WorkspaceStore
     let section: String
     let anchor: String?
     var alignment: UnitPoint = .top
+    var captureAnchor: String? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         ScrollViewReader { proxy in
-            content.onChange(of: store.sectionReselectionIDs[section]) {
-                guard store.selectedSection == section, let anchor else { return }
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
-                    proxy.scrollTo(anchor, anchor: alignment)
+            content
+                .onChange(of: store.sectionReselectionIDs[section]) {
+                    guard store.selectedSection == section, let anchor else { return }
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(anchor, anchor: alignment)
+                    }
                 }
-            }
+                .task(id: store.captureFocusRequestID) {
+                    // Let first-responder layout run before setting the final
+                    // scroll position. Input is ready immediately.
+                    await Task.yield()
+                    guard !Task.isCancelled else { return }
+                    revealCapture(using: proxy)
+                }
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { _ in
+                    // Keep the requested top alignment when the keyboard or
+                    // window changes the visible viewport.
+                    revealCapture(using: proxy)
+                }
+        }
+    }
+
+    private func revealCapture(using proxy: ScrollViewProxy) {
+        guard store.captureFocused, store.selectedSection == section, let captureAnchor else { return }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+            proxy.scrollTo(captureAnchor, anchor: .top)
         }
     }
 }
@@ -52,24 +175,32 @@ struct EditorConfirmButton: View {
         Group {
             if #available(iOS 26, macOS 26, *) {
                 Button(role: .confirm, action: onSave) {
-                    Label("Save changes", systemImage: "checkmark")
+                    // Preserve the adaptive glyph colors in native toolbars.
+                    Image(systemName: "checkmark")
+                        .renderingMode(.original)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(enabled ? Color.followPrimaryText : Color.secondary)
                 }
                 .labelStyle(.iconOnly)
             } else {
-                Button("Save changes", systemImage: "checkmark", action: onSave)
-                    .labelStyle(.iconOnly)
+                Button(action: onSave) {
+                    Image(systemName: "checkmark")
+                        .renderingMode(.original)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(enabled ? Color.followPrimaryText : Color.secondary)
+                }
+                .labelStyle(.iconOnly)
             }
         }
         .modifier(FollowthroughProminentToolbarStyle())
-        .tint(.followMint)
-        .foregroundStyle(enabled ? Color.followNavy : Color.secondary)
+        .tint(.followPrimaryFill)
         .keyboardShortcut(.defaultAction)
         .disabled(!enabled)
         .accessibilityLabel("Save changes")
     }
 }
 
-/// Keep native glass behavior while using the same mint confirmation fill.
+/// Keep native glass behavior while using the surface-aware action fill.
 struct FollowthroughProminentToolbarStyle: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26, macOS 26, *) {
@@ -82,8 +213,8 @@ struct FollowthroughProminentToolbarStyle: ViewModifier {
 
 /// Keep action colors readable without tinting disabled controls muddy green.
 struct FollowthroughActionButtonStyle: ButtonStyle {
-    var fill: Color = .followMint
-    var foreground: Color = .followNavy
+    var fill: Color = .followPrimaryFill
+    var foreground: Color = .followPrimaryText
     var disabledForeground: Color = .secondary
     var disabledFill: Color = .secondary.opacity(0.12)
     @Environment(\.isEnabled) private var isEnabled

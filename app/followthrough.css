@@ -304,6 +304,7 @@ p {
   width: 24px;
   height: 24px;
   border: 2px solid #71839c;
+  border-radius: 50%;
   background: #fff;
   cursor: pointer;
 }
@@ -322,7 +323,7 @@ p {
   animation: task-check-pop 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .task-row > [data-slot='checkbox']:focus-visible {
-  outline: 3px solid #a8c2ff;
+  outline: 3px solid var(--ring);
   outline-offset: 3px;
 }
 .task-body {
@@ -911,12 +912,17 @@ summary {
   cursor: pointer;
 }
 .work-days label:has(input:focus-visible) {
-  outline: 3px solid #739df3;
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
 }
 .work-days .selected {
-  color: var(--blue);
-  background: #edf3ff;
-  border-color: #b9cef5;
+  color: var(--mint-ink);
+  background: color-mix(in srgb, var(--mint) 18%, white);
+  border-color: color-mix(in srgb, var(--mint) 55%, var(--line));
+}
+.settings-grid > .editor-form [data-slot='input'],
+.settings-grid > .editor-form [data-slot='native-select'] {
+  background: #f3f5f9 !important;
 }
 .connections {
   display: flex;
@@ -924,7 +930,7 @@ summary {
   gap: 18px;
 }
 .connections .settings-card > svg {
-  color: #6783ad;
+  color: var(--mint-ink);
   width: 22px;
   margin-bottom: 14px;
 }
@@ -955,7 +961,7 @@ summary {
   align-items: center;
   gap: 8px;
   font-size: 14px;
-  color: var(--blue);
+  color: var(--mint-ink);
 }
 .account-privacy-link {
   padding-right: 15px;
@@ -1190,4 +1196,5 @@ summary {
 
 .app-shell [data-slot='button'].view-all-tasks-link {
   padding-inline: 0;
+  color: var(--mint-ink);
 }

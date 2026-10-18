@@ -950,10 +950,10 @@ export default function FollowthroughApp({
                     onKeyDown={(event) =>
                       handleCaptureKeyDown(event, () => void capture())
                     }
-                    placeholder="I need to reply to Samuel's email, edit a view that'll take 4 hours, but the top priority is fix the faucet leak downstairs which should take about 1.5 hours."
+                    placeholder="Describe a task, or several, in a single prompt. Rambling and details encouraged."
                   />
                   <div className="capture-footer">
-                    <span>One request. Every independent outcome.</span>
+                    <span>Hit Enter to add</span>
                     <Button
                       className="capture-button"
                       disabled={saving || !source.trim()}
@@ -990,12 +990,6 @@ export default function FollowthroughApp({
                 >
                   View all tasks →
                 </Button>
-                <p className="small-note">
-                  {state.integrations.background
-                    ? 'Your plan updates automatically. Calendar changes are checked every minute, even when Followthrough is closed.'
-                    : 'Your plan updates automatically while Followthrough is open.'}{' '}
-                  Check off completed work or adjust its remaining time.
-                </p>
               </section>
               <aside className="schedule-panel">
                 <div className="section-heading">
@@ -1108,19 +1102,6 @@ export default function FollowthroughApp({
                   <Plus />
                   Block busy time
                 </Button>
-                <p className="calendar-note">
-                  {state.integrations.google ||
-                  state.integrations.icloud ||
-                  state.integrations.zoho
-                    ? 'Manage selected calendars and sync status in Settings.'
-                    : 'Connect calendars to avoid appointments automatically.'}
-                </p>
-                <button
-                  className="text-button"
-                  onClick={() => navigateToTab('settings')}
-                >
-                  Calendar connections <ArrowRight size={16} />
-                </button>
               </aside>
             </div>
           </TabsContent>
@@ -1247,7 +1228,7 @@ export default function FollowthroughApp({
           <TabsContent value="settings">
             <div className="page-heading">
               <div>
-                <h1>Make room for your work</h1>
+                <h1>Set up your work</h1>
               </div>
             </div>
             <SettingsPanel

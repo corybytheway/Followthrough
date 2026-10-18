@@ -94,6 +94,403 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 15), .completed)
     }
 
+    func testSingleCaptureCardAndKeyboardPreserveCurrentPage() throws {
+        // Read-only loopback navigation fixture: typing and closing a draft
+        // never submits a task or changes the user's workspace.
+        let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-vertical-tabs-fixture.json")
+        guard let data = try? Data(contentsOf: fixtureURL),
+              let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let server = fixture["server"] as? String,
+              ["127.0.0.1", "localhost"].contains(URL(string: server)?.host ?? ""),
+              let session = fixture["session"] as? [String: Any] else {
+            throw XCTSkip("Requires the isolated read-only navigation fixture.")
+        }
+        app.launchArguments = ["-server", server]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = try JSONSerialization.data(withJSONObject: session).base64EncodedString()
+        app.launch()
+
+        let cards = app.descendants(matching: .any).matching(identifier: "captureCard")
+        let inputs = app.descendants(matching: .any).matching(identifier: "captureInput")
+        let input = inputs.firstMatch
+        let add = app.descendants(matching: .any).matching(NSPredicate(
+            format: "(identifier == %@ OR label == %@) AND (elementType == %d OR elementType == %d)",
+            "newTask", "New task", XCUIElement.ElementType.button.rawValue, XCUIElement.ElementType.radioButton.rawValue
+        )).firstMatch
+        let draft = "Unsaved single capture QA " + String(UUID().uuidString.prefix(8))
+
+        func keyboardVisible() -> Bool {
+            app.keyboards.allElementsBoundByIndex.contains { keyboard in
+                let frame = keyboard.frame
+                return frame.height > 100 && frame.minY >= 0 && frame.minY < app.frame.maxY - 100
+            }
+        }
+        func waitFor(_ message: String, _ condition: @escaping () -> Bool) {
+            let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: app)
+            XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 10), .completed, message)
+        }
+        func assertSingleCard() {
+            XCTAssertEqual(cards.count, 1, "The current presentation must contain exactly one capture card.")
+            XCTAssertEqual(inputs.count, 1, "The current presentation must contain exactly one editor.")
+        }
+        func stabilizeKeyboard() {
+            // XCTest's hardware text injection can leave an offscreen
+            // keyboard preview. Restore the real keyboard before a tap.
+            if !keyboardVisible() { input.tap() }
+            waitFor("The real software keyboard must be onscreen.", keyboardVisible)
+            var previous: [CGRect] = []
+            var stableObservations = 0
+            waitFor("The editor and submit control must settle above the keyboard.") {
+                let frames = [input.frame, self.app.buttons["captureSubmit"].frame]
+                if keyboardVisible() && frames == previous { stableObservations += 1 }
+                else { stableObservations = 0 }
+                previous = frames
+                return stableObservations >= 2
+            }
+        }
+        func assertFocused(_ name: String) {
+            XCTAssertTrue(input.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.buttons["Close capture"].exists, "iOS dismisses capture by tapping outside the card.")
+            stabilizeKeyboard()
+            assertSingleCard()
+            XCTAssertFalse(add.exists && add.isHittable, "The bottom Add Task control must leave while the keyboard is visible.")
+            let keyboard = app.keyboards.allElementsBoundByIndex.first { $0.frame.height > 100 && $0.frame.minY >= 0 && $0.frame.minY < app.frame.maxY - 100 }
+            if let keyboard {
+                XCTAssertLessThanOrEqual(app.buttons["captureSubmit"].frame.maxY, keyboard.frame.minY,
+                                         "The submit button must stay above the keyboard.")
+            }
+            record("Single capture " + name + " focused keyboard")
+        }
+        func dismiss(_ name: String, title: String) {
+            record("Single capture " + name + " before outside tap")
+            // The horizontal margin sits outside both the inline card and
+            // the floating editor and above the keyboard.
+            app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: 4, dy: input.frame.midY - app.frame.minY)).tap()
+            record("Single capture " + name + " after outside tap")
+            waitFor("The keyboard must dismiss and the Add Task button must return.") { !keyboardVisible() && add.exists && add.isHittable }
+            XCTAssertTrue(app.navigationBars[title].exists, "Dismissal must restore the same page, including a pushed project.")
+            record("Single capture " + name + " restored")
+        }
+
+        XCTAssertTrue(input.waitForExistence(timeout: 20))
+        let todayTitle = app.navigationBars.firstMatch.identifier
+        record("Single capture Today inline")
+        let addExists = add.exists
+        print("Capture initial input exists=\(input.exists) hittable=\(input.isHittable); add exists=\(addExists)")
+        if addExists {
+            print("Capture initial add type=\(add.elementType) frame=\(add.frame) hittable=\(add.isHittable)")
+        }
+        assertSingleCard()
+        XCTAssertTrue(input.isHittable, "The inline capture editor must be tappable.")
+        waitFor("The native Add Task control must exist and become hittable after initial layout.") {
+            add.exists && add.isHittable
+        }
+        input.tap()
+        assertFocused("Today")
+        input.typeText(draft)
+        XCTAssertEqual(input.value as? String, draft)
+        stabilizeKeyboard()
+        dismiss("Today", title: todayTitle)
+        assertSingleCard()
+        XCTAssertEqual(input.value as? String, draft)
+        input.tap()
+        assertFocused("Today reopened")
+        XCTAssertEqual(input.value as? String, draft, "Closing and reopening must retain the same draft.")
+        dismiss("Today reopened", title: todayTitle)
+
+        for (tab, title) in [("Tasks", "Your tasks"), ("Projects", "Your projects"), ("Settings", "Settings")] {
+            tapTab(tab)
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
+            XCTAssertFalse(input.exists, "Other pages should show capture only when it is requested.")
+            add.tap()
+            assertFocused(tab)
+            XCTAssertEqual(input.value as? String, draft)
+            dismiss(tab, title: title)
+            XCTAssertFalse(input.exists)
+        }
+
+        tapTab("Projects")
+        let project = app.buttons["openProject_release-qa-project"]
+        XCTAssertTrue(project.waitForExistence(timeout: 5))
+        project.tap()
+        XCTAssertTrue(app.navigationBars["Release QA"].waitForExistence(timeout: 5))
+        add.tap()
+        assertFocused("pushed project")
+        XCTAssertEqual(input.value as? String, draft)
+        dismiss("pushed project", title: "Release QA")
+        XCTAssertFalse(input.exists)
+        app.terminate()
+    }
+
+    func testTodayAddReturnsToFullTopFromPartialAndOffscreenScroll() throws {
+        let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-add-task-scroll-fixture.json")
+        guard let data = try? Data(contentsOf: fixtureURL),
+              let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let server = fixture["server"] as? String,
+              ["127.0.0.1", "localhost"].contains(URL(string: server)?.host ?? ""),
+              let session = fixture["session"] as? [String: Any] else {
+            throw XCTSkip("Requires the isolated read-only Today scroll fixture.")
+        }
+        app.launchArguments = ["-server", server]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = try JSONSerialization.data(withJSONObject: session).base64EncodedString()
+        app.launch()
+
+        let card = app.descendants(matching: .any)["captureCard"].firstMatch
+        let input = app.descendants(matching: .any)["captureInput"].firstMatch
+        let submit = app.buttons["captureSubmit"]
+        let add = app.descendants(matching: .any).matching(NSPredicate(
+            format: "(identifier == %@ OR label == %@) AND (elementType == %d OR elementType == %d)",
+            "newTask", "New task", XCUIElement.ElementType.button.rawValue, XCUIElement.ElementType.radioButton.rawValue
+        )).firstMatch
+        XCTAssertTrue(input.waitForExistence(timeout: 20))
+        let bar = app.navigationBars.firstMatch
+        let heading = bar.staticTexts[bar.identifier].firstMatch
+        XCTAssertTrue(heading.exists)
+
+        func wait(_ message: String, _ condition: @escaping () -> Bool) {
+            let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: app)
+            XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 12), .completed, message)
+        }
+        func keyboard() -> XCUIElement? {
+            app.keyboards.allElementsBoundByIndex.first { $0.frame.height > 100 && $0.frame.minY >= 0 && $0.frame.minY < app.frame.maxY - 100 }
+        }
+        func settle() {
+            var previous: [CGRect] = []
+            var stable = 0
+            wait("The full Today header and editor must settle.") {
+                let frames = [heading.frame, card.frame, input.frame, submit.frame]
+                if frames == previous { stable += 1 } else { stable = 0 }
+                previous = frames
+                return stable >= 2
+            }
+        }
+        settle()
+        let originalCard = card.frame
+        let originalHeading = heading.frame
+        let todayTab = app.descendants(matching: .any).matching(NSPredicate(
+            format: "label == %@ AND (elementType == %d OR elementType == %d)",
+            "Today", XCUIElement.ElementType.button.rawValue, XCUIElement.ElementType.radioButton.rawValue
+        )).firstMatch
+        XCTAssertTrue(todayTab.exists && add.exists)
+        XCTAssertLessThan(abs(todayTab.frame.midY - add.frame.midY), 24,
+                          "This regression requires a conventional iPhone with a horizontal tab bar.")
+        XCTAssertGreaterThan(originalHeading.height, 30, "The baseline must show the expanded large date, not the compact navigation title.")
+        XCTAssertGreaterThanOrEqual(originalCard.minY - bar.frame.maxY, 20, "The baseline must include the top padding above the card.")
+        record("Today full top 01 initial")
+
+        func assertFullTop(_ name: String) {
+            assertCaptureFocused()
+            settle()
+            record("Today full top " + name)
+            print("Today full top \(name): heading=\(heading.frame) navigation=\(bar.frame) card=\(card.frame)")
+            XCTAssertGreaterThan(heading.frame.height, 30, "Add must restore the expanded large date heading, not the small centered navigation title.")
+            XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "captureCard").count, 1)
+            XCTAssertTrue(input.isHittable)
+            XCTAssertEqual(card.frame.minY, originalCard.minY, accuracy: 2, "Add must return to the whole page top, including the space above the card.")
+            XCTAssertEqual(heading.frame.minY, originalHeading.minY, accuracy: 2)
+            XCTAssertEqual(heading.frame.height, originalHeading.height, accuracy: 2, "The complete date heading must remain visible.")
+            XCTAssertGreaterThanOrEqual(card.frame.minY - bar.frame.maxY, 20, "The card must keep its original top padding.")
+            if let keyboard = keyboard() {
+                XCTAssertLessThanOrEqual(submit.frame.maxY, keyboard.frame.minY, "Submit must stay above the software keyboard.")
+            }
+        }
+        func openAdd(_ name: String) {
+            wait("Add must return after keyboard dismissal.") { add.exists && add.isHittable }
+            add.tap()
+            assertFullTop(name)
+        }
+
+        // A short, slow drag leaves the card partly visible, unlike a full swipe.
+        let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: originalCard.minX + 12 - app.frame.minX, dy: originalCard.maxY - 20 - app.frame.minY))
+        let end = start.withOffset(CGVector(dx: 0, dy: -76))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+        record("Today full top 03 partially scrolled")
+        XCTAssertLessThan(card.frame.minY, originalCard.minY - 10, "The short drag must actually scroll Today.")
+        XCTAssertGreaterThan(card.frame.maxY, bar.frame.maxY, "The card must remain partly visible for this case.")
+        openAdd("04 partial Add restored")
+
+        // Switch the keyboard layout while focused to exercise viewport changes.
+        let emoji = app.buttons["Emoji"].firstMatch
+        if emoji.exists && emoji.isHittable {
+            let before = keyboard()?.frame
+            emoji.tap()
+            assertFullTop("05 alternate keyboard")
+            print("Today keyboard frame before=\(String(describing: before)) after=\(String(describing: keyboard()?.frame))")
+            let alphabet = app.buttons["ABC"].firstMatch
+            if alphabet.exists && alphabet.isHittable { alphabet.tap() }
+        }
+        dismissCaptureByTappingOutside()
+
+        for _ in 0..<3 { app.swipeUp() }
+        record("Today full top 06 offscreen")
+        XCTAssertFalse(input.isHittable, "The editor must be offscreen before testing Add.")
+        openAdd("07 offscreen Add restored")
+        dismissCaptureByTappingOutside()
+        app.terminate()
+    }
+
+    func testSavedCaptureReceiptsClearAfterDismissalAndTaskSelection() async throws {
+        // This synthetic loopback fixture owns every task created by this test.
+        let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-capture-dismiss-fixture.json")
+        guard let data = try? Data(contentsOf: fixtureURL),
+              let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let server = fixture["server"] as? String,
+              let baseURL = URL(string: server),
+              ["127.0.0.1", "localhost"].contains(baseURL.host ?? ""),
+              let session = fixture["session"] as? [String: Any] else {
+            throw XCTSkip("Requires the isolated synthetic capture dismissal fixture.")
+        }
+        func control(_ configuration: [String: Any]? = nil) async throws -> [String: Any] {
+            var request = URLRequest(url: baseURL.appendingPathComponent("__fixture"))
+            if let configuration {
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("capture-dismiss", forHTTPHeaderField: "X-Followthrough-QA")
+                request.httpBody = try JSONSerialization.data(withJSONObject: configuration)
+            }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        }
+        guard try await control()["fixture"] as? String == "capture-dismiss" else {
+            throw XCTSkip("The loopback endpoint must identify the synthetic capture fixture.")
+        }
+        app.launchArguments = ["-server", server]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = try JSONSerialization.data(withJSONObject: session).base64EncodedString()
+        app.launch()
+
+        let input = app.descendants(matching: .any)["captureInput"].firstMatch
+        let receipt = app.descendants(matching: .any)["captureReceipt"].firstMatch
+        let submit = app.buttons["captureSubmit"]
+        let add = app.descendants(matching: .any).matching(NSPredicate(
+            format: "(identifier == %@ OR label == %@) AND (elementType == %d OR elementType == %d)",
+            "newTask", "New task", XCUIElement.ElementType.button.rawValue, XCUIElement.ElementType.radioButton.rawValue
+        )).firstMatch
+        let marker = String(UUID().uuidString.prefix(8))
+
+        func wait(_ message: String, _ condition: @escaping () -> Bool) {
+            let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: app)
+            XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 15), .completed, message)
+        }
+        func stabilizeInput() {
+            assertCaptureFocused()
+            var previous: [CGRect] = []
+            var stable = 0
+            wait("Capture controls must settle before tapping submit.") {
+                let frames = [input.frame, submit.frame]
+                if frames == previous { stable += 1 } else { stable = 0 }
+                previous = frames
+                return stable >= 2
+            }
+        }
+        func reopenBlank(_ name: String) {
+            wait("The native Add Task control must be available.") { add.exists && add.isHittable }
+            add.tap()
+            XCTAssertTrue(input.waitForExistence(timeout: 5), "Reopening must show a new editor instead of the old successful receipt.")
+            stabilizeInput()
+            XCTAssertFalse(receipt.exists)
+            let value = input.value as? String ?? ""
+            XCTAssertTrue(value.isEmpty || value == input.placeholderValue, "A confirmed request must reopen as a blank draft.")
+            XCTAssertFalse(submit.isEnabled)
+            record("Saved receipt " + name + " reopened blank")
+        }
+        func capture(_ source: String, count: Int, preserveDraft: Bool = false) async throws {
+            _ = try await control(["source": source, "count": count, "mode": "success"])
+            reopenBlank("before " + source)
+            input.typeText(source)
+            if preserveDraft {
+                dismissCaptureByTappingOutside()
+                add.tap()
+                XCTAssertTrue(input.waitForExistence(timeout: 5))
+                XCTAssertEqual(input.value as? String, source, "Unsubmitted drafts must survive outside dismissal.")
+                XCTAssertFalse(receipt.exists)
+            }
+            if !app.keyboards.allElementsBoundByIndex.contains(where: { $0.frame.height > 100 && $0.frame.minY >= 0 && $0.frame.minY < app.frame.maxY - 100 }) {
+                input.tap()
+            }
+            stabilizeInput()
+            XCTAssertTrue(submit.isEnabled)
+            submit.tap()
+            let confirmation = count == 1 ? "1 task added" : "\(count) tasks added"
+            XCTAssertTrue(app.staticTexts[confirmation].waitForExistence(timeout: 15))
+            XCTAssertTrue(receipt.exists)
+            record("Saved receipt " + source + " confirmed")
+        }
+
+        XCTAssertTrue(input.waitForExistence(timeout: 20))
+        for count in [1, 3] {
+            let source = "Receipt reopen QA " + marker + " outside \(count)"
+            try await capture(source, count: count, preserveDraft: count == 1)
+            dismissCaptureByTappingOutside()
+            reopenBlank("outside \(count)")
+            dismissCaptureByTappingOutside()
+        }
+
+        for (count, saveChanges) in [(1, false), (3, true)] {
+            let source = "Receipt reopen QA " + marker + " selected \(count)"
+            try await capture(source, count: count)
+            let state = try await control()
+            let created = try XCTUnwrap(state["tasks"] as? [[String: Any]]).filter { $0["source"] as? String == source }
+            XCTAssertEqual(created.count, count)
+            let createdID = try XCTUnwrap(created.first?["id"] as? String)
+            app.buttons["captureReview"].tap()
+            let task = app.buttons["capturedTask_" + createdID]
+            XCTAssertTrue(task.waitForExistence(timeout: 5))
+            record("Saved receipt selected \(count) review")
+            task.tap()
+            XCTAssertTrue(app.navigationBars["Task details"].waitForExistence(timeout: 5))
+            record("Saved receipt selected \(count) task editor")
+            if saveChanges {
+                let title = app.descendants(matching: .any)["taskTitle"].firstMatch
+                title.tap()
+                title.typeText(" updated")
+                let save = app.buttons["saveTask"]
+                wait("The synthetic task edit must enable Save.") { save.isEnabled }
+                save.tap()
+            } else {
+                app.buttons["Cancel"].tap()
+            }
+            XCTAssertTrue(app.navigationBars["Task details"].waitForNonExistence(timeout: 5))
+            waitForCaptureDismissal()
+            reopenBlank(saveChanges ? "after task Save" : "after task Cancel")
+            dismissCaptureByTappingOutside()
+        }
+        app.terminate()
+    }
+
+    private func assertCaptureFocused() {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            self.app.keyboards.allElementsBoundByIndex.contains { keyboard in
+                let frame = keyboard.frame
+                return frame.height > 100 && frame.minY >= 0 && frame.minY < self.app.frame.maxY - 100
+            }
+        }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 10), .completed)
+        XCTAssertFalse(app.buttons["Close capture"].exists, "iOS dismisses capture by tapping outside.")
+    }
+
+    private func waitForCaptureDismissal() {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let keyboardVisible = self.app.keyboards.allElementsBoundByIndex.contains { keyboard in
+                let frame = keyboard.frame
+                return frame.height > 100 && frame.minY >= 0 && frame.minY < self.app.frame.maxY - 100
+            }
+            let add = self.app.descendants(matching: .any).matching(NSPredicate(
+                format: "(identifier == %@ OR label == %@) AND (elementType == %d OR elementType == %d)",
+                "newTask", "New task", XCUIElement.ElementType.button.rawValue, XCUIElement.ElementType.radioButton.rawValue
+            )).firstMatch
+            return !keyboardVisible && add.exists && add.isHittable
+        }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 10), .completed)
+    }
+
+    private func dismissCaptureByTappingOutside() {
+        let frame = app.descendants(matching: .any)["captureCard"].firstMatch.frame
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: 4, dy: frame.midY - app.frame.minY)).tap()
+        waitForCaptureDismissal()
+    }
+
     func testDuoVerticalTabOrderAndCapturePreservesSelection() throws {
         let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-vertical-tabs-fixture.json")
         guard let data = try? Data(contentsOf: fixtureURL),
@@ -115,7 +512,7 @@ final class FollowthroughUITests: XCTestCase {
             )).firstMatch
         }
 
-        let names = ["Today", "Tasks", "Projects", "Settings", "New task"]
+        let names = ["Settings", "Projects", "Tasks", "Today", "New task"]
         let tabs = names.map(tab)
         for (name, item) in zip(names, tabs) {
             XCTAssertTrue(item.exists && item.isHittable, "\(name) must be reachable in the vertical bar.")
@@ -134,10 +531,9 @@ final class FollowthroughUITests: XCTestCase {
         let workStart = app.descendants(matching: .any)["workStartPicker"].firstMatch
         XCTAssertTrue(workStart.waitForExistence(timeout: 10))
         tab("New task").tap()
-        let close = app.buttons["Close capture"]
-        XCTAssertTrue(close.waitForExistence(timeout: 5), "The prominent tab opens task capture.")
+        assertCaptureFocused()
         record("Duo capture over Settings")
-        close.tap()
+        dismissCaptureByTappingOutside()
         XCTAssertTrue(workStart.waitForExistence(timeout: 5) && workStart.isHittable,
                       "Closing capture must restore Settings rather than selecting a blank capture tab.")
         XCTAssertTrue(tab("Settings").isSelected)
@@ -1064,10 +1460,10 @@ final class FollowthroughUITests: XCTestCase {
 
         tapTab("Today")
         app.buttons["New task"].tap()
-        XCTAssertTrue(app.buttons["Close capture"].waitForExistence(timeout: 5))
+        assertCaptureFocused()
         XCTAssertFalse(app.navigationBars["Quick capture"].exists)
         record("14 Focused Today capture")
-        app.buttons["Close capture"].tap()
+        dismissCaptureByTappingOutside()
         record("15 Today restored")
     }
 
@@ -1333,7 +1729,6 @@ final class FollowthroughUITests: XCTestCase {
         tapTab("Tasks")
         let prefix = "Capture receipt QA " + String(UUID().uuidString.prefix(8)) + " "
         let input = app.descendants(matching: .any)["captureInput"].firstMatch
-        let close = app.buttons["Close capture"]
         func submitButton() -> XCUIElement {
             let query = app.buttons.matching(NSPredicate(format: "identifier == 'captureSubmit'"))
             return query.allElementsBoundByIndex.first { $0.isHittable } ?? query.firstMatch
@@ -1355,7 +1750,8 @@ final class FollowthroughUITests: XCTestCase {
         func begin(_ source: String, mode: String, delay: Int) async throws {
             _ = try await fixture(["source": source, "mode": mode, "delayMs": delay])
             app.buttons["newTask"].tap()
-            XCTAssertTrue(close.waitForExistence(timeout: 5))
+            XCTAssertTrue(input.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.buttons["Close capture"].exists, "iOS dismisses capture by tapping outside the card.")
             try await stabilizeInput()
             XCTAssertFalse(submitButton().isEnabled, "An empty request must not submit.")
             input.typeText(source)
@@ -1363,7 +1759,7 @@ final class FollowthroughUITests: XCTestCase {
             XCTAssertTrue(submitButton().isEnabled)
             submitButton().tap()
             XCTAssertTrue(app.staticTexts[source].waitForExistence(timeout: 5), "The original request must remain visible during capture.")
-            XCTAssertTrue(close.exists, "Submission must keep the overlay over the current page.")
+            XCTAssertTrue(app.descendants(matching: .any)["captureReceipt"].firstMatch.exists, "Submission must keep the overlay over the current page.")
             XCTAssertFalse(app.navigationBars["Task details"].exists)
         }
         func confirmed(_ source: String) async throws -> [String: Any] {
@@ -1406,7 +1802,7 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertTrue(input.waitForExistence(timeout: 5))
         try await stabilizeInput()
         XCTAssertFalse(submitButton().isEnabled)
-        close.tap()
+        dismissCaptureByTappingOutside()
         XCTAssertTrue(app.navigationBars["Your tasks"].exists)
 
         for mode in ["network", "partial", "missing"] {
@@ -1422,7 +1818,7 @@ final class FollowthroughUITests: XCTestCase {
             evidence.append(try await confirmed(source))
             record("Capture receipt 05 safe retry " + mode)
             app.buttons["captureDone"].tap()
-            XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+            waitForCaptureDismissal()
             XCTAssertTrue(app.navigationBars["Your tasks"].exists, "Done must return to the same underlying page.")
         }
         let rejected = prefix + "rejected"
@@ -1436,7 +1832,7 @@ final class FollowthroughUITests: XCTestCase {
         try await stabilizeInput()
         XCTAssertEqual(input.value as? String, rejected)
         record("Capture receipt 07 edit preserves original source")
-        close.tap()
+        dismissCaptureByTappingOutside()
         let finalFixture = try await fixture()
         let finalTasks = try XCTUnwrap(finalFixture["tasks"] as? [[String: Any]])
         XCTAssertFalse(finalTasks.contains { $0["source"] as? String == rejected })
@@ -1793,7 +2189,6 @@ final class FollowthroughUITests: XCTestCase {
         let studioID = try XCTUnwrap(localStudio["id"] as? String)
         try launchAuthenticated()
         let prefix = "Capture over current page " + String(UUID().uuidString.prefix(8))
-        let close = app.buttons["Close capture"]
         let input = app.descendants(matching: .any)["captureInput"].firstMatch
 
         func validateAndRemove(_ source: String) async throws {
@@ -1829,7 +2224,7 @@ final class FollowthroughUITests: XCTestCase {
             var previous: [CGRect] = []
             var stableObservations = 0
             for _ in 0..<10 {
-                let frames = [app.buttons.matching(NSPredicate(format: "label == %@", "Close capture")).firstMatch.frame, captureSubmit().frame]
+                let frames = [input.frame, captureSubmit().frame]
                 if frames == previous { stableObservations += 1 } else { stableObservations = 0 }
                 if stableObservations >= 2 { return }
                 previous = frames
@@ -1845,7 +2240,8 @@ final class FollowthroughUITests: XCTestCase {
             XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
             record("Capture page 01 before " + name)
             if inline { input.tap() } else { app.buttons["newTask"].tap() }
-            XCTAssertTrue(close.waitForExistence(timeout: 5))
+            XCTAssertTrue(input.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.buttons["Close capture"].exists, "iOS dismisses capture by tapping outside the card.")
             try await stabilizeCapture()
             XCTAssertFalse(app.navigationBars["Quick capture"].exists)
             let source = prefix + " — " + name + ". This is isolated UI verification."
@@ -1857,21 +2253,22 @@ final class FollowthroughUITests: XCTestCase {
             XCTAssertLessThanOrEqual(submit.frame.maxY, try XCTUnwrap(visibleKeyboard()).frame.minY, "Submit must remain above the keyboard.")
             record("Capture page 02 overlay " + name)
             try await stabilizeCapture()
-            tapCenter(app.buttons.matching(NSPredicate(format: "label == %@", "Close capture")).firstMatch)
+            dismissCaptureByTappingOutside()
             record("Capture page 02b after close tap " + name)
-            XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+            waitForCaptureDismissal()
             XCTAssertTrue(app.navigationBars[title].exists, "Cancel must return to the same page, including a pushed project.")
             let afterCancel = try await workspace()
             XCTAssertFalse((afterCancel["tasks"] as? [[String: Any]] ?? []).contains { $0["source"] as? String == source }, "Closing capture must not submit its draft.")
             record("Capture page 03 cancelled " + name)
             if inline { input.tap() } else { app.buttons["newTask"].tap() }
-            XCTAssertTrue(close.waitForExistence(timeout: 5))
+            XCTAssertTrue(input.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.buttons["Close capture"].exists, "iOS dismisses capture by tapping outside the card.")
             try await stabilizeCapture()
             XCTAssertEqual(input.value as? String, source, "Cancel must preserve the draft when the capture is reopened.")
             tapCenter(captureSubmit())
             XCTAssertTrue(app.buttons["captureDone"].waitForExistence(timeout: 20))
             app.buttons["captureDone"].tap()
-            XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+            waitForCaptureDismissal()
             XCTAssertTrue(app.navigationBars[title].exists, "Successful capture must keep the same underlying page.")
             XCTAssertFalse(app.navigationBars["Task details"].exists, "Adding a task must not force task review.")
             record("Capture page 04 submitted " + name)
@@ -1899,13 +2296,12 @@ final class FollowthroughUITests: XCTestCase {
     func testFocusedCaptureFiltersInlineSettingsAndTaskConfirmation() throws {
         try launchAuthenticated()
         let input = app.descendants(matching: .any)["captureInput"].firstMatch
-        let closeCapture = app.buttons["Close capture"]
         for attempt in 1...2 {
             input.tap()
-            XCTAssertTrue(closeCapture.waitForExistence(timeout: 5), "Tapping the inline capture must focus it, including after closing it once.")
+            assertCaptureFocused()
             record("Repeated inline capture focus \(attempt)")
-            closeCapture.tap()
-            XCTAssertTrue(closeCapture.waitForNonExistence(timeout: 5))
+            dismissCaptureByTappingOutside()
+            waitForCaptureDismissal()
             XCTAssertTrue(input.isHittable)
         }
         tapTab("Settings")
@@ -1914,23 +2310,23 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertTrue(localWorkspace.exists)
 
         app.buttons["newTask"].tap()
-        XCTAssertTrue(closeCapture.waitForExistence(timeout: 5))
+        assertCaptureFocused()
         XCTAssertFalse(app.navigationBars["Quick capture"].exists)
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "The shared capture overlay must receive keyboard focus.")
         let draft = "Unsaved focus draft " + String(UUID().uuidString.prefix(8))
         input.typeText(draft)
         record("Focus capture from Settings")
-        closeCapture.tap()
+        dismissCaptureByTappingOutside()
         XCTAssertTrue(app.buttons["newTask"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.navigationBars["Settings"].exists, "Closing global capture must preserve the current Settings page.")
         XCTAssertFalse(input.exists, "Capture should close over Settings rather than reveal Today.")
 
         tapTab("Tasks")
         app.buttons["newTask"].tap()
-        XCTAssertTrue(closeCapture.waitForExistence(timeout: 5))
+        assertCaptureFocused()
         XCTAssertEqual(input.value as? String, draft, "Capture from another page must reuse the same draft.")
         record("Focus capture draft retained")
-        closeCapture.tap()
+        dismissCaptureByTappingOutside()
         XCTAssertTrue(app.navigationBars["Your tasks"].exists, "Capture must return to the same Tasks page.")
         // Discard this view-local QA draft without submitting or changing a task.
         app.terminate()
@@ -2167,8 +2563,8 @@ final class FollowthroughUITests: XCTestCase {
             XCTAssertTrue(title.waitForExistence(timeout: 10), "Returning to Projects must retain the selected project.")
             XCTAssertTrue(task.exists)
             app.buttons["newTask"].tap()
-            XCTAssertTrue(app.buttons["Close capture"].waitForExistence(timeout: 5))
-            app.buttons["Close capture"].tap()
+            assertCaptureFocused()
+            dismissCaptureByTappingOutside()
             XCTAssertTrue(task.exists)
             record("Projects regression restored " + layout)
 
@@ -2506,10 +2902,10 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertTrue(widget.buttons["Add"].waitForExistence(timeout: 10))
         record("Widget medium with capture link", application: springboard)
         widget.buttons["Add"].tap()
-        XCTAssertTrue(app.buttons["Close capture"].waitForExistence(timeout: 20))
+        assertCaptureFocused()
         XCTAssertFalse(app.navigationBars["Quick capture"].exists)
         record("Widget capture link opened")
-        app.buttons["Close capture"].tap()
+        dismissCaptureByTappingOutside()
     }
 
     func testClosedAppReplanAndRevokedCalendarPermission() throws {

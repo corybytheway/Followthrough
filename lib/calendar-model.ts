@@ -107,6 +107,19 @@ export function calendarAccountIdentities(
     zohoAccount: credentials.zoho?.username,
   };
 }
+
+export function shouldStartGoogleSyncOnConnect(
+  connection: CalendarConnection,
+): boolean {
+  // Connecting a first calendar should publish the plan. A reconnection must
+  // preserve an explicit pause, including one made before the first sync.
+  return (
+    !connection.syncEnabled &&
+    !connection.lastSync &&
+    !connection.outputCalendarId &&
+    connection.outputProvider !== 'icloud'
+  );
+}
 export function emptyCalendarConnection(): CalendarConnection {
   return {
     marker: crypto.randomUUID(),

@@ -27,6 +27,9 @@ struct SettingsView: View {
                     Button("Reset suggestion preferences") { Task { await store.resetSuggestionFeedback() } }.disabled(store.suggestions?.status.feedbackCount == 0)
                 }
             }
+            #if os(macOS)
+            MenuBarAppearanceSettings()
+            #endif
             Section("Calendar connections") {
                 if let status = calendarStatus {
                     CalendarAccountRow(name: "Google Calendar", account: status.googleAccount ?? status.googlePrimaryEmail, connected: status.googleConnected)
@@ -53,7 +56,7 @@ struct SettingsView: View {
                 if let calendarError {
                     Text(calendarError).font(.callout).foregroundStyle(.secondary)
                     Button("Try again") { Task { await loadCalendars() } }
-                        .buttonStyle(.plain).foregroundStyle(Color.followAccent)
+                        .buttonStyle(.plain).foregroundStyle(Color.followSettingsAccent)
                 }
                 if let base = try? store.client.baseURL {
                     Link(destination: base.appendingPathComponent("settings")) {
@@ -63,7 +66,7 @@ struct SettingsView: View {
                             Image(systemName: "arrow.up.right").font(.callout)
                         }
                     }
-                    .foregroundStyle(Color.followAccent)
+                    .foregroundStyle(Color.followSettingsAccent)
                     .accessibilityIdentifier("manageCalendarConnections")
                 }
             }
@@ -87,11 +90,11 @@ struct SettingsView: View {
                     Text("Connect your account to see your existing projects and tasks.")
                         .font(.callout).foregroundStyle(.secondary)
                     Button(store.authorizing ? "Connecting…" : "Connect my Followthrough account") { store.connectLiveWorkspace() }
-                        .buttonStyle(.plain).foregroundStyle(Color.followAccent)
+                        .buttonStyle(.plain).foregroundStyle(Color.followSettingsAccent)
                         .disabled(store.authorizing || store.syncing || !store.pending.isEmpty)
                 } else {
                     Button(store.authorizing ? "Connecting…" : "Switch account") { store.connect() }
-                        .buttonStyle(.plain).foregroundStyle(Color.followAccent)
+                        .buttonStyle(.plain).foregroundStyle(Color.followSettingsAccent)
                         .disabled(store.authorizing || store.syncing || !store.pending.isEmpty)
                 }
                 Button("Disconnect this device", role: .destructive) { confirmDisconnect = true }
@@ -119,6 +122,19 @@ struct SettingsView: View {
         calendarAccess.refresh()
     }
 }
+
+#if os(macOS)
+private struct MenuBarAppearanceSettings: View {
+    @AppStorage(MenuBarIconAppearance.monochromeDefaultsKey) private var monochrome = false
+
+    var body: some View {
+        Section("Menu bar") {
+            Toggle("Monochrome icon", isOn: $monochrome)
+                .accessibilityIdentifier("monochromeMenuBarIcon")
+        }
+    }
+}
+#endif
 
 private struct WorkHoursSettings: View {
     let store: WorkspaceStore
@@ -266,10 +282,18 @@ private struct WorkDayPicker: View {
                             .font(.callout.weight(.medium))
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
+                            #if os(iOS)
+                            .frame(width: 40, height: 40)
+                            .foregroundStyle(selection.contains(day) ? Color.followMint : .secondary)
+                            .background(selection.contains(day) ? Color.followNavy : Color(uiColor: .tertiarySystemFill), in: Circle())
+                            .frame(minWidth: 44, maxWidth: .infinity, minHeight: 44, maxHeight: 44)
+                            .contentShape(Rectangle())
+                            #else
                             .frame(minWidth: 44, maxWidth: .infinity, minHeight: 44, maxHeight: 44)
                             .foregroundStyle(selection.contains(day) ? Color.followAccent : .primary)
                             .background(selection.contains(day) ? Color.followAccent.opacity(0.15) : .clear, in: Capsule())
                             .contentShape(Capsule())
+                            #endif
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Calendar.current.weekdaySymbols[day])
@@ -343,7 +367,7 @@ private struct ConflictCalendarSettings: View {
                     Text(error).foregroundStyle(.orange)
                     if requiresReload {
                         Button("Reload calendars") { Task { await reloadAfterConflict() } }
-                            .buttonStyle(.plain).foregroundStyle(Color.followAccent)
+                            .buttonStyle(.plain).foregroundStyle(Color.followSettingsAccent)
                     }
                 }
             }
@@ -595,7 +619,7 @@ private struct TaskCalendarChoiceRow: View {
                     if let reason { Text(reason).font(.caption).foregroundStyle(.secondary) }
                 }
                 Spacer()
-                if selected { Image(systemName: "checkmark").foregroundStyle(Color.followAccent) }
+                if selected { Image(systemName: "checkmark").foregroundStyle(Color.followSettingsAccent) }
             }
             .contentShape(Rectangle()).padding(.vertical, 4)
         }
@@ -645,10 +669,10 @@ private struct DeviceCalendarAccessView: View {
                 LabeledContent("Calendar access", value: access.statusTitle)
                 if access.authorization == .notDetermined || access.authorization == .writeOnly {
                     Button("Allow calendar access") { Task { await access.request() } }
-                        .buttonStyle(.plain).foregroundStyle(Color.followAccent)
+                        .buttonStyle(.plain).foregroundStyle(Color.followSettingsAccent)
                 } else if access.authorization == .denied || access.authorization == .restricted {
                     Button("Open privacy settings", systemImage: "arrow.up.right") { openPrivacySettings() }
-                        .buttonStyle(.plain).foregroundStyle(Color.followAccent)
+                        .buttonStyle(.plain).foregroundStyle(Color.followSettingsAccent)
                 }
                 if let message = access.message { Text(message).font(.callout).foregroundStyle(.secondary) }
             }

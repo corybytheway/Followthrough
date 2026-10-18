@@ -4,10 +4,17 @@ import AppIntents
 
 @main struct FollowthroughApp: App {
     @State private var store = WorkspaceStore()
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(FollowthroughMacAppDelegate.self) private var appDelegate
+    @State private var captureShortcut = MacCaptureShortcut()
+    @State private var menuBarCapture = MacMenuBarCapture()
+    #endif
     var body: some Scene {
         #if os(macOS)
         Window("Followthrough", id: "main") {
             WorkspaceWindowContent(store: store)
+                .environment(captureShortcut)
+                .background { MacCaptureShortcutHost(store: store, shortcut: captureShortcut, menuBar: menuBarCapture) }
         }
         .defaultSize(width: 1180, height: 820)
         .windowResizability(.contentMinSize)
@@ -17,9 +24,6 @@ import AppIntents
                 Button("Sync workspace") { Task { await store.sync() } }.keyboardShortcut("r")
             }
         }
-        MenuBarExtra("Followthrough", systemImage: "bolt.fill") {
-            MenuBarContent(store: store)
-        }.menuBarExtraStyle(.window)
         #else
         WindowGroup(id: "main") {
             WorkspaceWindowContent(store: store)
@@ -55,6 +59,9 @@ struct RootView: View {
                 #if os(macOS)
                 NavigationSplitView {
                     SidebarView(store: store)
+                        .blur(radius: store.captureFocused && store.selectedSection == "today" ? 8 : 0)
+                        .disabled(store.captureFocused)
+                        .accessibilityHidden(store.captureFocused)
                 } detail: {
                     NavigationStack {
                         WorkspaceSection(store: store, section: store.selectedSection)
@@ -68,12 +75,7 @@ struct RootView: View {
                 #endif
             }
         }
-        .blur(radius: store.captureFocused ? 8 : 0)
-        .allowsHitTesting(!store.captureFocused)
-        .accessibilityHidden(store.captureFocused)
-        .overlay {
-            if store.captureFocused { CaptureFocusOverlay(store: store) }
-        }
+        .modifier(CapturePresentation(store: store))
         .sheet(item: $store.selectedTask) { TaskEditor(store: store, task: $0) }
         .onChange(of: phase) { _, value in
             if value == .active { Task { await store.sync(); store.synchronizeDeviceTimeZone() } }
@@ -91,6 +93,9 @@ struct ConnectionView: View {
                 .frame(width:64,height:64).background(Color.followNavy,in:RoundedRectangle(cornerRadius:18))
             Text("Make room for\nyour work").font(.system(size:40,weight:.bold,design:.rounded))
             Text("Your projects, your calendar, and one clear next step.").foregroundStyle(.secondary)
+            #if os(macOS)
+            MacCaptureShortcutLesson()
+            #endif
             Button { store.connectLiveWorkspace() } label: {
                 HStack { if store.authorizing { ProgressView() }; Text("Connect your workspace"); Image(systemName:"arrow.up.right") }.frame(maxWidth:.infinity).padding(.vertical,8)
             }.buttonStyle(FollowthroughActionButtonStyle()).disabled(store.authorizing)
@@ -377,9 +382,13 @@ private struct TaskSyncConflictView: View {
         Button {
             if store.resolveSavedTask(conflict, fields: selectedFields) { dismiss() }
         } label: {
-            Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(Color.followNavy)
+            Image(systemName: "checkmark")
+                .renderingMode(.original)
+                .symbolRenderingMode(.palette)
+                .fontWeight(.semibold)
+                .foregroundStyle(Color.followPrimaryText)
         }
-        .tint(.followMint)
+        .tint(.followPrimaryFill)
         .disabled(selectedFields.isEmpty || store.syncing)
         .keyboardShortcut(.defaultAction)
         .accessibilityLabel("Apply selected changes")
@@ -417,35 +426,67 @@ private struct TaskSyncConflictView: View {
 struct TodayView: View {
     @Bindable var store: WorkspaceStore
     let workspace: Workspace
+    private var navigationHeading: String {
+        #if os(macOS)
+        ""
+        #else
+        TodayHeading.title(timeZone:workspace.settings.timeZone)
+        #endif
+    }
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:28) {
                 #if os(macOS)
                 TodayHeading(timeZone:workspace.settings.timeZone)
+                    .blur(radius: store.captureFocused ? 8 : 0)
+                    .accessibilityHidden(store.captureFocused)
                 #endif
                 #if os(macOS)
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment:.top,spacing:24) {
                         TodayTasks(store:store,workspace:workspace).frame(minWidth:420,maxWidth:.infinity)
                         DaySchedule(workspace:workspace,onSelect:{store.selectedTask = $0}).frame(width:300)
+                            .blur(radius: store.captureFocused ? 8 : 0)
+                            .disabled(store.captureFocused).accessibilityHidden(store.captureFocused)
                     }
                     VStack(alignment:.leading,spacing:24) {
                         TodayTasks(store:store,workspace:workspace)
                         DaySchedule(workspace:workspace,onSelect:{store.selectedTask = $0})
+                            .blur(radius: store.captureFocused ? 8 : 0)
+                            .disabled(store.captureFocused).accessibilityHidden(store.captureFocused)
                     }
                 }
                 #else
                 TodayTasks(store:store,workspace:workspace)
                 DaySchedule(workspace:workspace,onSelect:{store.selectedTask = $0})
+                    .blur(radius: store.captureFocused ? 8 : 0)
+                    .disabled(store.captureFocused).accessibilityHidden(store.captureFocused)
                 #endif
             }.padding(24).frame(maxWidth:1300).environment(\.timeZone,TimeZone(identifier:workspace.settings.timeZone) ?? .current)
+                #if os(iOS)
+                .background {
+                    IOSCaptureScrollToTop(focused: store.captureFocused && store.selectedSection == "today",
+                                          requestID: store.captureFocusRequestID)
+                }
+                #endif
                 .id("todayTop")
-        }.background(Color.canvas).navigationTitle(TodayHeading.title(timeZone:workspace.settings.timeZone))
+        }
+        .transformAnchorPreference(key: CaptureFocusBounds.self, value: .bounds) { value, anchor in
+            value.viewport = anchor
+        }
+        .background(Color.canvas).navigationTitle(navigationHeading)
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.large)
+        #endif
         .refreshable {
             await store.sync()
             await store.refreshSuggestions(check: true, force: true)
         }
+        #if os(macOS)
+        .modifier(SectionScrollToTop(store: store, section: "today", anchor: "todayTop", captureAnchor: "todayTop"))
+        #else
         .modifier(SectionScrollToTop(store: store, section: "today", anchor: "todayTop"))
+        #endif
     }
 }
 struct TodayHeading: View {
@@ -461,9 +502,27 @@ struct TodayTasks: View {
     let workspace: Workspace
     var body: some View {
         VStack(alignment:.leading,spacing:24) {
-            CaptureCard(store:store)
+            InlineCaptureCard(store: store)
             TaskSuggestionsView(store: store)
                 .task(id: workspace.revision) { await store.refreshSuggestions(check: true) }
+                .blur(radius: store.captureFocused ? 8 : 0)
+                .disabled(store.captureFocused)
+                .accessibilityHidden(store.captureFocused)
+            TodayTaskList(store: store, workspace: workspace)
+                .blur(radius: store.captureFocused ? 8 : 0)
+                .disabled(store.captureFocused)
+                .accessibilityHidden(store.captureFocused)
+        }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: workspace.todayTasks.map(\.id))
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: store.presentationSuggestions.map(\.id))
+    }
+}
+struct TodayTaskList: View {
+    @Bindable var store: WorkspaceStore
+    let workspace: Workspace
+
+    var body: some View {
+        VStack(alignment:.leading,spacing:24) {
             HStack(alignment:.firstTextBaseline) {
                 Text(workspace.todayTasks.isEmpty ? "That’s it for today!" : "Followthrough on these first").font(.system(size:18,weight:.semibold))
                 Spacer(minLength:12)
@@ -480,8 +539,6 @@ struct TodayTasks: View {
                     .overlay { RoundedRectangle(cornerRadius:18).strokeBorder(.primary.opacity(0.06),lineWidth:1) }
             }
         }
-        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: workspace.todayTasks.map(\.id))
-        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: store.presentationSuggestions.map(\.id))
     }
 }
 struct TaskRow: View {
@@ -1094,9 +1151,11 @@ private struct ProjectColorPalette: View {
                 .safeAreaInset(edge:.bottom,spacing:0) {
                     HStack {
                         Spacer()
-                        Button("Done") { showingCustomColor = false }
+                        Button { showingCustomColor = false } label: {
+                            Text("Done").foregroundStyle(Color.followPrimaryText)
+                        }
                             .buttonStyle(.borderedProminent)
-                            .tint(.followNavy)
+                            .tint(.followPrimaryFill)
                             .controlSize(.large)
                             .accessibilityIdentifier("doneProjectColorPicker")
                     }
@@ -1424,22 +1483,58 @@ private struct ProjectKeywordsEditor: View {
     }
 }
 #if os(macOS)
+enum MenuBarIconAppearance {
+    static let monochromeDefaultsKey = "followthrough.menuBar.monochrome"
+    static let monochromeImage: NSImage = {
+        let image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil) ?? NSImage()
+        image.isTemplate = true
+        return image
+    }()
+    static let mintImage: NSImage = {
+        // Bake the brand color into an original image so the menu bar retains it.
+        let size = monochromeImage.size
+        let image = NSImage(size: size)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        let mint = NSColor(Color.followMint).usingColorSpace(.sRGB) ?? NSColor(Color.followMint)
+        for scale in [1.0, 2.0] {
+            guard let context = CGContext(data: nil, width: Int(size.width * scale),
+                                          height: Int(size.height * scale), bitsPerComponent: 8,
+                                          bytesPerRow: 0, space: colorSpace,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { continue }
+            context.scaleBy(x: scale, y: scale)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+            let rect = NSRect(origin: .zero, size: size)
+            monochromeImage.draw(in: rect)
+            context.setBlendMode(.sourceIn)
+            context.setFillColor(mint.cgColor)
+            context.fill(rect)
+            NSGraphicsContext.restoreGraphicsState()
+            if let rendered = context.makeImage() {
+                let representation = NSBitmapImageRep(cgImage: rendered)
+                representation.size = size
+                image.addRepresentation(representation)
+            }
+        }
+        image.isTemplate = false
+        return image
+    }()
+}
+
 struct MenuBarContent: View {
     @Bindable var store: WorkspaceStore
-    @Environment(\.openWindow) private var openWindow
+    let menuBar: MacMenuBarCapture
+    let openMainWindow: () -> Void
     @Environment(\.openURL) private var openURL
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var composing = false
     @State private var submittedCaptureID: String?
     @State private var captureError: String?
     @State private var openingHandoff = false
     @State private var handoffError: String?
-    @FocusState private var inputFocused: Bool
     private var nextTask: FTTask? { store.presentationWorkspace?.todayTasks.first }
     private var submitting: Bool { submittedCaptureID != nil }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             if let task = nextTask {
                 MenuBarTaskSummary(title: task.title, minutes: task.remainingMinutes)
                 MenuBarTaskActions(
@@ -1456,65 +1551,11 @@ struct MenuBarContent: View {
             }
             if let handoffError { Text(handoffError).font(.callout).foregroundStyle(.red) }
             Divider()
-            Button(action: toggleCapture) {
-                HStack {
-                    Label("New task", systemImage: "plus")
-                    Spacer()
-                    Image(systemName: composing ? "chevron.up" : "chevron.down").font(.caption)
-                }
-                .font(.system(size: 13, weight: .medium))
-                .frame(maxWidth: .infinity, minHeight: 28)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(submitting)
-            .accessibilityIdentifier("menuBarNewTask")
-            if composing {
-                if submitting {
-                    HStack(spacing: 10) {
-                        ProgressView().controlSize(.small)
-                        Text("Adding to your plan…").font(.callout)
-                    }
-                    .accessibilityIdentifier("menuBarCaptureProgress")
-                } else {
-                    TextField("Describe a task, or a few things…", text: $store.captureText, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 14))
-                        .lineLimit(2...5)
-                        .padding(12)
-                        .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-                        .focused($inputFocused)
-                        .onSubmit(submitCapture)
-                        .onKeyPress(keys: [.return], phases: .down) { key in
-                            if key.modifiers.contains(.shift) { return .ignored }
-                            submitCapture(); return .handled
-                        }
-                        .accessibilityIdentifier("menuBarCaptureInput")
-                    if let captureError { Text(captureError).font(.callout).foregroundStyle(.red) }
-                    HStack {
-                        Text("Enter to add · Shift-Enter for a new line")
-                            .font(.caption2).foregroundStyle(.secondary)
-                        Spacer(minLength: 8)
-                        Button(action: submitCapture) {
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 14, weight: .semibold))
-                                .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.followMint)
-                        .foregroundStyle(Color.followNavy)
-                        .buttonBorderShape(.circle)
-                        .disabled(store.captureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .keyboardShortcut(.return, modifiers: .command)
-                        .accessibilityLabel("Add to plan")
-                        .accessibilityIdentifier("menuBarCaptureSubmit")
-                    }
-                }
-            }
+            MenuBarCaptureComposer(text: $store.captureText, submitting: submitting,
+                                   error: captureError, focusRequestID: menuBar.focusRequestID, onSubmit: submitCapture)
         }
-        .padding(18)
-        .frame(width: 380)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: composing)
+        .padding(12)
+        .frame(width: 340)
         .onChange(of: store.captureReceipt?.phase) { _, _ in followCaptureProgress() }
         .onChange(of: store.captureText) { captureError = nil }
         .onAppear(perform: followCaptureProgress)
@@ -1524,7 +1565,6 @@ struct MenuBarContent: View {
         guard let id = submittedCaptureID else { return }
         guard let receipt = store.captureReceipt, receipt.id == id else {
             submittedCaptureID = nil
-            composing = false
             return
         }
         switch receipt.phase {
@@ -1534,22 +1574,13 @@ struct MenuBarContent: View {
         }
     }
 
-    private func toggleCapture() {
-        captureError = nil
-        guard store.workspace != nil else { showMainWindow(); return }
-        guard store.selectedTask == nil else {
-            showMainWindow(); return
-        }
-        if store.captureReceipt != nil { showCaptureResult(); return }
-        composing.toggle()
-        inputFocused = composing
-    }
-
     private func submitCapture() {
         guard !submitting, !store.captureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard store.workspace != nil else { showMainWindow(); return }
         guard store.selectedTask == nil else {
             captureError = "Finish or cancel the open task edit before adding a request."; return
         }
+        if store.captureReceipt != nil { showCaptureResult(); return }
         guard !store.blockedMutation else {
             captureError = "Review your waiting changes in Followthrough before adding a request."; return
         }
@@ -1557,14 +1588,12 @@ struct MenuBarContent: View {
             captureError = store.error ?? "Could not save this request. Your text is still here."; return
         }
         captureError = nil
-        inputFocused = false
         submittedCaptureID = store.captureReceipt?.id
         if !store.connected { showCaptureResult() }
     }
 
     private func showCaptureResult() {
         submittedCaptureID = nil
-        composing = false
         if store.selectedTask == nil {
             store.selectedSection = "today"
             store.focusCapture()
@@ -1573,8 +1602,7 @@ struct MenuBarContent: View {
     }
 
     private func showMainWindow() {
-        openWindow(id: "main")
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        openMainWindow()
     }
 
     private func handoff(_ task: FTTask) {
@@ -1604,16 +1632,73 @@ struct MenuBarContent: View {
     }
 }
 
+private struct MenuBarCaptureComposer: View {
+    @Binding var text: String
+    let submitting: Bool
+    let error: String?
+    let focusRequestID: Int
+    let onSubmit: () -> Void
+    @FocusState private var inputFocused: Bool
+
+    var body: some View {
+        if submitting {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Adding to your plan…").font(.callout)
+            }
+            .accessibilityIdentifier("menuBarCaptureProgress")
+        } else {
+            HStack(alignment: .center, spacing: 8) {
+                TextField("New task…", text: $text, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .lineLimit(1...4)
+                    .focused($inputFocused)
+                    .defaultFocus($inputFocused, true)
+                    .onAppear { inputFocused = true }
+                    .onDisappear { inputFocused = false }
+                    .onChange(of: focusRequestID) { inputFocused = true }
+                    .onSubmit(onSubmit)
+                    .onKeyPress(keys: [.return], phases: .down) { key in
+                        if key.modifiers.contains(.shift) { return .ignored }
+                        onSubmit(); return .handled
+                    }
+                    .accessibilityLabel("New task")
+                    .accessibilityHint("Describe a task, or several, in a single prompt. Rambling and details encouraged. Press Return to add; Shift-Return starts a new line.")
+                    .accessibilityIdentifier("menuBarCaptureInput")
+                Button(action: onSubmit) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.followMint)
+                .foregroundStyle(Color.followNavy)
+                .buttonBorderShape(.circle)
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut(.return, modifiers: .command)
+                .help("Add to plan (Return)")
+                .accessibilityLabel("Add to plan")
+                .accessibilityIdentifier("menuBarCaptureSubmit")
+            }
+            .padding(8)
+            .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+            if let error { Text(error).font(.callout).foregroundStyle(.red) }
+        }
+    }
+}
+
 private struct MenuBarTaskSummary: View {
     let title: String
     let minutes: Int
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 3) {
             Text("Up next:").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             Text(title).font(.system(size: 16, weight: .semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            MenuBarTaskDuration(minutes: minutes).font(.callout).foregroundStyle(.secondary)
+            MenuBarTaskDuration(minutes: minutes).font(.caption).foregroundStyle(.secondary)
         }
     }
 }
@@ -1621,9 +1706,9 @@ private struct MenuBarTaskSummary: View {
 private struct MenuBarTaskDuration: View {
     let minutes: Int
     var body: some View {
-        if minutes >= 60 && minutes % 60 == 0 { Text("\(minutes / 60)-hour task") }
-        else if minutes > 60 { Text("\(minutes / 60)-hour \(minutes % 60)-minute task") }
-        else { Text("\(minutes)-minute task") }
+        if minutes >= 60 && minutes % 60 == 0 { Text("\(minutes / 60)hr task") }
+        else if minutes > 60 { Text("\(minutes / 60)hr \(minutes % 60)min task") }
+        else { Text("\(minutes)min task") }
     }
 }
 
@@ -1655,7 +1740,7 @@ private struct MenuBarTaskActions: View {
             .accessibilityIdentifier("menuBarHandoff")
         }
         .font(.system(size: 12, weight: .medium))
-        .controlSize(.large)
+        .controlSize(.regular)
     }
 }
 #endif

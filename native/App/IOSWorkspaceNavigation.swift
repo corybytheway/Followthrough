@@ -2,23 +2,30 @@
 import SwiftUI
 
 #if os(iOS)
+extension EnvironmentValues {
+    @Entry var workspaceKeyboardVisible = false
+}
+
 struct IOSWorkspaceNavigation: View {
     @Bindable var store: WorkspaceStore
     @State private var captureTabSelected = false
 
     var body: some View {
         TabView(selection: sectionSelection) {
-            Tab("Today", systemImage: "bolt.fill", value: "today") {
-                IOSWorkspaceTab(store: store, section: "today")
-            }
-            Tab("Tasks", systemImage: "checklist", value: "tasks") {
-                IOSWorkspaceTab(store: store, section: "tasks")
+            // The system bar is visible only in vertical layouts. Place
+            // Today nearest the bottom capture action; the custom horizontal
+            // bar keeps its existing order.
+            Tab("Settings", systemImage: store.selectedSection == "settings" ? "gearshape.fill" : "gearshape", value: "settings") {
+                IOSWorkspaceTab(store: store, section: "settings")
             }
             Tab("Projects", systemImage: store.selectedSection == "projects" ? "folder.fill" : "folder", value: "projects") {
                 IOSWorkspaceTab(store: store, section: "projects")
             }
-            Tab("Settings", systemImage: store.selectedSection == "settings" ? "gearshape.fill" : "gearshape", value: "settings") {
-                IOSWorkspaceTab(store: store, section: "settings")
+            Tab("Tasks", systemImage: "checklist", value: "tasks") {
+                IOSWorkspaceTab(store: store, section: "tasks")
+            }
+            Tab("Today", systemImage: "bolt.fill", value: "today") {
+                IOSWorkspaceTab(store: store, section: "today")
             }
             if #available(iOS 27.1, *) {
                 // The system pins the prominent item below the other tabs
@@ -30,6 +37,8 @@ struct IOSWorkspaceNavigation: View {
             }
         }
         .tabViewStyle(.tabBarOnly)
+        .tint(.followBlue)
+        .modifier(IOSKeyboardVisibility())
         .onChange(of: captureTabSelected) { _, selected in
             guard selected else { return }
             // Let TabView observe the tap before restoring its selection.
@@ -53,6 +62,27 @@ struct IOSWorkspaceNavigation: View {
     }
 }
 
+private struct IOSKeyboardVisibility: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var visible = false
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.workspaceKeyboardVisible, visible)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) {
+                setVisible(true, notification: $0)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) {
+                setVisible(false, notification: $0)
+            }
+    }
+
+    private func setVisible(_ value: Bool, notification: Notification) {
+        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: duration)) { visible = value }
+    }
+}
+
 private struct IOSWorkspaceTab: View {
     @Bindable var store: WorkspaceStore
     let section: String
@@ -62,6 +92,12 @@ private struct IOSWorkspaceTab: View {
             WorkspaceSection(store: store, section: section)
                 .modifier(IOSWorkspaceContentInset(store: store))
                 .toolbar { WorkspaceSaveToolbar(store: store) }
+        }
+        .background {
+            if #available(iOS 27.1, *) {
+                // Keep the style bridge alive when this stack pushes a page.
+                IOSCaptureTabSurfaceContext()
+            }
         }
     }
 }
@@ -93,6 +129,7 @@ private struct IOSAdaptiveNavigationInset: ViewModifier {
 
 private struct IOSNavigationInset: ViewModifier {
     @Bindable var store: WorkspaceStore
+    @Environment(\.workspaceKeyboardVisible) private var keyboardVisible
     var usesVerticalBar = false
 
     func body(content: Content) -> some View {
@@ -100,14 +137,148 @@ private struct IOSNavigationInset: ViewModifier {
         // receive the inset rather than losing it at a hosting boundary.
         // Keep the content's identity stable while the bar moves, so pushed
         // project pages and per-tab scroll positions survive pose changes.
-        content.safeAreaInset(edge: .bottom, spacing: usesVerticalBar ? 0 : 8) {
-            if !usesVerticalBar {
+        content.safeAreaInset(edge: .bottom, spacing: usesVerticalBar || keyboardVisible ? 0 : 8) {
+            if !usesVerticalBar && !keyboardVisible {
                 IOSNavigationBar(selection: store.selectedSection, onSelect: store.selectSection) { store.focusCapture() }
                     .padding(.horizontal, 12)
                     .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .toolbarVisibility(usesVerticalBar ? .visible : .hidden, for: .tabBar)
+        .toolbarVisibility(usesVerticalBar && !keyboardVisible ? .visible : .hidden, for: .tabBar)
+    }
+}
+
+@available(iOS 27.1, *)
+private struct IOSCaptureTabSurfaceContext: View {
+    @Environment(\.toolbarVerticalEdge) private var verticalEdge
+    @Environment(\.workspaceKeyboardVisible) private var keyboardVisible
+
+    var body: some View {
+        IOSCaptureTabSurface(enabled: verticalEdge != nil && !keyboardVisible)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Style only the native capture item's surface. UIKit still owns its placement,
+/// accessibility, and tap handling; no private tab-bar views are inspected.
+@available(iOS 27.1, *)
+private struct IOSCaptureTabSurface: UIViewControllerRepresentable {
+    let enabled: Bool
+
+    func makeUIViewController(context: Context) -> SurfaceController {
+        SurfaceController()
+    }
+
+    func updateUIViewController(_ controller: SurfaceController, context: Context) {
+        controller.enabled = enabled
+        controller.refreshSurface()
+    }
+
+    static func dismantleUIViewController(_ controller: SurfaceController, coordinator: ()) {
+        controller.removeSurface()
+    }
+
+    final class SurfaceController: UIViewController {
+        var enabled = false
+        private let surface = CaptureSurfaceView()
+
+        override func loadView() {
+            view = UIView()
+            view.backgroundColor = .clear
+            view.isUserInteractionEnabled = false
+        }
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            NotificationCenter.default.addObserver(self, selector: #selector(keyboardDidHide),
+                                                  name: UIResponder.keyboardDidHideNotification, object: nil)
+        }
+
+        deinit { NotificationCenter.default.removeObserver(self) }
+
+        @objc private func keyboardDidHide(_ notification: Notification) {
+            // The bar can finish moving after the bridge's last layout pass.
+            // Measure its final native frame without delaying input or motion.
+            tabBarController?.view.layoutIfNeeded()
+            refreshSurface()
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            refreshSurface()
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            refreshSurface()
+        }
+
+        override func viewDidDisappear(_ animated: Bool) {
+            super.viewDidDisappear(animated)
+            removeSurface()
+        }
+
+        func refreshSurface() {
+            guard enabled, isViewLoaded, view.window != nil,
+                  let host = tabBarController,
+                  let identifier = host.prominentTabIdentifier,
+                  let captureTab = host.tabs.first(where: { $0.identifier == identifier }) else {
+                removeSurface()
+                return
+            }
+            surface.captureTab = captureTab
+            if surface.superview !== host.view {
+                host.view.addSubview(surface)
+            }
+            surface.frame = host.view.bounds
+            surface.setNeedsLayout()
+        }
+
+        func removeSurface() {
+            surface.removeFromSuperview()
+        }
+    }
+
+    final class CaptureSurfaceView: UIView {
+        weak var captureTab: UITab?
+        private let circle = UIView()
+        private let plus = UIImageView(image: UIImage(
+            systemName: "plus",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 27, weight: .semibold)
+        ))
+
+        init() {
+            super.init(frame: .zero)
+            backgroundColor = .clear
+            isUserInteractionEnabled = false
+            accessibilityElementsHidden = true
+            autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            circle.backgroundColor = UIColor(.followMint)
+            plus.tintColor = UIColor(.followNavy)
+            plus.contentMode = .center
+            addSubview(circle)
+            circle.addSubview(plus)
+        }
+
+        required init?(coder: NSCoder) { return nil }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            // UITab's public source-item frame follows the real native button
+            // through rotation and folding, without guessed screen offsets.
+            let itemFrame: CGRect? = captureTab?.frame(in: self)
+            guard let itemFrame, !itemFrame.isEmpty, !itemFrame.isNull,
+                  itemFrame.minX.isFinite, itemFrame.minY.isFinite else {
+                circle.isHidden = true
+                return
+            }
+            circle.isHidden = false
+            circle.frame = itemFrame
+            circle.layer.cornerRadius = min(itemFrame.width, itemFrame.height) / 2
+            plus.frame = circle.bounds
+        }
     }
 }
 

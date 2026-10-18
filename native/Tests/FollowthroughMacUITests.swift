@@ -68,6 +68,220 @@ final class FollowthroughMacUITests: XCTestCase {
         record(app, "Task suggestions Mac direct acceptance")
     }
 
+    @MainActor func testShortcutFocusesMenuBarAndKeepsDraft() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", "http://127.0.0.1:4399"]
+        app.launchEnvironment.removeValue(forKey: "FOLLOWTHROUGH_SESSION")
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["Connect your workspace"].waitForExistence(timeout: 10))
+        app.typeKey("f", modifierFlags: [.control, .option])
+        let input = app.textFields["menuBarCaptureInput"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5), app.debugDescription)
+        input.typeText("Menu bar focused draft")
+        XCTAssertEqual(input.value as? String, "Menu bar focused draft")
+        XCTAssertFalse(app.textFields["captureInput"].exists)
+        input.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+        app.typeKey("f", modifierFlags: [.control, .option])
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, "Menu bar focused draft")
+        input.typeKey(.rightArrow, modifierFlags: [])
+        input.typeText(" preserved")
+        XCTAssertEqual(input.value as? String, "Menu bar focused draft preserved")
+        record(app, "Menu bar shortcut immediately typeable and preserved draft")
+    }
+
+    @MainActor func testGlobalShortcutOpensMenuBarWithoutWorkspaceWindow() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", "http://127.0.0.1:4399"]
+        app.launchEnvironment.removeValue(forKey: "FOLLOWTHROUGH_SESSION")
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["Connect your workspace"].waitForExistence(timeout: 10))
+
+        // The shortcut must work from another app, with the workspace closed.
+        app.typeKey("w", modifierFlags: .command)
+        let finder = XCUIApplication(bundleIdentifier: "com.apple.finder")
+        finder.activate()
+        finder.typeKey("f", modifierFlags: [.control, .option])
+        let input = app.textFields["menuBarCaptureInput"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(app.buttons["Connect your workspace"].isHittable,
+                       "The shortcut must not reopen the workspace window.")
+        let draft = "Menu bar shortcut draft"
+        input.typeText(draft)
+        XCTAssertEqual(input.value as? String, draft, "Typing must work without clicking the field.")
+        record(app, "Global shortcut menu bar from Finder with workspace closed")
+
+        input.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+        finder.activate()
+        finder.typeKey("f", modifierFlags: [.control, .option])
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, draft, "Reopening must preserve the draft.")
+        input.typeKey(.rightArrow, modifierFlags: [])
+        input.typeText(" preserved")
+        XCTAssertEqual(input.value as? String, draft + " preserved")
+        // Pressing again while open must refocus, rather than dismissing it.
+        app.typeKey("f", modifierFlags: [.control, .option])
+        XCTAssertTrue(input.exists)
+        XCTAssertFalse(app.buttons["Connect your workspace"].isHittable)
+        record(app, "Global shortcut menu bar repeated press preserves draft")
+    }
+
+
+    @MainActor func testTodayCaptureScrollsToTopAndPreservesCurrentPage() throws {
+        continueAfterFailure = false
+        let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-add-task-scroll-fixture.json")
+        guard let data = try? Data(contentsOf: fixtureURL),
+              let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let server = fixture["server"] as? String,
+              ["127.0.0.1", "localhost"].contains(URL(string: server)?.host ?? ""),
+              let session = fixture["session"] as? [String: Any] else {
+            throw XCTSkip("Requires the isolated read-only capture fixture with scheduled rows.")
+        }
+        let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", server]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = try JSONSerialization.data(withJSONObject: session).base64EncodedString()
+        app.launch()
+        defer { app.terminate() }
+
+        let input = app.textFields["captureInput"]
+        let close = app.buttons["Close capture"]
+        XCTAssertTrue(input.waitForExistence(timeout: 25), app.debugDescription)
+        let fixtureTask = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "completeTask_capture-qa-")).firstMatch
+        XCTAssertTrue(fixtureTask.waitForExistence(timeout: 10))
+        let scroll = app.scrollViews.containing(.textField, identifier: "captureInput").firstMatch
+        let originalTop = input.frame.minY
+        scroll.scroll(byDeltaX: 0, deltaY: -160)
+        XCTAssertLessThan(input.frame.minY, originalTop - 10, "The inline card must scroll with Today.")
+        app.buttons["Today"].firstMatch.click()
+        let returnedToTop = NSPredicate { _, _ in input.isHittable && abs(input.frame.minY - originalTop) < 5 }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: returnedToTop, evaluatedWith: nil)], timeout: 5), .completed)
+        let inlineFrame = input.frame
+        XCTAssertEqual(app.textFields.matching(identifier: "captureInput").count, 1)
+        record(app, "Single capture Mac 01 inline Today")
+        app.activate()
+        input.click()
+        XCTAssertTrue(close.waitForExistence(timeout: 5), app.debugDescription)
+        let draft = "Read-only capture draft"
+        input.typeText(draft)
+        XCTAssertEqual(input.value as? String, draft, "Typing must be accepted immediately after focus.")
+        XCTAssertEqual(app.textFields.matching(identifier: "captureInput").count, 1)
+        XCTAssertEqual(input.frame.minY, inlineFrame.minY, accuracy: 1, "A visible Today editor must focus in place.")
+        XCTAssertEqual(input.frame.width, inlineFrame.width, accuracy: 1, "Focus must retain the inline card's width.")
+        record(app, "Single capture Mac 02 focused Today")
+        app.activate()
+        close.click()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(input.isHittable)
+        XCTAssertEqual(input.value as? String, draft)
+
+        scroll.scroll(byDeltaX: 0, deltaY: -700)
+        XCTAssertFalse(input.isHittable, "Exercise adding when Today's editor is offscreen.")
+        app.activate()
+        app.windows.firstMatch.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        var previousFrame = CGRect.null
+        var stableFrames = 0
+        let revealedCapture = NSPredicate { _, _ in
+            let frame = close.frame
+            stableFrames = frame == previousFrame ? stableFrames + 1 : 0
+            previousFrame = frame
+            return input.isHittable && close.isHittable && stableFrames >= 2
+                && abs(input.frame.minY - originalTop) < 2
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: revealedCapture, evaluatedWith: nil)], timeout: 5), .completed,
+                       "Command-N must return Today to the very top, including the date above the editor.")
+        XCTAssertEqual(input.value as? String, draft)
+        record(app, "Today capture Mac full top after Command-N")
+        close.click()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        for distance in [-160.0, -700.0] {
+            scroll.scroll(byDeltaX: 0, deltaY: distance)
+            XCTAssertLessThan(input.frame.minY, originalTop - 10, "Exercise capture from partial and offscreen positions.")
+            app.activate()
+            app.windows.firstMatch.typeKey("n", modifierFlags: .command)
+            // A repeated request must also work while capture is focused.
+            app.activate()
+            app.windows.firstMatch.typeKey("n", modifierFlags: .command)
+            let backAtTop = NSPredicate { _, _ in
+                input.isHittable && close.isHittable && abs(input.frame.minY - originalTop) < 2
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: backAtTop, evaluatedWith: nil)], timeout: 5), .completed,
+                           "Every Command-N request must return to the full Today top even when capture is already focused.")
+            XCTAssertEqual(app.textFields.matching(identifier: "captureInput").count, 1)
+            XCTAssertEqual(input.value as? String, draft)
+            close.click()
+            XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        }
+        XCTAssertEqual(app.sheets.count, 0, "Closing capture must not activate content behind it.")
+
+        for page in ["Tasks", "Release QA", "Settings"] {
+            app.activate()
+            app.buttons[page].firstMatch.click()
+            let pageTitle = app.windows.firstMatch.title
+            XCTAssertFalse(input.exists, "Only Today has an inline capture editor.")
+            app.activate()
+            app.windows.firstMatch.typeKey("n", modifierFlags: .command)
+            XCTAssertTrue(close.waitForExistence(timeout: 5))
+            XCTAssertEqual(app.textFields.matching(identifier: "captureInput").count, 1)
+            XCTAssertEqual(input.value as? String, draft)
+            record(app, "Single capture Mac over " + page)
+            close.click()
+            XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+            XCTAssertFalse(input.exists)
+            XCTAssertEqual(app.windows.firstMatch.title, pageTitle, "Capture must return to the same page.")
+        }
+        XCTAssertTrue(app.descendants(matching: .any)["workStartPicker"].firstMatch.isHittable)
+        app.buttons["Today"].firstMatch.click()
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, draft)
+        record(app, "Single capture Mac 03 returned Today")
+    }
+
+    @MainActor func testNewTaskActionsFocusCaptureWithoutClickingTheField() throws {
+        continueAfterFailure = false
+        let app = try localApplication()
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout: 25), app.debugDescription)
+
+        var draft = ""
+        for page in ["Tasks", "Local Studio"] {
+            app.activate()
+            app.buttons[page].firstMatch.click()
+            let pageTitle = app.windows.firstMatch.title
+            for useShortcut in [true, false] {
+                app.activate()
+                if useShortcut {
+                    app.typeKey("n", modifierFlags: .command)
+                } else {
+                    app.buttons["newTask"].click()
+                }
+                let close = app.buttons["Close capture"]
+                XCTAssertTrue(close.waitForExistence(timeout: 5), app.debugDescription)
+                let input = app.textFields["captureInput"]
+                XCTAssertEqual(input.value as? String, draft, "Reopening capture must preserve the draft.")
+                let text = useShortcut ? "Command-N " : "Plus "
+                // Send keys to the app, without clicking or targeting the field.
+                if !draft.isEmpty { app.typeKey("a", modifierFlags: .command) }
+                app.typeText(text)
+                draft = text
+                XCTAssertEqual(input.value as? String, draft, "Capture must accept typing immediately after opening.")
+                record(app, "Mac capture focus " + page + (useShortcut ? " shortcut" : " plus"))
+                app.activate()
+                close.click()
+                XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+                XCTAssertEqual(app.windows.firstMatch.title, pageTitle, "Capture must return to the same page.")
+                XCTAssertTrue(app.buttons["newTask"].isHittable)
+            }
+        }
+    }
+
     @MainActor func testSelectedSidebarItemsScrollToTopWithoutResettingState() throws {
         continueAfterFailure = false
         let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-tab-reselection-ios-fixture.json")
@@ -275,7 +489,7 @@ final class FollowthroughMacUITests: XCTestCase {
     }
 
     @MainActor private func record(_ app: XCUIApplication, _ name: String) {
-        let shot = app.windows.firstMatch.screenshot()
+        let shot = app.windows.firstMatch.exists ? app.windows.firstMatch.screenshot() : XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(screenshot:shot); attachment.name=name; attachment.lifetime = .keepAlways; add(attachment)
         let hierarchy = XCTAttachment(string:app.debugDescription); hierarchy.name=name+" hierarchy"; hierarchy.lifetime = .keepAlways; add(hierarchy)
         let directory=URL(fileURLWithPath:"/tmp/followthrough-mac-evidence",isDirectory:true)
