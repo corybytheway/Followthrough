@@ -59,8 +59,8 @@ body {
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #245bdf;
-  --primary-foreground: oklch(0.985 0 0);
+  --primary: #35eab1;
+  --primary-foreground: #15243b;
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -70,7 +70,7 @@ body {
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: #245bdf;
+  --ring: #00865e;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -94,8 +94,8 @@ body {
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: #35eab1;
+  --primary-foreground: #15243b;
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -105,7 +105,7 @@ body {
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: #35eab1;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -136,11 +136,26 @@ body {
 :root {
   --ink: #15243b;
   --mint: #35eab1;
+  --primary-action-fill: #15243b;
+  --primary-action-text: #35eab1;
+  --primary-action-hover: #243b5a;
   --mint-ink: #006d49;
   --subtle: #617085;
   --blue: #245bdf;
   --line: #e3e8f0;
   --surface: #fff;
+}
+.dark {
+  --primary-action-fill: #35eab1;
+  --primary-action-text: #15243b;
+  --primary-action-hover: #62f0c5;
+}
+.brand-primary-button {
+  background: var(--primary-action-fill);
+  color: var(--primary-action-text);
+}
+.brand-primary-button:hover:not(:disabled) {
+  background: var(--primary-action-hover);
 }
 * {
   box-sizing: border-box;
@@ -290,8 +305,8 @@ h3 {
   justify-content: center;
   gap: 8px;
   border-radius: 9px;
-  background: var(--blue);
-  color: white;
+  background: var(--mint);
+  color: var(--ink);
   padding: 11px 16px;
   font-size: 14px;
   font-weight: 550;
@@ -411,7 +426,7 @@ textarea {
 }
 button:focus-visible,
 a:focus-visible {
-  outline: 3px solid #739df3;
+  outline: 3px solid var(--ring);
   outline-offset: 3px;
 }
 @media (max-width: 850px) {

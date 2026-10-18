@@ -382,9 +382,9 @@ private struct TaskSyncConflictView: View {
         Button {
             if store.resolveSavedTask(conflict, fields: selectedFields) { dismiss() }
         } label: {
-            Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(Color.followNavy)
+            Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(Color.followPrimaryText)
         }
-        .tint(.followMint)
+        .tint(.followPrimaryFill)
         .disabled(selectedFields.isEmpty || store.syncing)
         .keyboardShortcut(.defaultAction)
         .accessibilityLabel("Apply selected changes")
@@ -1140,7 +1140,8 @@ private struct ProjectColorPalette: View {
                         Spacer()
                         Button("Done") { showingCustomColor = false }
                             .buttonStyle(.borderedProminent)
-                            .tint(.followNavy)
+                            .tint(.followPrimaryFill)
+                            .foregroundStyle(Color.followPrimaryText)
                             .controlSize(.large)
                             .accessibilityIdentifier("doneProjectColorPicker")
                     }

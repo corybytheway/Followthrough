@@ -401,7 +401,7 @@ struct CaptureCard: View {
                 #endif
                 Spacer()
                 Button(action: submit) { Label("Add to plan", systemImage: "arrow.up.right").fixedSize() }
-                    .buttonStyle(FollowthroughActionButtonStyle(disabledForeground: .followNavy, disabledFill: .followMint.opacity(0.5)))
+                    .buttonStyle(FollowthroughActionButtonStyle(fill: .followMint, foreground: .followNavy, disabledForeground: .followNavy, disabledFill: .followMint.opacity(0.5)))
                     .disabled(store.captureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .keyboardShortcut(.return, modifiers: .command)
                     .accessibilityIdentifier("captureSubmit")
@@ -527,19 +527,19 @@ private struct CaptureReceiptContent: View {
                         .accessibilityIdentifier("captureAnother")
                     Spacer()
                     Button("Done", action: onDone)
-                        .buttonStyle(FollowthroughActionButtonStyle())
+                        .buttonStyle(FollowthroughActionButtonStyle(fill: .followMint, foreground: .followNavy))
                         .accessibilityIdentifier("captureDone")
                 }
             case .needsAttention:
                 Button("Edit request", action: onEdit)
-                    .buttonStyle(FollowthroughActionButtonStyle())
+                    .buttonStyle(FollowthroughActionButtonStyle(fill: .followMint, foreground: .followNavy))
                     .accessibilityIdentifier("captureEdit")
             case .queued:
                 HStack {
                     Button("Keep working", action: onDone).buttonStyle(.plain).frame(minHeight: 44)
                     Spacer()
                     Button(connected ? "Retry now" : "Reconnect", action: onRetry)
-                        .buttonStyle(FollowthroughActionButtonStyle())
+                        .buttonStyle(FollowthroughActionButtonStyle(fill: .followMint, foreground: .followNavy))
                         .accessibilityIdentifier("captureRetry")
                 }
             case .sending:

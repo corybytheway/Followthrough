@@ -184,15 +184,15 @@ struct EditorConfirmButton: View {
             }
         }
         .modifier(FollowthroughProminentToolbarStyle())
-        .tint(.followMint)
-        .foregroundStyle(enabled ? Color.followNavy : Color.secondary)
+        .tint(.followPrimaryFill)
+        .foregroundStyle(enabled ? Color.followPrimaryText : Color.secondary)
         .keyboardShortcut(.defaultAction)
         .disabled(!enabled)
         .accessibilityLabel("Save changes")
     }
 }
 
-/// Keep native glass behavior while using the same mint confirmation fill.
+/// Keep native glass behavior while using the surface-aware action fill.
 struct FollowthroughProminentToolbarStyle: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26, macOS 26, *) {
@@ -205,8 +205,8 @@ struct FollowthroughProminentToolbarStyle: ViewModifier {
 
 /// Keep action colors readable without tinting disabled controls muddy green.
 struct FollowthroughActionButtonStyle: ButtonStyle {
-    var fill: Color = .followMint
-    var foreground: Color = .followNavy
+    var fill: Color = .followPrimaryFill
+    var foreground: Color = .followPrimaryText
     var disabledForeground: Color = .secondary
     var disabledFill: Color = .secondary.opacity(0.12)
     @Environment(\.isEnabled) private var isEnabled
