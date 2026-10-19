@@ -2,6 +2,7 @@
 'use client';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import Image from 'next/image';
+import { createSuggestionRequestQueue } from '@/lib/suggestion-request-queue';
 import Link from 'next/link';
 import {
   Check,
@@ -113,6 +114,7 @@ export default function TaskSuggestions({
       item: TaskSuggestion;
       vote: 'more' | 'less';
     } | null>(null);
+  const [enqueue] = useState(createSuggestionRequestQueue);
   const expanded = useSyncExternalStore(
     subscribeExpansion,
     expandedSnapshot,
@@ -125,30 +127,32 @@ export default function TaskSuggestions({
   );
   useEffect(() => {
     let live = true;
-    void request()
-      .then(async (value) => {
-        if (!live) return;
-        setData(value);
-        if (value.status.available) {
-          const next = await request({ action: 'refresh' });
-          if (live) setData(next);
-        }
-      })
-      .catch(() => {});
+    void enqueue(async () => {
+      if (!live) return;
+      const value = await request();
+      if (!live) return;
+      setData(value);
+      if (value.status.available) {
+        const next = await request({ action: 'refresh' });
+        if (live) setData(next);
+      }
+    }).catch(() => {});
     return () => {
       live = false;
     };
-  }, [state.revision]);
+  }, [state.revision, enqueue]);
   const run = async (body: Record<string, unknown>) => {
     setBusy(true);
     setError('');
     try {
-      const next = await request(body);
-      setData(next);
-      if (body.action === 'accept') {
-        await onAccepted();
-      }
-      return true;
+      return await enqueue(async () => {
+        const next = await request(body);
+        setData(next);
+        if (body.action === 'accept') {
+          await onAccepted();
+        }
+        return true;
+      });
     } catch (error) {
       setError((error as Error).message);
       return false;
