@@ -14,6 +14,7 @@ import {
   saveCalendar,
   callbackUrl,
 } from '@/lib/calendar-store';
+import { connectedGoogleAccounts } from '@/lib/calendar-model';
 import { GOOGLE_SCOPES } from '@/lib/google-calendar';
 import { randomToken, hash, pkceChallenge } from '@/lib/calendar-security';
 export const dynamic = 'force-dynamic';
@@ -48,9 +49,10 @@ export async function POST(request: Request) {
           'Confirm read-only Gmail access and AI processing before connecting.',
         );
       const authorizationUrl = await withCalendarLock(owner, async () => {
-        const { credentials, connection } = await readCalendar(owner),
-          google = credentials.google,
-          account = connection.googleCalendars.find((c) => c.primary)?.id;
+        const { credentials, connection } = await readCalendar(owner);
+        const accounts = connectedGoogleAccounts(connection, credentials);
+        const target = accounts.find((account) => account.id === (input.accountId ?? accounts[0]?.id));
+        const google = target?.secret, account = target?.email;
         if (!google?.refreshToken || !account)
           throw new InputError('Connect your Google Calendar account first.');
         const state = randomToken(),
@@ -61,6 +63,7 @@ export async function POST(request: Request) {
           expiresAt: Date.now() + 600_000,
           purpose: 'gmail',
           account,
+          accountId: target!.id,
         };
         await saveCalendar(owner, connection, credentials);
         const params = new URLSearchParams({

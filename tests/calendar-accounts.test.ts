@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   calendarAccountIdentities,
   emptyCalendarConnection,
+  normalizeGoogleAccounts,
   shouldStartGoogleSyncOnConnect,
   type CalendarCredentials,
 } from '../lib/calendar-model';
@@ -51,4 +52,19 @@ void test('Google account is absent when disconnected or when primary id is not 
   assert.equal(calendarAccountIdentities(connection, {
     google: { clientId: 'id', clientSecret: 'secret', refreshToken: 'token' },
   }).googleAccount, undefined);
+});
+
+void test('stored single-account Google credentials migrate without requiring consent again', () => {
+  const connection = emptyCalendarConnection();
+  connection.googleCalendars = [{ id: 'owner@example.test', name: 'Primary', primary: true }];
+  connection.selectedGoogle = ['owner@example.test'];
+  connection.outputCalendarId = 'owner@example.test';
+  const credentials: CalendarCredentials = { google: { clientId: 'client', clientSecret: 'secret', refreshToken: 'existing-token', scopes: ['calendar-access'] } };
+  normalizeGoogleAccounts(connection, credentials);
+  assert.deepEqual(connection.googleAccounts?.map((account) => account.email), ['owner@example.test']);
+  assert.equal(connection.outputGoogleAccountId, 'owner@example.test');
+  assert.equal(credentials.googleAccounts?.['owner@example.test'].refreshToken, 'existing-token');
+  assert.deepEqual(connection.googleAccounts?.[0].selected, ['owner@example.test']);
+  normalizeGoogleAccounts(connection, credentials);
+  assert.equal(connection.googleAccounts?.length, 1);
 });

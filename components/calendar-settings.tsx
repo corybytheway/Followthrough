@@ -5,7 +5,7 @@ import { CalendarDays, RefreshCw, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { CalendarStatus } from '@/lib/calendar-model';
+import { MAX_GOOGLE_ACCOUNTS, type GoogleCalendarAccount, type CalendarStatus } from '@/lib/calendar-model';
 
 export default function CalendarSettings() {
   const [status, setStatus] = useState<CalendarStatus | null>(null),
@@ -19,18 +19,16 @@ export default function CalendarSettings() {
     [zohoServer, setZohoServer] = useState('calendar.zoho.com');
   const [googleClientId, setGoogleClientId] = useState(''),
     [googleClientSecret, setGoogleClientSecret] = useState('');
-  const [selectedGoogle, setGoogle] = useState<string[]>([]),
-    [selectedIcloud, setIcloud] = useState<string[]>([]),
+  const [googleAccounts, setGoogleAccounts] = useState<GoogleCalendarAccount[]>([]);
+  const [selectedIcloud, setIcloud] = useState<string[]>([]),
     [selectedZoho, setZoho] = useState<string[]>([]),
-    [ignoreAllDayGoogle, setIgnoreAllDayGoogle] = useState<string[]>([]),
     [ignoreAllDayIcloud, setIgnoreAllDayIcloud] = useState<string[]>([]),
     [ignoreAllDayZoho, setIgnoreAllDayZoho] = useState<string[]>([]);
   const accept = (next: CalendarStatus) => {
     setStatus(next);
-    setGoogle(next.selectedGoogle);
+    setGoogleAccounts(next.googleAccounts || []);
     setIcloud(next.selectedIcloud);
     setZoho(next.selectedZoho || []);
-    setIgnoreAllDayGoogle(next.ignoreAllDayGoogle || []);
     setIgnoreAllDayIcloud(next.ignoreAllDayIcloud || []);
     setIgnoreAllDayZoho(next.ignoreAllDayZoho || []);
   };
@@ -89,15 +87,11 @@ export default function CalendarSettings() {
     checked: boolean,
   ) => {
     const update =
-      provider === 'google'
-        ? setGoogle
-        : provider === 'icloud'
+      provider === 'icloud'
           ? setIcloud
           : setZoho;
     const updateIgnore =
-      provider === 'google'
-        ? setIgnoreAllDayGoogle
-        : provider === 'icloud'
+      provider === 'icloud'
           ? setIgnoreAllDayIcloud
           : setIgnoreAllDayZoho;
     update((values) =>
@@ -112,18 +106,27 @@ export default function CalendarSettings() {
     checked: boolean,
   ) => {
     const update =
-      provider === 'google'
-        ? setIgnoreAllDayGoogle
-        : provider === 'icloud'
+      provider === 'icloud'
           ? setIgnoreAllDayIcloud
           : setIgnoreAllDayZoho;
     update((values) =>
       checked ? [...values, id] : values.filter((value) => value !== id),
     );
   };
+  const selectedGoogle = googleAccounts[0]?.selected || [];
+  const ignoreAllDayGoogle = googleAccounts[0]?.ignoreAllDay || [];
+  const googleSelection = googleAccounts.map(({ id, selected, ignoreAllDay }) => ({ id, selected, ignoreAllDay }));
+  const updateGoogle = (accountId: string, id: string, field: 'selected' | 'ignoreAllDay', checked: boolean) => {
+    setGoogleAccounts((accounts) => accounts.map((account) => account.id !== accountId ? account : {
+      ...account,
+      [field]: checked ? [...new Set([...account[field], id])] : account[field].filter((value) => value !== id),
+      ...(field === 'selected' && !checked ? { ignoreAllDay: account.ignoreAllDay.filter((value) => value !== id) } : {}),
+    }));
+  };
   const selectionChanged =
     !!status &&
-    (JSON.stringify(selectedGoogle) !== JSON.stringify(status.selectedGoogle) ||
+    (JSON.stringify(googleSelection) !== JSON.stringify((status.googleAccounts || []).map(({ id, selected, ignoreAllDay }) => ({ id, selected, ignoreAllDay }))) ||
+      JSON.stringify(selectedGoogle) !== JSON.stringify(status.selectedGoogle) ||
       JSON.stringify(selectedIcloud) !==
         JSON.stringify(status.selectedIcloud) ||
       JSON.stringify(selectedZoho) !==
@@ -134,9 +137,6 @@ export default function CalendarSettings() {
         JSON.stringify(status.ignoreAllDayIcloud || []) ||
       JSON.stringify(ignoreAllDayZoho) !==
         JSON.stringify(status.ignoreAllDayZoho || []));
-  const googleAccount = status?.googleConnected
-    ? status.googleCalendars.find((calendar) => calendar.primary)?.id
-    : undefined;
   return (
     <section
       className="settings-card calendar-connections"
@@ -146,7 +146,7 @@ export default function CalendarSettings() {
       <h2 id="calendar-heading">Calendar connections</h2>
       <p>
         Use Google, iCloud, and Zoho busy times to plan your day. Task blocks go
-        directly on your primary Google calendar alongside your appointments.
+        to one chosen Google or Apple calendar alongside your appointments.
       </p>
       {error && (
         <p className="form-error" role="alert">
@@ -341,7 +341,7 @@ export default function CalendarSettings() {
                 <Button
                   disabled={working}
                   onClick={() =>
-                    void run(() => action({ action: 'connect_google' }), '')
+                    void run(() => action({ action: 'connect_google', accountId: status.outputGoogleAccountId }), '')
                   }
                 >
                   Use primary Google calendar
@@ -354,20 +354,17 @@ export default function CalendarSettings() {
                 Turn on calendar sync below to add them to your calendar.
               </p>
             )}
-            {status.googleConnected && (
-              <Button
-                variant="outline"
-                disabled={working}
-                onClick={() =>
-                  void run(
-                    () => action({ action: 'disconnect_google' }),
-                    'Google disconnected. Sync is paused; existing task blocks remain in Google.',
-                  )
-                }
-              >
-                Disconnect Google
-              </Button>
-            )}
+            {(status.googleAccounts || []).map((account) => (
+              <div className="google-account-row" key={account.id}>
+                <span className="google-account-email">{account.email}</span>
+                <div className="calendar-actions">
+                  <Button variant="outline" disabled={working} onClick={() => void run(() => action({ action: 'connect_google', accountId: account.id }), '')}>Reconnect</Button>
+                  <Button variant="outline" disabled={working} onClick={() => void run(() => action({ action: 'disconnect_google', accountId: account.id }), 'Google account disconnected.')}>Disconnect</Button>
+                </div>
+              </div>
+            ))}
+            {status.googleConnected && <Button variant="outline" disabled={working || (status.googleAccounts?.length || 0) >= MAX_GOOGLE_ACCOUNTS} onClick={() => void run(() => action({ action: 'connect_google' }), '')}>Add Google account</Button>}
+
           </div>
           <div className="calendar-provider">
             <div className="calendar-provider-heading">
@@ -564,11 +561,27 @@ export default function CalendarSettings() {
                   Appointments on your task calendar are always checked;
                   Followthrough ignores its own blocks.
                 </p>
-                {(['google', 'icloud', 'zoho'] as const).map((provider) => {
+                {googleAccounts.map((account) => (
+                  <fieldset key={account.id}>
+                    <legend>Google <span className="calendar-account">({account.email})</span></legend>
+                    {account.calendars.filter((calendar) => status.outputOnPrimary || calendar.id !== status.outputCalendarId).map((calendar) => {
+                      const isSelected = account.selected.includes(calendar.id);
+                      return <div className="calendar-option-row" key={calendar.id}>
+                        <label className="calendar-option">
+                          <Checkbox checked={isSelected} disabled={working || (status.outputOnPrimary && account.id === status.outputGoogleAccountId && calendar.id === status.outputCalendarId)} onCheckedChange={(checked) => updateGoogle(account.id, calendar.id, 'selected', !!checked)} />
+                          <span>{calendar.name}{calendar.primary ? ' (primary)' : ''}</span>
+                        </label>
+                        <div className="calendar-all-day-option">
+                          <Checkbox aria-label={`Ignore all-day events on ${calendar.name} (${account.email})`} checked={account.ignoreAllDay.includes(calendar.id)} disabled={working || !isSelected} onCheckedChange={(checked) => updateGoogle(account.id, calendar.id, 'ignoreAllDay', !!checked)} />
+                          <span>Ignore all-day events</span>
+                        </div>
+                      </div>;
+                    })}
+                  </fieldset>
+                ))}
+                {(['icloud', 'zoho'] as const).map((provider) => {
                   const choices = (
-                    provider === 'google'
-                      ? status.googleCalendars
-                      : provider === 'icloud'
+                    provider === 'icloud'
                         ? status.icloudCalendars
                         : status.zohoCalendars || []
                   ).filter(
@@ -577,31 +590,19 @@ export default function CalendarSettings() {
                       c.id !== status.outputCalendarId,
                   );
                   const selected =
-                    provider === 'google'
-                      ? selectedGoogle
-                      : provider === 'icloud'
+                    provider === 'icloud'
                         ? selectedIcloud
                         : selectedZoho;
                   const ignored =
-                    provider === 'google'
-                      ? ignoreAllDayGoogle
-                      : provider === 'icloud'
+                    provider === 'icloud'
                         ? ignoreAllDayIcloud
                         : ignoreAllDayZoho;
                   return choices.length ? (
                     <fieldset key={provider}>
                       <legend>
-                        {provider === 'google'
-                          ? 'Google'
-                          : provider === 'icloud'
+                        {provider === 'icloud'
                             ? 'iCloud'
                             : 'Zoho'}
-                        {provider === 'google' && googleAccount && (
-                          <span className="calendar-account">
-                            {' '}
-                            ({googleAccount})
-                          </span>
-                        )}
                         {provider === 'zoho' && status.zohoAccount && (
                           <span className="calendar-account">
                             {' '}
@@ -620,10 +621,7 @@ export default function CalendarSettings() {
                               <Checkbox
                                 checked={isSelected}
                                 disabled={
-                                  working ||
-                                  (provider === 'google' &&
-                                    status.outputOnPrimary &&
-                                    calendar.id === status.outputCalendarId)
+                                  working
                                 }
                                 onCheckedChange={(value) =>
                                   select(provider, calendar.id, !!value)
@@ -662,6 +660,8 @@ export default function CalendarSettings() {
                       void run(async () => {
                         await action({
                           action: 'save_selection',
+                          googleAccounts: googleSelection,
+                          expectedSelection: { selectedGoogle: status.selectedGoogle, selectedIcloud: status.selectedIcloud, selectedZoho: status.selectedZoho, ignoreAllDayGoogle: status.ignoreAllDayGoogle, ignoreAllDayIcloud: status.ignoreAllDayIcloud, ignoreAllDayZoho: status.ignoreAllDayZoho, googleAccounts: status.googleAccounts },
                           selectedGoogle,
                           selectedIcloud,
                           selectedZoho,
@@ -694,12 +694,13 @@ export default function CalendarSettings() {
               <div className="calendar-sync-status">
                 <h3>Task blocks</h3>
                 <label className="field">Task destination
-                  <select value={status.outputProvider === 'icloud' ? status.icloudOutputCalendarId || '' : 'google'} disabled={working} onChange={event => {
+                  <select value={status.outputProvider === 'icloud' ? `icloud:${status.icloudOutputCalendarId || ''}` : `google:${status.outputGoogleAccountId || ''}`} disabled={working} onChange={event => {
                     const value = event.target.value;
-                    void run(async () => { await action({ action: 'set_output', provider: value === 'google' ? 'google' : 'icloud', calendarId: value }); if (status.syncEnabled) await action({ action: 'sync' }); }, 'Task destination saved.');
+                    void run(async () => { const google = value.startsWith('google:'); await action({ action: 'set_output', provider: google ? 'google' : 'icloud', accountId: google ? value.slice(7) : undefined, calendarId: google ? undefined : value.slice(7) }); if (status.syncEnabled) await action({ action: 'sync' }); }, 'Task destination saved.');
                   }}>
-                    <option value="google" disabled={!status.googleConnected}>Google Calendar</option>
-                    {status.icloudCalendars.map(calendar => <option key={calendar.id} value={calendar.id}>Apple · {calendar.name}</option>)}
+                    {!status.outputCalendarId && status.outputProvider !== 'icloud' && <option value="google:" disabled>Choose a task calendar</option>}
+                    {(status.googleAccounts || []).map(account => <option key={account.id} value={`google:${account.id}`}>Google · {account.email}</option>)}
+                    {status.icloudCalendars.map(calendar => <option key={calendar.id} value={`icloud:${calendar.id}`}>Apple · {calendar.name}</option>)}
                   </select>
                 </label>
                 <p>

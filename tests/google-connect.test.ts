@@ -1,11 +1,11 @@
 // Created by Cory McCabe
 import test from 'node:test';
+import * as calendarModel from '../lib/calendar-model';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import {
   emptyCalendarConnection,
-  shouldStartGoogleSyncOnConnect,
   type CalendarConnection,
   type CalendarCredentials,
 } from '../lib/calendar-model';
@@ -49,11 +49,12 @@ async function connect(
     },
     '@/lib/calendar-security': { hash: async (value: string) => value },
     '@/lib/validation': { InputError },
-    '@/lib/calendar-model': { shouldStartGoogleSyncOnConnect },
+    '@/lib/calendar-model': calendarModel,
     '@/lib/gmail-suggestions': { GMAIL_SCOPE: 'gmail.readonly' },
     '@/lib/suggestion-store': { suggestionsAvailable: () => false },
   };
   const exports: { GET?: (request: Request) => Promise<Response> } = {};
+  // eslint-disable-next-line no-implied-eval
   new Function('require', 'exports', callback)((name: string) => {
     assert.ok(name in dependencies, `Unexpected callback dependency: ${name}`);
     return dependencies[name];

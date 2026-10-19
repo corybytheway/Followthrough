@@ -71,11 +71,20 @@ struct TaskSuggestion: Codable, Identifiable, Hashable, Sendable {
         switch kind { case "gmail": "Gmail"; case "frequency": "Task frequency"; case "workflow": "Your workflow"; default: "Task history" }
     }
 }
+struct SuggestionGoogleAccount: Codable, Identifiable, Sendable {
+    var id: String
+    var email: String
+    var gmailEnabled: Bool
+    var lastChecked: String?
+    var error: String?
+    var queued: Int
+}
 struct SuggestionStatus: Codable, Sendable {
     var available: Bool
     var gmailEnabled: Bool
     var googleConnected: Bool
     var googleAccount: String
+    var googleAccounts: [SuggestionGoogleAccount]? = nil
     var lastChecked: String?
     var checking: Bool
     var error: String?

@@ -53,6 +53,7 @@ export type SuggestionStatus = {
   gmailEnabled: boolean;
   googleConnected: boolean;
   googleAccount: string;
+  googleAccounts?: { id: string; email: string; gmailEnabled: boolean; lastChecked: string | null; error: string | null; queued: number }[];
   lastChecked: string | null;
   checking: boolean;
   error: string | null;

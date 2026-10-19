@@ -1,6 +1,7 @@
 // Created by Cory McCabe
 import { env } from 'cloudflare:workers';
 import { hash, seal, unseal } from './calendar-security';
+import { connectedGoogleAccounts } from './calendar-model';
 import { calendarConfig, readCalendar } from './calendar-store';
 import { readWorkspace, mutate } from './store';
 import { InputError, object, text, taskInput } from './validation';
@@ -19,23 +20,21 @@ import type {
   SuggestionResponse,
 } from './suggestion-model';
 import type { GmailCheckpoint } from './gmail-client';
+export type GmailReviewState = GmailCheckpoint & {
+  enabled: boolean;
+  consentedAt?: string;
+  lastChecked: string | null;
+  processed: string[];
+  error: string | null;
+  aiDay: string;
+  aiUsed: number;
+};
 export type SuggestionState = {
   items: TaskSuggestion[];
-  feedback: Record<
-    string,
-    { vote: 'more' | 'less'; label: string; at: string }
-  >;
-  gmail: GmailCheckpoint & {
-    enabled: boolean;
-    consentedAt?: string;
-    lastChecked: string | null;
-    historyId?: string;
-    queue: string[];
-    processed: string[];
-    error: string | null;
-    aiDay: string;
-    aiUsed: number;
-  };
+  feedback: Record<string, { vote: 'more' | 'less'; label: string; at: string }>;
+  gmail: GmailReviewState;
+  gmailAccount?: string;
+  gmailAccounts?: Record<string, GmailReviewState>;
 };
 const emptyState = (): SuggestionState => ({
   items: [],
@@ -50,9 +49,33 @@ const emptyState = (): SuggestionState => ({
     aiUsed: 0,
   },
 });
-export function clearGmailSuggestions(state: SuggestionState) {
-  state.gmail = emptyState().gmail;
-  state.items = state.items.filter((item) => item.kind !== 'gmail');
+/** Upgrade a saved checkpoint only to the account that originally owned it. */
+export function gmailReviewFor(state: SuggestionState, email: string, legacyEmail?: string): GmailReviewState {
+  state.gmailAccounts ||= {};
+  if (!state.gmailAccount && legacyEmail) {
+    state.gmailAccount = legacyEmail.toLowerCase();
+    state.gmailAccounts[state.gmailAccount] ||= state.gmail;
+  }
+  const id = email.toLowerCase();
+  const review = state.gmailAccounts[id] ||= id === state.gmailAccount ? state.gmail : emptyState().gmail;
+  if (id === state.gmailAccount) state.gmail = review;
+  return review;
+}
+export function clearGmailSuggestions(state: SuggestionState, email?: string, legacyEmail?: string) {
+  if (!email) {
+    state.gmail = emptyState().gmail;
+    state.gmailAccounts = {};
+    delete state.gmailAccount;
+    state.items = state.items.filter((item) => item.kind !== 'gmail');
+    return;
+  }
+  const id = email.toLowerCase();
+  const review = gmailReviewFor(state, id, legacyEmail);
+  Object.assign(review, emptyState().gmail);
+  // Remove cursors and replay markers, not only their enabled flag.
+  state.gmailAccounts![id] = emptyState().gmail;
+  if (state.gmailAccount === id) state.gmail = state.gmailAccounts![id];
+  state.items = state.items.filter((item) => item.kind !== 'gmail' || (item.source.account || state.gmailAccount || '').toLowerCase() !== id);
 }
 const encryptionKey = () => calendarConfig().CALENDAR_ENCRYPTION_KEY || '';
 export function suggestionsAvailable(owner: string) {
@@ -252,19 +275,20 @@ export async function suggestionResponse(
   const active = workspace.tasks.filter(
     (t) => !t.deletedAt && !['done', 'archived'].includes(t.status),
   );
-  const gmailEnabled =
-    state.gmail.enabled &&
-    !!credentials.google?.refreshToken &&
-    !!credentials.google.scopes?.includes(
-      'https://www.googleapis.com/auth/gmail.readonly',
-    );
+  const accounts = connectedGoogleAccounts(connection, credentials);
+  const googleAccounts = accounts.map((account) => {
+    const review = gmailReviewFor(state, account.email, accounts[0]?.email);
+    return { id: account.id, email: account.email, gmailEnabled: review.enabled && !!account.secret.scopes?.includes('https://www.googleapis.com/auth/gmail.readonly'), lastChecked: review.lastChecked, error: review.error, queued: review.queue.length };
+  });
+  const enabledAccounts = new Set(googleAccounts.filter((account) => account.gmailEnabled).map((account) => account.id));
+  const gmailEnabled = enabledAccounts.size > 0;
   const items = state.items
     .filter(
       (item) =>
         item.state === 'pending' &&
         !suppressed.has(item.id) &&
         Date.now() - Date.parse(item.createdAt) < 30 * 86_400_000 &&
-        (item.kind !== 'gmail' || gmailEnabled),
+        (item.kind !== 'gmail' || enabledAccounts.has((item.source.account || state.gmailAccount || '').toLowerCase())),
     )
     .filter(
       (item) =>
@@ -306,13 +330,13 @@ export async function suggestionResponse(
     status: {
       available: true,
       gmailEnabled,
-      googleConnected: !!credentials.google?.refreshToken,
-      googleAccount:
-        connection.googleCalendars.find((c) => c.primary)?.id || '',
-      lastChecked: state.gmail.lastChecked,
+      googleConnected: accounts.length > 0,
+      googleAccount: accounts[0]?.email || '',
+      googleAccounts,
+      lastChecked: googleAccounts.map((account) => account.lastChecked).filter((checked): checked is string => !!checked).sort().at(-1) || null,
       checking: false,
-      error: state.gmail.error,
-      queued: state.gmail.queue.length,
+      error: googleAccounts.filter((account) => account.gmailEnabled && account.error).map((account) => `${account.email}: ${account.error}`).join(' ') || null,
+      queued: googleAccounts.reduce((sum, account) => sum + account.queued, 0),
       feedbackCount: Object.keys(state.feedback).length,
     },
   };
@@ -355,7 +379,11 @@ export async function suggestionAction(owner: string, raw: unknown) {
   await withSuggestionLock(owner, async (lease) => {
     const state = await readSuggestions(owner);
     if (action === 'disable_gmail') {
-      clearGmailSuggestions(state);
+      const { connection, credentials } = await readCalendar(owner);
+      const accounts = connectedGoogleAccounts(connection, credentials);
+      const account = input.accountId === undefined ? undefined : accounts.find((account) => account.id === input.accountId);
+      if (input.accountId !== undefined && !account) throw new InputError('Choose a connected Google account.');
+      clearGmailSuggestions(state, account?.email, accounts[0]?.email);
       await saveSuggestions(owner, state, lease);
       return;
     }
@@ -433,9 +461,12 @@ export async function suggestionAction(owner: string, raw: unknown) {
             ),
             { status: 409 },
           );
+        const { connection: calendar, credentials: secrets } = await readCalendar(owner);
+        const accounts = connectedGoogleAccounts(calendar, secrets);
+        const gmailAccount = accounts.find((account) => account.id === (item.source.account || state.gmailAccount || accounts[0]?.email || '').toLowerCase());
         if (
           item.kind === 'gmail' &&
-          (!state.gmail.enabled || !suggestionsAvailable(owner))
+          (!gmailAccount || !gmailReviewFor(state, gmailAccount.email, accounts[0]?.email).enabled || !gmailAccount.secret.scopes?.includes('https://www.googleapis.com/auth/gmail.readonly') || !suggestionsAvailable(owner))
         )
           throw Object.assign(
             new InputError(

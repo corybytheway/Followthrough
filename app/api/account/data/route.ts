@@ -6,6 +6,7 @@ import {
   readCalendar,
   withCalendarLock,
 } from '@/lib/calendar-store';
+import { connectedGoogleAccounts } from '@/lib/calendar-model';
 import { reconcileIcloud } from '@/lib/icloud-calendar';
 import { googleAccess, reconcileGoogle } from '@/lib/google-calendar';
 import { InputError, object } from '@/lib/validation';
@@ -33,15 +34,17 @@ export async function DELETE(request: Request) {
     // Match OAuth lock order, and retain the suggestion lease through deletion.
     await withCalendarLock(owner, () => withSuggestionLock(owner, async () => {
       const { connection, credentials } = await readCalendar(owner);
-      if (credentials.google?.refreshToken && connection.outputCalendarId) {
+      const accounts = connectedGoogleAccounts(connection, credentials);
+      const googleOutputs = [
+        ...(connection.outputCalendarId ? [{ id: connection.outputCalendarId, accountId: connection.outputGoogleAccountId }] : []),
+        ...(connection.previousOutput?.provider === 'google' ? [connection.previousOutput] : []),
+        ...(connection.migrationSourceCalendarId ? [{ id: connection.migrationSourceCalendarId, accountId: connection.outputGoogleAccountId }] : []),
+      ];
+      for (const output of googleOutputs) {
         try {
-          await reconcileGoogle(
-            await googleAccess(credentials.google),
-            connection.outputCalendarId,
-            connection.marker,
-            [],
-            [],
-          );
+          const account = accounts.find((account) => account.id === output.accountId);
+          if (!account) throw new InputError('The previous task calendar account is disconnected.');
+          await reconcileGoogle(await googleAccess(account.secret), output.id, connection.marker, [], []);
         } catch {
           calendarCleanupPending = true;
         }
