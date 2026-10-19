@@ -9,6 +9,7 @@ import plistlib
 import re
 import subprocess
 import tempfile
+from shortcut_certificates import verify_signing_chain
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('source', nargs='?', type=Path,
@@ -81,11 +82,10 @@ if args.signed_artifact:
     metadata = plistlib.loads(archive[12:12 + metadata_size])
     with tempfile.TemporaryDirectory(prefix='followthrough-shortcut-') as folder:
         folder = Path(folder)
-        certificate = folder / 'signing.der'
-        certificate.write_bytes(metadata['SigningCertificateChain'][0])
+        certificate = verify_signing_chain(metadata['SigningCertificateChain'], folder)
         public_key = folder / 'signing.pem'
         public_key.write_bytes(subprocess.check_output([
-            'openssl', 'x509', '-inform', 'DER', '-in', str(certificate), '-pubkey', '-noout']))
+            '/usr/bin/openssl', 'x509', '-in', str(certificate), '-pubkey', '-noout']))
         payload = folder / 'workflow.aar'
         subprocess.run(['aea', 'decrypt', '-i', str(args.signed_artifact),
                         '-o', str(payload), '-sign-pub', str(public_key)], check=True)
@@ -100,4 +100,4 @@ if args.signed_artifact:
         expected = {k: v for k, v in workflow.items() if k not in signing_fields}
         actual = {k: v for k, v in signed_workflow.items() if k not in signing_fields}
         assert actual == expected, 'Signed download differs from the source workflow'
-    print('PASS: signed download signature verified; embedded workflow matches the validated source after Apple signing metadata normalization.')
+    print('PASS: signing chain trusted to a built-in Apple root and currently valid; archive signature verified; embedded workflow matches the validated source after Apple signing metadata normalization.')
