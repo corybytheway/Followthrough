@@ -92,13 +92,13 @@ export async function GET(request: Request) {
         credentials.google.refreshToken = tokens.refresh_token;
         credentials.google.scopes = tokens.scope.split(' ');
         await saveCalendar(owner, connection, credentials);
-        await withSuggestionLock(owner, async () => {
+        await withSuggestionLock(owner, async (lease) => {
           const state = await readSuggestions(owner);
           state.gmail.enabled = true;
           state.gmail.consentedAt = new Date().toISOString();
           state.gmail.lastChecked = null;
           state.gmail.error = null;
-          await saveSuggestions(owner, state);
+          await saveSuggestions(owner, state, lease);
         });
         success = true;
         return;
@@ -124,10 +124,10 @@ export async function GET(request: Request) {
         !credentials.google.scopes.includes(GMAIL_SCOPE)
       ) {
         if (suggestionsAvailable(owner))
-          await withSuggestionLock(owner, async () => {
+          await withSuggestionLock(owner, async (lease) => {
             const state = await readSuggestions(owner);
             clearGmailSuggestions(state);
-            await saveSuggestions(owner, state);
+            await saveSuggestions(owner, state, lease);
           });
       }
       if (

@@ -332,10 +332,10 @@ export async function POST(request: Request) {
           connection.syncEnabled = false;
           if (provider === 'google') {
             if (suggestionsAvailable(owner))
-              await withSuggestionLock(owner, async () => {
+              await withSuggestionLock(owner, async (lease) => {
                 const state = await readSuggestions(owner);
                 clearGmailSuggestions(state);
-                await saveSuggestions(owner, state);
+                await saveSuggestions(owner, state, lease);
               });
             delete credentials.google;
             delete credentials.oauth;

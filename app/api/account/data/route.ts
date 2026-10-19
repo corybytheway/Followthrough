@@ -9,6 +9,7 @@ import {
 import { reconcileIcloud } from '@/lib/icloud-calendar';
 import { googleAccess, reconcileGoogle } from '@/lib/google-calendar';
 import { InputError, object } from '@/lib/validation';
+import { withSuggestionLock } from '@/lib/suggestion-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,8 @@ export async function DELETE(request: Request) {
     if (input.confirm !== 'DELETE')
       throw new InputError('Type DELETE to erase your Followthrough data.');
     let calendarCleanupPending = false;
-    await withCalendarLock(owner, async () => {
+    // Match OAuth lock order, and retain the suggestion lease through deletion.
+    await withCalendarLock(owner, () => withSuggestionLock(owner, async () => {
       const { connection, credentials } = await readCalendar(owner);
       if (credentials.google?.refreshToken && connection.outputCalendarId) {
         try {
@@ -72,9 +74,6 @@ export async function DELETE(request: Request) {
           'DELETE FROM task_suggestion_states WHERE owner_id = ?',
         ).bind(owner),
         env.DB.prepare(
-          'DELETE FROM task_suggestion_locks WHERE owner_id = ?',
-        ).bind(owner),
-        env.DB.prepare(
           'DELETE FROM task_suggestion_suppressions WHERE owner_id = ?',
         ).bind(owner),
         env.DB.prepare('DELETE FROM native_sessions WHERE owner_id = ?').bind(
@@ -105,7 +104,7 @@ export async function DELETE(request: Request) {
           owner,
         ),
       ]);
-    });
+    }, { waitMs: 30_000 }));
     return Response.json(
       { ok: true, calendarCleanupPending },
       {

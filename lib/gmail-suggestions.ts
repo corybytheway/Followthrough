@@ -47,11 +47,11 @@ export async function previewGmailTask(owner: string, taskId: unknown) {
   const conversation = await gmailConversation(await googleAccess(credentials.google), threadId);
   const config = await openAIConnection(owner);
   if (!config.key) throw new InputError('Connect OpenAI first.');
-  await withSuggestionLock(owner, async () => {
+  await withSuggestionLock(owner, async (lease) => {
     const latest = await readSuggestions(owner);
     if (!latest.gmail.enabled) throw new InputError('Gmail suggestions are turned off.');
     reserveGmailAnalysis(latest.gmail, Date.now());
-    await saveSuggestions(owner, latest);
+    await saveSuggestions(owner, latest, lease);
   });
   const account = connection.googleCalendars.find((c) => c.primary)?.id || '';
   return { preview: true, suggestions: await analyzeGmailConversations([conversation], workspace, config.key, config.model, account, { includeExisting: true, sourceTask: { id: task!.id, title: task!.title, projectId: task!.projectId } }) };
@@ -59,14 +59,14 @@ export async function previewGmailTask(owner: string, taskId: unknown) {
 /** Explicit owner action: queue missed, held follow-ups; never accept or schedule them. */
 export async function queueGmailFollowups(owner: string, taskId: unknown) {
   const preview = await previewGmailTask(owner, taskId);
-  await withSuggestionLock(owner, async () => {
+  await withSuggestionLock(owner, async (lease) => {
     const state = await readSuggestions(owner);
     if (!state.gmail.enabled) throw new InputError('Gmail suggestions are turned off.');
     const { workspace } = await readWorkspace(owner);
     const candidates = deferredGmailFollowups(preview.suggestions, workspace, taskId as string);
     if (!candidates.length) throw new InputError('No new held follow-up was found for this email.');
     await mergeCandidates(owner, state, candidates);
-    await saveSuggestions(owner, state);
+    await saveSuggestions(owner, state, lease);
   });
   return suggestionResponse(owner);
 }
@@ -80,18 +80,18 @@ export async function replayGmailTask(owner: string, taskId: unknown, requestId:
   const source = new URL(task.provenance.url);
   const threadId = source.hash.match(/^#all\/([a-f0-9]+)$/i)?.[1];
   if (source.origin !== 'https://mail.google.com' || !threadId) throw new InputError('The task has no valid source conversation.');
-  await withSuggestionLock(owner, async () => {
+  await withSuggestionLock(owner, async (lease) => {
     const state = await readSuggestions(owner);
     if (!state.gmail.enabled) throw new InputError('Gmail suggestions are turned off.');
     prepareGmailReplay(state, threadId, replayId);
-    await saveSuggestions(owner, state);
+    await saveSuggestions(owner, state, lease);
   });
   await refreshGmailSuggestions(owner, true);
   return suggestionResponse(owner);
 }
 export async function refreshGmailSuggestions(owner: string, force = false) {
   if (!suggestionsAvailable(owner)) return;
-  await withSuggestionLock(owner, async () => {
+  await withSuggestionLock(owner, async (lease) => {
     const state = await readSuggestions(owner),
       now = Date.now(),
       { credentials, connection } = await readCalendar(owner);
@@ -113,7 +113,7 @@ export async function refreshGmailSuggestions(owner: string, force = false) {
       const token = await googleAccess(credentials.google);
       if ((await updateGmailCheckpoint(token, state.gmail)) === 'expired') {
         state.gmail.lastChecked = null;
-        await saveSuggestions(owner, state);
+        await saveSuggestions(owner, state, lease);
         return;
       }
       const ids = state.gmail.queue.slice(0, 10),
@@ -142,7 +142,7 @@ export async function refreshGmailSuggestions(owner: string, force = false) {
             'AI task suggestions need an OpenAI connection. Connect it in Settings.',
           );
         reserveGmailAnalysis(state.gmail, now);
-        await saveSuggestions(owner, state); // Reserve separately before the external request.
+        await saveSuggestions(owner, state, lease); // Reserve separately before the external request.
         const candidates = await analyzeGmailConversations(
           changed,
           workspace,
@@ -171,6 +171,6 @@ export async function refreshGmailSuggestions(owner: string, force = false) {
           : 'Gmail suggestions could not be checked. Try again shortly.';
       state.gmail.lastChecked = new Date(now).toISOString();
     }
-    await saveSuggestions(owner, state);
+    await saveSuggestions(owner, state, lease);
   });
 }

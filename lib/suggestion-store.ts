@@ -84,7 +84,7 @@ export async function readSuggestions(owner: string): Promise<SuggestionState> {
       )
     : emptyState();
 }
-export async function saveSuggestions(owner: string, state: SuggestionState) {
+export async function saveSuggestions(owner: string, state: SuggestionState, lease: string) {
   const now = Date.now(),
     DAY = 86_400_000;
   state.items = state.items
@@ -95,11 +95,12 @@ export async function saveSuggestions(owner: string, state: SuggestionState) {
     )
     .slice(-250);
   const payload = await seal(state, encryptionKey(), `suggestions:${owner}`);
-  await env.DB.prepare(
-    'INSERT INTO task_suggestion_states (owner_id, payload) VALUES (?, ?) ON CONFLICT(owner_id) DO UPDATE SET payload = excluded.payload',
+  const saved = await env.DB.prepare(
+    'INSERT INTO task_suggestion_states (owner_id, payload) SELECT ?, ? WHERE EXISTS (SELECT 1 FROM task_suggestion_locks WHERE owner_id = ? AND token = ? AND expires_at > ?) ON CONFLICT(owner_id) DO UPDATE SET payload = excluded.payload',
   )
-    .bind(owner, payload)
+    .bind(owner, payload, owner, lease, Date.now())
     .run();
+  if (!saved.meta.changes) throw suggestionLeaseError();
   await env.DB.prepare(
     'DELETE FROM task_suggestion_suppressions WHERE owner_id = ? AND expires_at <= ?',
   )
@@ -119,9 +120,9 @@ async function suppressedIds(owner: string, ids: string[]) {
   }
   return suppressed;
 }
-async function rememberSuppression(owner: string, item: TaskSuggestion) {
-  await env.DB.prepare(
-    'INSERT INTO task_suggestion_suppressions (owner_id,suggestion_id,state,accepted_task_ids,expires_at) VALUES (?,?,?,?,?) ON CONFLICT(owner_id,suggestion_id) DO NOTHING',
+async function rememberSuppression(owner: string, item: TaskSuggestion, lease: string) {
+  const saved = await env.DB.prepare(
+    'INSERT INTO task_suggestion_suppressions (owner_id,suggestion_id,state,accepted_task_ids,expires_at) SELECT ?,?,?,?,? WHERE EXISTS (SELECT 1 FROM task_suggestion_locks WHERE owner_id = ? AND token = ? AND expires_at > ?) ON CONFLICT(owner_id,suggestion_id) DO UPDATE SET suggestion_id = excluded.suggestion_id',
   )
     .bind(
       owner,
@@ -129,8 +130,10 @@ async function rememberSuppression(owner: string, item: TaskSuggestion) {
       item.state,
       JSON.stringify(item.acceptedTaskIds),
       Date.now() + 90 * 86_400_000,
+      owner, lease, Date.now(),
     )
     .run();
+  if (!saved.meta.changes) throw suggestionLeaseError();
 }
 export async function exportSuggestionData(owner: string) {
   // Data access survives pilot rollback or reassignment; keep every query owner-scoped.
@@ -148,24 +151,30 @@ export async function exportSuggestionData(owner: string) {
     suppressions: suppressions.results,
   };
 }
+function suggestionLeaseError() {
+  return Object.assign(new InputError('Suggestions are being updated. Try again shortly.'), { status: 409 });
+}
 export async function withSuggestionLock<T>(
   owner: string,
-  run: () => Promise<T>,
+  run: (lease: string) => Promise<T>,
+  options: { waitMs?: number } = {},
 ): Promise<T> {
-  const token = crypto.randomUUID(),
-    now = Date.now();
-  const saved = await env.DB.prepare(
-    'INSERT INTO task_suggestion_locks (owner_id, token, expires_at) VALUES (?, ?, ?) ON CONFLICT(owner_id) DO UPDATE SET token = excluded.token, expires_at = excluded.expires_at WHERE expires_at < ?',
-  )
-    .bind(owner, token, now + 240_000, now)
-    .run();
-  if (!saved.meta.changes)
-    throw Object.assign(
-      new InputError('Suggestions are being updated. Try again shortly.'),
-      { status: 409 },
-    );
+  const token = crypto.randomUUID();
+  const deadline = Date.now() + Math.max(0, Math.min(options.waitMs || 0, 30_000));
+  while (true) {
+    const now = Date.now();
+    const saved = await env.DB.prepare(
+      'INSERT INTO task_suggestion_locks (owner_id, token, expires_at) VALUES (?, ?, ?) ON CONFLICT(owner_id) DO UPDATE SET token = excluded.token, expires_at = excluded.expires_at WHERE expires_at < ?',
+    )
+      .bind(owner, token, now + 240_000, now)
+      .run();
+    if (saved.meta.changes) break;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw suggestionLeaseError();
+    await new Promise((resolve) => setTimeout(resolve, Math.min(250, remaining)));
+  }
   try {
-    return await run();
+    return await run(token);
   } finally {
     await env.DB.prepare(
       'DELETE FROM task_suggestion_locks WHERE owner_id = ? AND token = ?',
@@ -310,7 +319,7 @@ export async function suggestionResponse(
 }
 export async function refreshWorkspaceSuggestions(owner: string) {
   requireSuggestions(owner);
-  await withSuggestionLock(owner, async () => {
+  await withSuggestionLock(owner, async (lease) => {
     const state = await readSuggestions(owner),
       { workspace } = await readWorkspace(owner);
     const candidates = workspaceSuggestions(workspace),
@@ -336,23 +345,23 @@ export async function refreshWorkspaceSuggestions(owner: string) {
         drafts: group.drafts,
       })));
     }))).flat();
-    await saveSuggestions(owner, state);
+    await saveSuggestions(owner, state, lease);
   });
 }
 export async function suggestionAction(owner: string, raw: unknown) {
   requireSuggestions(owner);
   const input = object(raw),
     action = text(input.action, 'Action', 40, true);
-  await withSuggestionLock(owner, async () => {
+  await withSuggestionLock(owner, async (lease) => {
     const state = await readSuggestions(owner);
     if (action === 'disable_gmail') {
       clearGmailSuggestions(state);
-      await saveSuggestions(owner, state);
+      await saveSuggestions(owner, state, lease);
       return;
     }
     if (action === 'reset_feedback') {
       state.feedback = {};
-      await saveSuggestions(owner, state);
+      await saveSuggestions(owner, state, lease);
       return;
     }
     const id = text(input.id, 'Suggestion', 64, true),
@@ -384,8 +393,8 @@ export async function suggestionAction(owner: string, raw: unknown) {
       item.drafts = [];
       item.reason = '';
       item.source = { kind: item.source.kind, label: item.source.label };
-      await rememberSuppression(owner, item);
-      await saveSuggestions(owner, state);
+      await rememberSuppression(owner, item, lease);
+      await saveSuggestions(owner, state, lease);
       return;
     }
     if (action === 'feedback') {
@@ -540,8 +549,8 @@ export async function suggestionAction(owner: string, raw: unknown) {
         item.source = { kind: item.source.kind, label: item.source.label };
       } else throw new InputError('Choose a supported suggestion action.');
     }
-    if (item.state !== 'pending') await rememberSuppression(owner, item);
-    await saveSuggestions(owner, state);
+    if (item.state !== 'pending') await rememberSuppression(owner, item, lease);
+    await saveSuggestions(owner, state, lease);
   });
   return suggestionResponse(owner);
 }
