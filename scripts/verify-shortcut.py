@@ -7,11 +7,16 @@ from pathlib import Path
 import argparse
 import plistlib
 import re
+import subprocess
+import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('source', nargs='?', type=Path,
                     default=Path(__file__).resolve().parents[1] / 'shortcuts/Followthrough Task.plist')
-source = parser.parse_args().source
+parser.add_argument('--signed-artifact', type=Path,
+                    help='Verify the signed download and compare its workflow with the source (macOS)')
+args = parser.parse_args()
+source = args.source
 workflow = plistlib.loads(source.read_bytes())
 actions = workflow['WFWorkflowActions']
 assert workflow['WFWorkflowImportQuestions'] == [], 'Import must not ask for a connection code'
@@ -66,5 +71,33 @@ for name in ['Capture request', 'Save response']:
     request = by_name[name][1]
     assert 'WFInput' not in request, 'HTTP actions require WFURL, not WFInput'
     assert request['WFURL']['WFSerializationType'] == 'WFTextTokenString'
-    assert request['WFURL']['Value']['string'] == 'https://followthrough.corybytheway.chatgpt.site/api/shortcuts/capture'
+    assert request['WFURL']['Value']['string'] == 'https://followthrough.site/api/shortcuts/capture'
 print('PASS: secret-free direct capture; no import questions, browser actions, or file/If setup; variables resolve; task input precedes the nonce and authenticated save; both HTTP addresses are populated.')
+
+if args.signed_artifact:
+    archive = args.signed_artifact.read_bytes()
+    assert archive[:4] == b'AEA1', 'The download must be an Apple-signed Shortcut archive'
+    metadata_size = int.from_bytes(archive[8:12], 'little')
+    metadata = plistlib.loads(archive[12:12 + metadata_size])
+    with tempfile.TemporaryDirectory(prefix='followthrough-shortcut-') as folder:
+        folder = Path(folder)
+        certificate = folder / 'signing.der'
+        certificate.write_bytes(metadata['SigningCertificateChain'][0])
+        public_key = folder / 'signing.pem'
+        public_key.write_bytes(subprocess.check_output([
+            'openssl', 'x509', '-inform', 'DER', '-in', str(certificate), '-pubkey', '-noout']))
+        payload = folder / 'workflow.aar'
+        subprocess.run(['aea', 'decrypt', '-i', str(args.signed_artifact),
+                        '-o', str(payload), '-sign-pub', str(public_key)], check=True)
+        extracted = folder / 'extracted'
+        extracted.mkdir()
+        subprocess.run(['aa', 'extract', '-i', str(payload), '-d', str(extracted),
+                        '-include-path', 'Shortcut.wflow'], check=True)
+        signed_workflow = plistlib.loads((extracted / 'Shortcut.wflow').read_bytes())
+        # Apple's signer updates its client version and removes the workflow
+        # name (the download filename supplies it). All other fields must match.
+        signing_fields = {'WFWorkflowClientVersion', 'WFWorkflowName'}
+        expected = {k: v for k, v in workflow.items() if k not in signing_fields}
+        actual = {k: v for k, v in signed_workflow.items() if k not in signing_fields}
+        assert actual == expected, 'Signed download differs from the source workflow'
+    print('PASS: signed download signature verified; embedded workflow matches the validated source after Apple signing metadata normalization.')

@@ -6,7 +6,7 @@ import plistlib
 from uuid import NAMESPACE_URL, uuid5
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = 'https://followthrough.corybytheway.chatgpt.site/api/shortcuts/capture'
+BASE = 'https://followthrough.site/api/shortcuts/capture'
 
 
 def uid(name):
