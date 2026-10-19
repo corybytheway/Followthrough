@@ -565,8 +565,16 @@ void test('account selections have independent shared-calendar settings and reje
 void test('moving task output uses the correct account for cleanup and publishes once on the new account', async () => {
   const writes: { token: string; calendarId: string }[] = [];
   const reads: string[] = [];
+  const markerAwareReads: { token: string; calendarId: string }[] = [];
   const f = fixture({ google: {
-    googleBusy: async (_token, ids) => { reads.push(...ids); return []; },
+    googleBusy: async (_token, ids) => {
+      reads.push(...ids);
+      return ids.includes(multiEmails[0]) ? [{ id: 'old-owned-block', title: 'Old Followthrough task block', source: 'google' as const, start: '2026-10-20T15:00:00Z', end: '2026-10-20T16:00:00Z' }] : [];
+    },
+    googleOutputBusy: async (token, calendarId) => {
+      markerAwareReads.push({ token, calendarId });
+      return calendarId === multiEmails[0] ? [{ id: 'real-meeting', title: 'Real meeting', source: 'google' as const, start: '2026-10-20T17:00:00Z', end: '2026-10-20T18:00:00Z' }] : [];
+    },
     reconcileGoogle: async (token, calendarId) => { writes.push({ token, calendarId }); return 0; },
   } });
   try {
@@ -586,6 +594,12 @@ void test('moving task output uses the correct account for cleanup and publishes
       { token: `refresh:${multiEmails[0]}`, calendarId: multiEmails[0] },
       { token: `refresh:${multiEmails[1]}`, calendarId: multiEmails[1] },
     ]);
+    assert.deepEqual(markerAwareReads, [
+      { token: `refresh:${multiEmails[1]}`, calendarId: multiEmails[1] },
+      { token: `refresh:${multiEmails[0]}`, calendarId: multiEmails[0] },
+    ]);
+    assert.ok(!reads.includes(multiEmails[0]), 'Old task blocks must not enter availability through freeBusy.');
+    assert.deepEqual((await f.workspace.readWorkspace(f.owner)).workspace.busy.map((busy) => busy.id), ['real-meeting']);
     assert.equal(reads.filter((id) => id === 'shared').length, 1);
     assert.equal((await f.calendar.readCalendar(f.owner)).connection.previousOutput, null);
     assert.equal((await f.route.POST(postInput('/api/calendars', { action: 'disconnect_google', accountId: multiEmails[0] }))).status, 200);

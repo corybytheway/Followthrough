@@ -60,9 +60,11 @@ export async function syncCalendars(
       const start = new Date(started - 86400000).toISOString(),
         end = new Date(started + 43 * 86400000).toISOString();
       const accounts = connectedGoogleAccounts(connection, credentials);
+      const previousGoogle = connection.previousOutput?.provider === 'google' ? connection.previousOutput : null;
+      const previousGoogleAccountId = previousGoogle?.accountId || accounts[0]?.id;
       const tokens = new Map<string, string>();
       for (const account of accounts) {
-        if (account.selected.length || account.id === connection.outputGoogleAccountId || account.id === connection.previousOutput?.accountId)
+        if (account.selected.length || account.id === connection.outputGoogleAccountId || account.id === previousGoogleAccountId)
           tokens.set(account.id, await googleAccess(account.secret));
       }
       const access = connection.outputGoogleAccountId ? tokens.get(connection.outputGoogleAccountId) : undefined;
@@ -92,11 +94,20 @@ export async function syncCalendars(
       // Every selected provider must succeed before availability or task events move.
       const google: BusyEvent[] = [];
       const seenCalendars = new Set<string>();
+      const markerAwareCalendars = [
+        ...(!appleOutput && connection.outputOnPrimary && connection.outputCalendarId && connection.outputGoogleAccountId
+          ? [{ id: connection.outputCalendarId, accountId: connection.outputGoogleAccountId }]
+          : []),
+        ...(previousGoogle && previousGoogleAccountId && accounts.some((account) => account.selected.includes(previousGoogle.id))
+          ? [{ id: previousGoogle.id, accountId: previousGoogleAccountId }]
+          : []),
+      ].filter((calendar, index, all) => all.findIndex((other) => other.id === calendar.id) === index);
+      const markerAwareIds = new Set(markerAwareCalendars.map((calendar) => calendar.id));
       for (const account of accounts) {
         const token = tokens.get(account.id);
         if (!token) continue;
         const ids = account.selected.filter((id) => {
-          if (id === connection.outputCalendarId || id === connection.migrationSourceCalendarId || seenCalendars.has(id)) return false;
+          if (markerAwareIds.has(id) || id === connection.migrationSourceCalendarId || seenCalendars.has(id)) return false;
           seenCalendars.add(id);
           return true;
         });
@@ -107,9 +118,11 @@ export async function syncCalendars(
         const namespace = (await hash(account.id)).slice(0, 16);
         google.push(...busy.map((event) => ({ ...event, id: `google-${namespace}-${event.id}`, accountId: account.id })));
       }
-      if (access && connection.outputOnPrimary && connection.outputCalendarId) {
-        const outputAccount = accounts.find((account) => account.id === connection.outputGoogleAccountId)!;
-        google.push(...(await googleOutputBusy(access, connection.outputCalendarId, connection.marker, start, end, initial.workspace.settings.timeZone, outputAccount.ignoreAllDay.includes(connection.outputCalendarId))).map((event) => ({ ...event, accountId: outputAccount.id })));
+      for (const calendar of markerAwareCalendars) {
+        const token = tokens.get(calendar.accountId);
+        if (!token) throw new InputError('Reconnect the previous Google account before syncing.');
+        const ignoreAllDay = accounts.every((account) => !account.selected.includes(calendar.id) || account.ignoreAllDay.includes(calendar.id));
+        google.push(...(await googleOutputBusy(token, calendar.id, connection.marker, start, end, initial.workspace.settings.timeZone, ignoreAllDay)).map((event) => ({ ...event, accountId: calendar.accountId })));
       }
       const icloud = credentials.icloud
         ? await icloudBusy(
