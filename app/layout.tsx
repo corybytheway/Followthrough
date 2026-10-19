@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { APP_ORIGIN } from '@/lib/app-origin';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import './followthrough.css';
@@ -15,6 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'Followthrough',
+  metadataBase: new URL(APP_ORIGIN),
   icons: { icon: '/favicon.svg?v=vivid-mint' },
   description:
     'Turn what is on your mind into focused tasks and an adaptable plan for your day.',

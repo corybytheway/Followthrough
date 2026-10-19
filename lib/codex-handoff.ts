@@ -2,7 +2,7 @@
 import { taskReference } from './task-reference';
 import type { Task, Workspace } from './model';
 import { InputError } from './validation';
-import { APP_ORIGIN } from './app-origin';
+import { APP_ORIGIN, ACTIONS_ORIGIN } from './app-origin';
 
 export function codexHandoff(workspace: Workspace, task: Task, origin = APP_ORIGIN) {
   if (task.deletedAt || task.status === 'done' || task.status === 'archived')
@@ -33,7 +33,7 @@ export function codexHandoff(workspace: Workspace, task: Task, origin = APP_ORIG
 export function codexDraftUrl(handoff: ReturnType<typeof codexHandoff>, token: string) {
   let prompt = handoff.prompt;
   if (encodeURIComponent(prompt).length > 7000) {
-    const contextUrl = `https://followthrough-actions.corybytheway.chatgpt.site/codex/context?k=${encodeURIComponent(token)}`;
+    const contextUrl = `${ACTIONS_ORIGIN}/codex/context?k=${encodeURIComponent(token)}`;
     prompt = [
       `Complete this Followthrough task: ${handoff.title}`,
       `Read the complete task context before beginning: ${contextUrl}`,

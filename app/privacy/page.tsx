@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { requireChatGPTUser } from '../chatgpt-auth';
 
 export const dynamic = 'force-dynamic';
+export const metadata = { alternates: { canonical: '/privacy' } };
 
 export default async function PrivacyPage() {
   await requireChatGPTUser('/privacy');
@@ -57,7 +58,8 @@ export default async function PrivacyPage() {
         <p>
           If you connect Google Calendar, Followthrough stores your connection
           token encrypted, reads the calendars you select to find busy time, and
-          writes its task blocks to your primary Google Calendar. Optional
+          writes its task blocks to the Google calendar you choose and own,
+          including your primary calendar. Optional
           iCloud and Zoho calendar credentials are also stored encrypted and
           used to read the calendars you select. Background planning can run
           while the site is closed.
@@ -76,7 +78,7 @@ export default async function PrivacyPage() {
         </p>
         <p>
           For questions or a manual data request, contact{' '}
-          <a href="mailto:cory@corymccabe.com">cory@corymccabe.com</a>.
+          <a href="mailto:hello@ethosapps.dev">hello@ethosapps.dev</a>.
         </p>
         <Link href="/settings">Back to Settings</Link>
       </article>
