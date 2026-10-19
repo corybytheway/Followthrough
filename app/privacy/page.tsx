@@ -58,7 +58,8 @@ export default async function PrivacyPage() {
         <p>
           If you connect Google Calendar, Followthrough stores your connection
           token encrypted, reads the calendars you select to find busy time, and
-          writes its task blocks to your primary Google Calendar. Optional
+          writes its task blocks to the Google calendar you choose and own,
+          including your primary calendar. Optional
           iCloud and Zoho calendar credentials are also stored encrypted and
           used to read the calendars you select. Background planning can run
           while the site is closed.
