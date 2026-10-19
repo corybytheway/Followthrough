@@ -464,7 +464,7 @@ export async function suggestionAction(owner: string, raw: unknown) {
             notes: normalized.notes,
             steps: normalized.steps.map((s) => s.title),
             blockedByTaskIndexes: item.drafts[index].blockedByTaskIndexes,
-          } satisfies SuggestionDraft, item.drafts[index]);
+          } satisfies SuggestionDraft, item.drafts[index], { insertAsStep: !!item.targetTaskId });
         });
         if (
           item.kind === 'gmail' &&

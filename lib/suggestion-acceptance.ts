@@ -4,8 +4,13 @@ import type { SuggestionDraft } from './suggestion-model';
 import { assertAIChecklist } from './ai-checklist';
 
 /** Older clients need not understand the prerequisite fields to preserve them. */
-export function acceptedSuggestionDraft(edited: SuggestionDraft, proposed: SuggestionDraft) {
-  assertAIChecklist(edited.steps);
+export function acceptedSuggestionDraft(
+  edited: SuggestionDraft,
+  proposed: SuggestionDraft,
+  options: { insertAsStep?: boolean } = {},
+) {
+  // Existing-task suggestions insert their title, rather than a new checklist.
+  assertAIChecklist(options.insertAsStep ? [edited.title] : edited.steps);
   const waitingFor = proposed.waitingFor?.trim();
   return {
     ...edited,
