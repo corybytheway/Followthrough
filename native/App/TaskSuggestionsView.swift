@@ -26,12 +26,17 @@ struct TaskSuggestionsView: View {
         }
         if store.suggestions?.status.available == true, !suggestions.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
-                Button { expanded.toggle() } label: {
+                Button {
+                    // Use the task lists' spring for the whole disclosure so
+                    // the cards and the content below move together.
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) {
+                        expanded.toggle()
+                    }
+                } label: {
                     HStack {
                         Text("Suggested tasks").font(.headline)
                         Image(systemName: "chevron.right").font(.caption)
                             .rotationEffect(.degrees(expanded ? 90 : 0))
-                            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: expanded)
                         Spacer(minLength: 8)
                         Text(suggestions.reduce(0) { $0 + $1.drafts.count }, format: .number)
                             .font(.subheadline).foregroundStyle(.secondary)
@@ -66,21 +71,21 @@ struct TaskSuggestionsView: View {
                             .buttonStyle(.plain).foregroundStyle(Color.followAccent)
                     }
                 }
+                .padding(.top, 8)
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGFloat.self) { geometry in
                     geometry.size.height
                 } action: { height in
                     contentHeight = height
                 }
-                .frame(height: expanded ? contentHeight : 0, alignment: .top)
-                .clipped()
-                .opacity(expanded ? 1 : 0)
+                .modifier(SuggestionDisclosureReveal(height: expanded ? contentHeight : 0))
+                // Include size measurements that arrive after the toggle.
+                .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: expanded)
+                .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: contentHeight)
                 .accessibilityElement(children: .contain)
                 .accessibilityHidden(!expanded)
                 .allowsHitTesting(expanded)
                 .disabled(!expanded)
-                .padding(.top, expanded ? 8 : 0)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: expanded)
             }
             .sheet(item: $feedbackChoice) { choice in
                 SuggestionFeedbackDialog(
@@ -105,6 +110,21 @@ struct TaskSuggestionsView: View {
                 #endif
             }
         }
+    }
+}
+
+private struct SuggestionDisclosureReveal: ViewModifier, Animatable {
+    var height: CGFloat
+
+    var animatableData: CGFloat {
+        get { height }
+        set { height = max(0, newValue) }
+    }
+
+    func body(content: Content) -> some View {
+        // Keep the clipping bounds and surrounding layout at the same
+        // interpolated height throughout the disclosure animation.
+        content.frame(height: height, alignment: .top).clipped()
     }
 }
 
