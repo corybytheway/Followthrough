@@ -336,7 +336,7 @@ export async function POST(request: Request) {
                 const state = await readSuggestions(owner);
                 clearGmailSuggestions(state);
                 await saveSuggestions(owner, state, lease);
-              });
+              }, { waitMs: 30_000 });
             delete credentials.google;
             delete credentials.oauth;
             connection.googleCalendars = [];

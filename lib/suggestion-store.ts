@@ -551,6 +551,6 @@ export async function suggestionAction(owner: string, raw: unknown) {
     }
     if (item.state !== 'pending') await rememberSuppression(owner, item, lease);
     await saveSuggestions(owner, state, lease);
-  });
+  }, { waitMs: action === 'disable_gmail' ? 30_000 : 0 });
   return suggestionResponse(owner);
 }
