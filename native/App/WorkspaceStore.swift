@@ -82,6 +82,21 @@ import Security
             selectedSection = section
         }
     }
+    func showToday() {
+        if selectedSection == "today" {
+            selectSection("today")
+            return
+        }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { selectedSection = "today" }
+        Task { @MainActor in
+            // Let SwiftUI reveal the retained page before scrolling it.
+            await Task.yield()
+            guard selectedSection == "today" else { return }
+            sectionReselectionIDs["today"] = UUID()
+        }
+    }
     func start() async {
         guard !started else { return }; started = true
         NativeSyncLog.record(SharedStorage.extensionsAvailable ? "storage_app_group" : "storage_app_private")

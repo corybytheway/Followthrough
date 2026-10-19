@@ -23,6 +23,10 @@ import AppIntents
                 Button("Capture a task") { store.focusCapture() }.keyboardShortcut("n")
                 Button("Sync workspace") { Task { await store.sync() } }.keyboardShortcut("r")
             }
+            CommandMenu("Navigate") {
+                Button("Today") { store.showToday() }
+                    .keyboardShortcut("t", modifiers: .command)
+            }
         }
         #else
         WindowGroup(id: "main") {
@@ -177,6 +181,21 @@ struct WorkspaceSection: View {
     var body: some View {
         VStack(spacing:0) {
             if let workspace = store.presentationWorkspace {
+                #if os(macOS)
+                // Keep Today's scroll view alive so navigation reveals it
+                // before a shortcut requests its scroll-to-top animation.
+                ZStack {
+                    TodayView(store: store, workspace: workspace)
+                        .opacity(section == "today" ? 1 : 0)
+                        .allowsHitTesting(section == "today")
+                        .accessibilityHidden(section != "today")
+                    if section == "settings" {
+                        SettingsView(store: store, settings: workspace.settings)
+                    } else if section != "today" {
+                        TasksView(store: store, workspace: workspace, projectId: section == "tasks" ? nil : section)
+                    }
+                }
+                #else
                 switch section {
                 case "today": TodayView(store:store,workspace:workspace)
                 #if !os(macOS)
@@ -185,6 +204,7 @@ struct WorkspaceSection: View {
                 case "settings": SettingsView(store:store,settings:workspace.settings)
                 default: TasksView(store:store,workspace:workspace,projectId:section == "tasks" ? nil : section)
                 }
+                #endif
             } else { ProgressView("Opening your workspace…").frame(maxWidth:.infinity,maxHeight:.infinity) }
         }
         .toolbar {
@@ -504,7 +524,10 @@ struct TodayTasks: View {
         VStack(alignment:.leading,spacing:24) {
             InlineCaptureCard(store: store)
             TaskSuggestionsView(store: store)
-                .task(id: workspace.revision) { await store.refreshSuggestions(check: true) }
+                .task(id: store.selectedSection == "today" ? workspace.revision : nil) {
+                    guard store.selectedSection == "today" else { return }
+                    await store.refreshSuggestions(check: true)
+                }
                 .blur(radius: store.captureFocused ? 8 : 0)
                 .disabled(store.captureFocused)
                 .accessibilityHidden(store.captureFocused)

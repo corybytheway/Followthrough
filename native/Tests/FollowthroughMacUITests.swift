@@ -282,6 +282,51 @@ final class FollowthroughMacUITests: XCTestCase {
         }
     }
 
+    @MainActor func testCommandTShowsTodayAndScrollsToTop() throws {
+        continueAfterFailure = false
+        let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-tab-reselection-ios-fixture.json")
+        guard let data = try? Data(contentsOf: fixtureURL),
+              let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let server = fixture["server"] as? String,
+              ["127.0.0.1", "localhost"].contains(URL(string: server)?.host ?? ""),
+              let session = fixture["session"] as? [String: Any] else {
+            throw XCTSkip("Requires the isolated read-only tab reselection fixture.")
+        }
+        let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", server]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = try JSONSerialization.data(withJSONObject: session).base64EncodedString()
+        app.launchEnvironment["FOLLOWTHROUGH_LOCAL_STORAGE"] = "command-t-today"
+        app.launch()
+        app.activate()
+        defer { app.terminate() }
+        let capture = app.textFields["captureInput"]
+        XCTAssertTrue(capture.waitForExistence(timeout: 25), app.debugDescription)
+
+        let window = app.windows.firstMatch
+        let corner = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1)).withOffset(CGVector(dx: -3, dy: -3))
+        corner.press(forDuration: 0.1, thenDragTo: corner.withOffset(CGVector(dx: 950 - window.frame.width, dy: 650 - window.frame.height)))
+        let captureTop = capture.frame.minY
+        let todayScroll = app.scrollViews.containing(.textField, identifier: "captureInput").firstMatch
+        func assertTodayAtTop() {
+            let atTop = NSPredicate { _, _ in capture.isHittable && abs(capture.frame.minY - captureTop) < 5 }
+            XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: atTop, evaluatedWith: nil)], timeout: 5), .completed)
+        }
+
+        for _ in 0..<2 {
+            todayScroll.scroll(byDeltaX: 0, deltaY: -700)
+            XCTAssertFalse(capture.isHittable, "Today must be scrolled before pressing Command-T.")
+            app.typeKey("t", modifierFlags: .command)
+            assertTodayAtTop()
+        }
+        todayScroll.scroll(byDeltaX: 0, deltaY: -700)
+        XCTAssertFalse(capture.isHittable)
+        app.buttons["Tasks"].firstMatch.click()
+        XCTAssertFalse(capture.exists)
+        app.typeKey("t", modifierFlags: .command)
+        assertTodayAtTop()
+        record(app, "Command-T returned to Today at the top")
+    }
+
     @MainActor func testSelectedSidebarItemsScrollToTopWithoutResettingState() throws {
         continueAfterFailure = false
         let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-tab-reselection-ios-fixture.json")
