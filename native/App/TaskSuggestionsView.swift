@@ -11,6 +11,8 @@ struct TaskSuggestionsView: View {
     @AppStorage("suggestionsExpanded") private var expanded = false
     @State private var showAll = false
     @State private var feedbackChoice: SuggestionFeedbackChoice?
+    @State private var contentHeight: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if os(iOS)
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .body) private var feedbackSheetHeight = 260
@@ -23,20 +25,27 @@ struct TaskSuggestionsView: View {
             })
         }
         if store.suggestions?.status.available == true, !suggestions.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
                 Button { expanded.toggle() } label: {
                     HStack {
                         Text("Suggested tasks").font(.headline)
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.caption)
+                        Image(systemName: "chevron.right").font(.caption)
+                            .rotationEffect(.degrees(expanded ? 90 : 0))
+                            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: expanded)
                         Spacer(minLength: 8)
                         Text(suggestions.reduce(0) { $0 + $1.drafts.count }, format: .number)
                             .font(.subheadline).foregroundStyle(.secondary)
-                    }.contentShape(Rectangle()).frame(minHeight: 44)
+                    }.frame(minHeight: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Suggested tasks, \(suggestions.reduce(0) { $0 + $1.drafts.count })")
+                .accessibilityAddTraits(.isButton)
                 .accessibilityValue(expanded ? "Expanded" : "Collapsed")
                 .accessibilityIdentifier("suggestionsDisclosure")
-                if expanded {
+                // Stable content identity keeps the header's accessibility bounds
+                // separate while the cards reveal and collapse.
+                VStack(alignment: .leading, spacing: 8) {
                     ForEach(showAll ? suggestions : Array(suggestions.prefix(3))) { item in
                         SuggestionCard(
                             item: item,
@@ -57,6 +66,21 @@ struct TaskSuggestionsView: View {
                             .buttonStyle(.plain).foregroundStyle(Color.followAccent)
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    contentHeight = height
+                }
+                .frame(height: expanded ? contentHeight : 0, alignment: .top)
+                .clipped()
+                .opacity(expanded ? 1 : 0)
+                .accessibilityElement(children: .contain)
+                .accessibilityHidden(!expanded)
+                .allowsHitTesting(expanded)
+                .disabled(!expanded)
+                .padding(.top, expanded ? 8 : 0)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: expanded)
             }
             .sheet(item: $feedbackChoice) { choice in
                 SuggestionFeedbackDialog(
@@ -190,12 +214,11 @@ struct SuggestionDecisionButtons: View {
     var body: some View {
         HStack(spacing: 0) {
             Button(action: onAccept) {
-                Image(systemName: accepted ? "checkmark.circle.fill" : "checkmark")
-                    .font(.system(size: accepted ? 36 : 14, weight: .semibold))
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(Color.followNavy, Color.followMint)
+                Image(systemName: accepted ? "checkmark" : "plus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.followNavy)
                     .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
-                    .frame(width: 36, height: 36)
+                    .frame(width: 28, height: 28)
                     .background(Color.followMint, in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .accessibilityLabel(linked ? "Accept linked tasks" : "Accept \(title)")
@@ -335,14 +358,14 @@ struct SuggestionFeedback: View {
                 .font(.caption2).foregroundStyle(.secondary).padding(.top, 15)
             Spacer(minLength: 4)
             Button { onFeedback("more") } label: {
-                Image(systemName: item.feedback == "more" ? "hand.thumbsup.fill" : "hand.thumbsup").padding(.top, 12).frame(minWidth: 44, minHeight: 44, alignment: .top)
-            }.foregroundStyle(item.feedback == "more" ? Color.followAccent : Color.secondary)
+                Image(systemName: item.feedback == "more" ? "hand.thumbsup.fill" : "hand.thumbsup").padding(.top, 12).frame(minWidth: 44, minHeight: 44, alignment: .top).contentShape(Rectangle())
+            }.foregroundStyle(item.feedback == "more" ? Color.followMint : Color.secondary)
                 .accessibilityLabel("Suggest more like this")
             Button { onFeedback("less") } label: {
-                Image(systemName: item.feedback == "less" ? "hand.thumbsdown.fill" : "hand.thumbsdown").padding(.top, 12).frame(minWidth: 44, minHeight: 44, alignment: .top)
-            }.foregroundStyle(item.feedback == "less" ? Color.followAccent : Color.secondary)
+                Image(systemName: item.feedback == "less" ? "hand.thumbsdown.fill" : "hand.thumbsdown").padding(.top, 12).frame(minWidth: 44, minHeight: 44, alignment: .top).contentShape(Rectangle())
+            }.foregroundStyle(item.feedback == "less" ? Color.followMint : Color.secondary)
                 .accessibilityLabel("Suggest less like this")
-        }.buttonStyle(.borderless).disabled(!enabled)
+        }.buttonStyle(.plain).disabled(!enabled)
     }
 }
 

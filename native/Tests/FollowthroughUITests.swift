@@ -3141,4 +3141,43 @@ final class FollowthroughUITests: XCTestCase {
         try JSONSerialization.data(withJSONObject: result, options: .prettyPrinted).write(to: URL(fileURLWithPath: "/private/tmp/followthrough-iphone17-direct-accept-result.json"), options: .atomic)
     }
 
+
+    func testSuggestedTasksDisclosureKeepsAccessibleControlsBounded() throws {
+        continueAfterFailure = false
+        let native = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        guard let data = try? Data(contentsOf: native.appendingPathComponent("local-session-ios.json")),
+              let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              fixture["ownerId"] as? String == "local_seedy" else {
+            throw XCTSkip("Requires the isolated synthetic loopback workspace.")
+        }
+        let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
+        app.launchArguments = ["-server", "http://127.0.0.1:4319"]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = data.base64EncodedString()
+        app.launch()
+        let header = app.buttons["suggestionsDisclosure"]
+        XCTAssertTrue(header.waitForExistence(timeout: 30), app.debugDescription)
+        let accept = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "acceptSuggestion_"))
+
+        if header.value as? String == "Expanded" { header.tap() }
+        for _ in 0..<2 {
+            XCTAssertEqual(header.value as? String, "Collapsed")
+            XCTAssertTrue(accept.allElementsBoundByIndex.allSatisfy { !$0.isEnabled },
+                "Collapsed suggestion controls must be disabled.")
+            XCTAssertEqual(header.frame.height, 44, accuracy: 1)
+
+            header.tap()
+            XCTAssertEqual(header.value as? String, "Expanded")
+            XCTAssertTrue(accept.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertTrue(accept.firstMatch.isEnabled)
+            XCTAssertTrue(accept.firstMatch.isHittable)
+            XCTAssertEqual(header.elementType, .button)
+            XCTAssertEqual(header.frame.height, 44, accuracy: 1)
+            XCTAssertLessThanOrEqual(header.frame.maxY, accept.firstMatch.frame.minY,
+                "The disclosure's accessibility bounds must end above the card actions.")
+            header.tap()
+        }
+        XCTAssertEqual(header.value as? String, "Collapsed")
+        XCTAssertTrue(accept.allElementsBoundByIndex.allSatisfy { !$0.isEnabled })
+    }
+
 }

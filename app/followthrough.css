@@ -19,9 +19,36 @@
 .suggestions-heading svg {
   transform: rotate(-90deg);
   flex-shrink: 0;
+  transition: transform 200ms ease;
 }
 .suggestions-heading svg.expanded {
   transform: none;
+}
+.suggestions-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    grid-template-rows 200ms ease,
+    opacity 160ms ease,
+    visibility 0s 200ms;
+}
+.suggestions-content[data-expanded='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+.suggestions-content-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .suggestions-heading svg,
+  .suggestions-content {
+    transition: none;
+  }
 }
 .suggestion-count {
   margin-left: auto;
@@ -86,7 +113,7 @@
 .suggestion-decisions button:first-child::before {
   content: '';
   position: absolute;
-  inset: 4px;
+  inset: 8px;
   background: var(--mint);
   border-radius: 50%;
   z-index: 0;
@@ -183,10 +210,10 @@
   min-height: 44px !important;
   padding: 12px 0 0;
   align-items: flex-start;
+  background: transparent;
 }
 .suggestion-feedback button[aria-pressed='true'] {
-  background: var(--mint);
-  color: var(--ink);
+  color: var(--mint);
 }
 .suggestion-feedback-actions {
   display: flex;

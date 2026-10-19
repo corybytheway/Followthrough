@@ -95,7 +95,7 @@ struct ConnectionView: View {
         VStack(alignment: .leading, spacing: 24) {
             Image(systemName:"bolt.fill").font(.system(size:32, weight:.bold)).foregroundStyle(Color.followMint)
                 .frame(width:64,height:64).background(Color.followNavy,in:RoundedRectangle(cornerRadius:18))
-            Text("Make room for\nyour work").font(.system(size:40,weight:.bold,design:.rounded))
+            Text("Your tasks.\nPlanned for you.").font(.system(size:40,weight:.bold,design:.rounded))
             Text("Your projects, your calendar, and one clear next step.").foregroundStyle(.secondary)
             #if os(macOS)
             MacCaptureShortcutLesson()

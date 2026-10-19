@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { createSuggestionRequestQueue } from '@/lib/suggestion-request-queue';
 import Link from 'next/link';
 import {
-  Check,
+  Plus,
   X,
   ThumbsUp,
   ThumbsDown,
@@ -187,8 +187,14 @@ export default function TaskSuggestions({
           {suggestions.reduce((count, item) => count + item.drafts.length, 0)}
         </span>
       </button>
-      {expanded && (
-        <div id="suggestion-cards">
+      <div
+        id="suggestion-cards"
+        className="suggestions-content"
+        data-expanded={expanded}
+        aria-hidden={!expanded}
+        inert={!expanded}
+      >
+        <div className="suggestions-content-inner">
           {!online && (
             <p className="suggestions-caption">Offline · saved suggestions</p>
           )}
@@ -226,7 +232,7 @@ export default function TaskSuggestions({
             </Button>
           )}
         </div>
-      )}
+      </div>
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -347,7 +353,7 @@ function SuggestionCard({
                     disabled={!enabled}
                     onClick={onAccept}
                   >
-                    <Check size={18} />
+                    <Plus size={16} />
                   </Button>
                   <Button
                     variant="ghost"
@@ -403,7 +409,7 @@ function SuggestionCard({
           disabled={!enabled}
           onClick={() => onFeedback('more')}
         >
-          <ThumbsUp size={16} />
+          <ThumbsUp size={16} fill={item.feedback === 'more' ? 'currentColor' : 'none'} />
         </Button>
         <Button
           variant="ghost"
@@ -412,7 +418,7 @@ function SuggestionCard({
           disabled={!enabled}
           onClick={() => onFeedback('less')}
         >
-          <ThumbsDown size={16} />
+          <ThumbsDown size={16} fill={item.feedback === 'less' ? 'currentColor' : 'none'} />
         </Button>
       </div>
     </article>
