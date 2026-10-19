@@ -8,6 +8,8 @@ Followthrough requests gmail.readonly and processes selected email content on it
 
 ## Inputs needed from Cory
 
+Cory reports no known Google CASA/assessment email or completed assessment as of October 19, 2026. Treat this as first-assessment preparation; no case ID, assurance level or assessor is currently known.
+
 1. Any existing assessment, Letter of Assessment, Google verification/assessment email, case ID, assigned assurance level and deadline. Share identifiers/status first; sensitive reports belong in the assessor's approved channel.
 2. Ethos's legal entity name and the person authorized to contract with an assessor. The support/contact address is hello@ethosapps.dev; the Cloud project parent still belongs to the original organization.
 3. Select an assessor through the current authorized-lab process and approve its written quote, scope and timeline before a contract, payment, or testing authorization. No assessor has been hired and no cost has been incurred by this work. [Authorized labs](https://www.appdefensealliance.org/certification/authorized-labs)
