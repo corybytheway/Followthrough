@@ -21,8 +21,14 @@ The existing Google OAuth client now accepts https://followthrough.site/api/cale
 
 Existing installed native apps, signed Apple Shortcuts, Apps Script bridge and background automation may retain older service URLs; those endpoints remain compatible. Native source defaults and relay mapping are prepared in this GitHub branch; a new installed native release has not been delivered. Existing saved server preferences are retained.
 
-Google Cloud project followthrough-508105 is under behindthefilm.com, with cory@behindthefilm.com its project Owner and inherited Organization Administrator. hello@ethosapps.dev was granted the project Owner role with explicit approval; the saved IAM policy lists both owners. Ethos account reauthentication is required to verify access from that account. An organization migration is a separate operation. No billing or organization transfer is implied by this domain cutover.
+Google Cloud project followthrough-508105 is under behindthefilm.com, with cory@behindthefilm.com its project Owner and inherited Organization Administrator. hello@ethosapps.dev was granted the project Owner role with explicit approval; the saved IAM policy lists both owners. The owner invitation was accepted: the pending warning disappeared on rereading IAM. The user also supplied a screenshot of the project opened in the business account. The separate automation-browser Ethos session still requests reauthentication. An organization migration is a separate operation. No billing or organization transfer is implied by this domain cutover.
 
 Google Verification Center currently reports branding verified and data access unverified. The existing verified branding still references follow.corymccabe.com public information/privacy pages, which redirect to their canonical actions.followthrough.site equivalents. No re-verification request, scope change, billing change, or organization transfer was submitted.
 
 The unsigned native macOS Debug build passed; physical iPhone, Sandbox/App Store release, and installed-client updates were not performed.
+
+Live OAuth verification: reconnected the existing cory@behindthefilm.com account through Google using the new callback; returned to https://followthrough.site/?calendar=connected. Four Google accounts and Gmail suggestions remained connected, along with Apple/Zoho, email capture and the existing Shortcut. Background sync remained active. Gmail displayed an existing source-grounding analysis error both before and after the reconnect; no claim is made that Gmail analysis is error-free.
+
+Live rejection probes: new relay Codex context rejects a synthetic invalid signature with HTTP 401 from the primary app; calendar-action bridge rejects a synthetic invalid token with HTTP 400; unsigned email webhook returns HTTP 401. These checks do not mutate real tasks or deliver a real email. Happy-path task mutations and physical-device behavior were not exercised.
+
+Business account Google Cloud dashboard reported a requirement to enable two-step verification by October 20, 2026. Security setup remains for the account owner.
