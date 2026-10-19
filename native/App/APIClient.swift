@@ -16,8 +16,8 @@ struct APIClient: Sendable {
     // Sites keeps the web workspace behind sign-in. Native requests use its
     // dedicated relay, which still requires the device's scoped bearer token.
     private var transportURL: URL {
-        baseURL.host == "followthrough.corymccabe.com"
-            ? URL(string: "https://followthrough-actions.corybytheway.chatgpt.site")!
+        ["followthrough.site", "followthrough.corymccabe.com"].contains(baseURL.host ?? "")
+            ? URL(string: "https://actions.followthrough.site")!
             : baseURL
     }
     private static let session: URLSession = {

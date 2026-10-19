@@ -1,4 +1,5 @@
 // Created by Cory McCabe
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import FollowthroughApp, {
   type WorkspaceTab,
@@ -13,6 +14,11 @@ const SECTIONS = new Set<WorkspaceTab>([
   'tasks',
   'settings',
 ]);
+
+export async function generateMetadata({ params }: { params: Promise<{ section: string }> }): Promise<Metadata> {
+  const { section } = await params;
+  return SECTIONS.has(section as WorkspaceTab) ? { alternates: { canonical: `/${section}` } } : {};
+}
 
 export default async function SectionPage({
   params,

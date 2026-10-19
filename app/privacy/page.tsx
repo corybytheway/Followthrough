@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { requireChatGPTUser } from '../chatgpt-auth';
 
 export const dynamic = 'force-dynamic';
+export const metadata = { alternates: { canonical: '/privacy' } };
 
 export default async function PrivacyPage() {
   await requireChatGPTUser('/privacy');

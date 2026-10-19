@@ -1,4 +1,5 @@
 // Created by Cory McCabe
+import { ACTIONS_ORIGIN } from '@/lib/app-origin';
 import { requireOwner, jsonBody, fail } from '@/lib/http';
 import { object, text, InputError } from '@/lib/validation';
 import { calendarConfig } from '@/lib/calendar-store';
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
       token = generated;
     }
     return Response.json({ ok: true, handoff, k: token,
-      handoffUrl: `https://followthrough-actions.corybytheway.chatgpt.site/action?k=${token}`,
+      handoffUrl: `${ACTIONS_ORIGIN}/action?k=${token}`,
       chatgptUrl: codexDraftUrl(handoff, token),
     }, { headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' } });
   } catch (error) { return fail(error); }

@@ -37,7 +37,7 @@ import Security
         #if DEBUG && (os(macOS) || targetEnvironment(simulator))
         return "http://localhost:4318"
         #else
-        return "https://followthrough.corymccabe.com"
+        return "https://followthrough.site"
         #endif
     }()
     @ObservationIgnored private var session: NativeSession?
@@ -73,7 +73,7 @@ import Security
             && (completionStatus(for: task) == "done" || !(current?.hasUnfinishedPrerequisites(for: task) ?? false))
     }
     func connectLiveWorkspace() {
-        connect(to: "https://followthrough.corymccabe.com")
+        connect(to: "https://followthrough.site")
     }
     func selectSection(_ section: String) {
         if selectedSection == section {

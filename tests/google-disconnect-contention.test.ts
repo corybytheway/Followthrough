@@ -422,7 +422,7 @@ for (const email of [multiEmails[0], 'additional@example.test']) {
       assert.equal(connect.status, 200);
       const { authorizationUrl } = await connect.json() as { authorizationUrl: string };
       assert.equal(new URL(authorizationUrl).searchParams.get('prompt'), 'select_account consent');
-      assert.equal((await finishOAuth(f, authorizationUrl)).headers.get('location'), 'https://followthrough.corymccabe.com/?calendar=connected');
+      assert.equal((await finishOAuth(f, authorizationUrl)).headers.get('location'), 'https://followthrough.site/?calendar=connected');
       const after = await f.calendar.readCalendar(f.owner);
       assert.equal(after.connection.googleAccounts?.length, email === multiEmails[0] ? 2 : 3);
       assert.equal(after.connection.outputCalendarId, before.connection.outputCalendarId);
@@ -439,7 +439,7 @@ void test('reconnecting a selected Google account rejects a different identity w
     await seedMultipleAccounts(f);
     const response = await f.route.POST(postInput('/api/calendars', { action: 'connect_google', accountId: multiEmails[0] }));
     const { authorizationUrl } = await response.json() as { authorizationUrl: string };
-    assert.equal((await finishOAuth(f, authorizationUrl)).headers.get('location'), 'https://followthrough.corymccabe.com/?calendar=failed');
+    assert.equal((await finishOAuth(f, authorizationUrl)).headers.get('location'), 'https://followthrough.site/?calendar=failed');
     const after = await f.calendar.readCalendar(f.owner);
     for (const email of multiEmails) assert.equal(after.credentials.googleAccounts?.[email].refreshToken, `refresh:${email}`);
   } finally { f.database.close(); }
@@ -471,7 +471,7 @@ void test('Gmail authorization enables only the consented mailbox after validati
     await seedMultipleAccounts(f);
     const response = await f.suggestionRoute.POST(postInput('/api/suggestions', { action: 'connect_gmail', accountId: multiEmails[1], confirmReadOnly: true, confirmAI: true }));
     const { authorizationUrl } = await response.json() as { authorizationUrl: string };
-    assert.equal((await finishOAuth(f, authorizationUrl)).headers.get('location'), 'https://followthrough.corymccabe.com/?gmail=connected');
+    assert.equal((await finishOAuth(f, authorizationUrl)).headers.get('location'), 'https://followthrough.site/?gmail=connected');
     const after = await f.calendar.readCalendar(f.owner);
     assert.equal(after.credentials.googleAccounts?.[multiEmails[0]].refreshToken, `refresh:${multiEmails[0]}`);
     assert.equal(after.credentials.googleAccounts?.[multiEmails[1]].refreshToken, 'new-refresh');
@@ -485,7 +485,7 @@ void test('Gmail authorization rejects a different profile without affecting exi
     await seedMultipleAccounts(f);
     const response = await f.suggestionRoute.POST(postInput('/api/suggestions', { action: 'connect_gmail', accountId: multiEmails[1], confirmReadOnly: true, confirmAI: true }));
     const { authorizationUrl } = await response.json() as { authorizationUrl: string };
-    assert.equal((await finishOAuth(f, authorizationUrl)).headers.get('location'), 'https://followthrough.corymccabe.com/?gmail=failed');
+    assert.equal((await finishOAuth(f, authorizationUrl)).headers.get('location'), 'https://followthrough.site/?gmail=failed');
     const after = await f.calendar.readCalendar(f.owner);
     assert.equal(after.credentials.googleAccounts?.[multiEmails[1]].refreshToken, `refresh:${multiEmails[1]}`);
     assert.equal((await f.suggestions.suggestionResponse(f.owner)).status.googleAccounts?.[0].gmailEnabled, true);
