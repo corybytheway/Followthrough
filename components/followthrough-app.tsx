@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from 'react';
 import { flushSync } from 'react-dom';
+import { googleConnectionResult } from '@/lib/google-connection-result';
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -340,20 +341,13 @@ export default function FollowthroughApp({
       .then((next) => {
         if (!live) return;
         const location = new URL(window.location.href),
-          calendarResult = location.searchParams.get('calendar'),
+          connectionResult = googleConnectionResult(location),
           requestedTaskId = location.searchParams.get('task');
         let destination = workspaceTabFromPath(location.pathname);
-        if (calendarResult) {
+        if (connectionResult) {
           destination = 'settings';
-          if (calendarResult === 'connected')
-            setNotice(
-              'Google connected. Select the calendars that should block task time.',
-            );
-          else
-            setError(
-              'Google connection was not completed. Try connecting again in Settings.',
-            );
-          location.searchParams.delete('calendar');
+          if (connectionResult.connected) setNotice(connectionResult.message);
+          else setError(connectionResult.message);
         }
         if (requestedTaskId) {
           const requestedTask = resolveTaskReference(
