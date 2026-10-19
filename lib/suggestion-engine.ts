@@ -52,6 +52,26 @@ export function eligibleTask(
     )
   );
 }
+// Find the first eligible instant in the workspace zone, including offset
+// changes that skip midnight. A not-before date is a local calendar boundary.
+function localDayStart(day: string, timeZone: string) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+  });
+  const dayAt = (instant: number) => {
+    const parts = formatter.formatToParts(new Date(instant));
+    return ['year', 'month', 'day'].map((key) => parts.find((part) => part.type === key)!.value).join('-');
+  };
+  const utc = Date.parse(day + 'T00:00:00Z');
+  let lower = utc - 36 * 60 * 60_000;
+  let upper = utc + 36 * 60 * 60_000;
+  while (lower < upper) {
+    const middle = Math.floor((lower + upper) / 2);
+    if (dayAt(middle) < day) lower = middle + 1;
+    else upper = middle;
+  }
+  return lower;
+}
 export function smallerStartEvidence(
   task: Task,
   workspace: Workspace,
@@ -64,7 +84,7 @@ export function smallerStartEvidence(
   );
   const readySince = Math.max(
     eligibilitySince,
-    task.notBefore ? Date.parse(task.notBefore + 'T00:00:00Z') : 0,
+    task.notBefore ? localDayStart(task.notBefore, workspace.settings.timeZone) : 0,
   );
   const age = Math.max(0, Math.floor((now - readySince) / DAY));
   const progressSince = Math.max(
