@@ -1643,10 +1643,10 @@ function TaskEditor({
             value={priority}
             onChange={(e) => setPriority(e.target.value as Task['priority'])}
           >
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
             <option value="top">Top</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
           </NativeSelect>
         </Field>
         <Field label="Status">
