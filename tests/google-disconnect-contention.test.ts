@@ -557,6 +557,13 @@ void test('moving task output uses the correct account for cleanup and publishes
     assert.equal((await f.route.POST(postInput('/api/calendars', { action: 'set_output', provider: 'google', accountId: multiEmails[1] }))).status, 200);
     assert.deepEqual((await f.calendar.readCalendar(f.owner)).connection.previousOutput, { provider: 'google', id: multiEmails[0], accountId: multiEmails[0] });
     assert.equal((await f.route.POST(postInput('/api/calendars', { action: 'disconnect_google', accountId: multiEmails[0] }))).status, 400);
+    assert.equal((await f.route.POST(postInput('/api/calendars', { action: 'disconnect_google', accountId: multiEmails[1] }))).status, 400);
+    assert.equal((await f.nativeRoute.POST(postInput('/api/native/calendars', { action: 'disconnect_google', accountId: multiEmails[1] }))).status, 400);
+    assert.equal((await f.route.POST(postInput('/api/calendars', { action: 'disconnect_google' }))).status, 400);
+    const pending = await f.calendar.readCalendar(f.owner);
+    assert.equal(pending.connection.outputGoogleAccountId, multiEmails[1]);
+    assert.deepEqual(pending.connection.previousOutput, { provider: 'google', id: multiEmails[0], accountId: multiEmails[0] });
+    assert.equal(pending.credentials.googleAccounts?.[multiEmails[1]].refreshToken, `refresh:${multiEmails[1]}`);
     await f.sync.syncCalendars(f.owner);
     assert.deepEqual(writes, [
       { token: `refresh:${multiEmails[0]}`, calendarId: multiEmails[0] },

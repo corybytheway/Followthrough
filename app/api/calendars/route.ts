@@ -366,7 +366,12 @@ export async function POST(request: Request) {
                 : 'zoho';
           const googleAccountId = provider === 'google' && input.accountId !== undefined ? text(input.accountId, 'Google account', 300, true) : undefined;
           if (googleAccountId && !connection.googleAccounts!.some((account) => account.id === googleAccountId)) throw new InputError('Choose a connected Google account.');
-          if (connection.previousOutput?.provider === provider && (!googleAccountId || connection.previousOutput.accountId === googleAccountId))
+          const pendingMove = connection.previousOutput;
+          const disconnectsPrevious = pendingMove?.provider === provider &&
+            (provider !== 'google' || !googleAccountId || pendingMove.accountId === googleAccountId);
+          const disconnectsDestination = !!pendingMove && (connection.outputProvider || 'google') === provider &&
+            (provider !== 'google' || !googleAccountId || connection.outputGoogleAccountId === googleAccountId);
+          if (disconnectsPrevious || disconnectsDestination)
             throw new InputError(
               'Finish moving task blocks before disconnecting this calendar.',
             );
