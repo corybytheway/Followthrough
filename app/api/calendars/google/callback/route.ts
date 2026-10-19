@@ -99,7 +99,7 @@ export async function GET(request: Request) {
           state.gmail.lastChecked = null;
           state.gmail.error = null;
           await saveSuggestions(owner, state, lease);
-        });
+        }, { waitMs: 30_000 });
         success = true;
         return;
       }
@@ -128,7 +128,7 @@ export async function GET(request: Request) {
             const state = await readSuggestions(owner);
             clearGmailSuggestions(state);
             await saveSuggestions(owner, state, lease);
-          });
+          }, { waitMs: 30_000 });
       }
       if (
         connection.outputCalendarId &&
