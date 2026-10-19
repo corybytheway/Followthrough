@@ -4,6 +4,7 @@ import { normalizeProjectKeyword } from './project-keywords';
 import { localDay } from './scheduler';
 import { BASIC_CAPTURE_NOTICE } from './capture-status';
 import { captureDependencyIndexes } from './capture-dependencies';
+import { assertAIChecklist } from './ai-checklist';
 export const GRANULARITY_RULES = `You are Followthrough, a personal planner. Return a draft, never perform work.
 Suggest between one and five concrete, concise checklist steps based on the original input. Order them so the user can start and work toward completion. Each step should begin with an action verb and help break the same outcome into manageable chunks. Use fewer steps for simple tasks; never pad the list to five. Do not claim any step is already completed. When essential context is missing, include a focused clarification step instead of inventing details.
 Write a task title, not a transcription. Choose projectId before finalizing the title. The application displays every assigned task as "Short project name: Task title", so the selected project's full name, short name, aliases, obvious expansions, and spelling variants are already established context and MUST NOT appear in the title. For example, an Orbit task should be "Submit timesheet PR", not "Submit Orbit timesheet PR"; a BTF task should be "Build outreach automation", not "Build Behind The Film outreach automation"; and a TGS task should be "Confirm 8-hour workday approval", not "Confirm 8-hour workday approval with Triple Glazed Studios". Keep a client, person, or product name only when it identifies something other than the selected project.
@@ -336,7 +337,9 @@ export async function aiDrafts(
   const tasks = (result as { tasks: unknown[] }).tasks.map((draft) => {
     assertDraft(draft);
     if (!Array.isArray((draft as CaptureDraftShape).blockedByTaskIndexes))
-      throw new Error('The task dependencies were incomplete. Please try again.');
+      throw new Error(
+        'The task dependencies were incomplete. Please try again.',
+      );
     return draft as CaptureDraftShape;
   });
   const dependencies = captureDependencyIndexes(tasks);
@@ -348,7 +351,7 @@ export async function aiDrafts(
   }));
 }
 
-async function modelJson(
+export async function modelJson(
   source: string,
   w: Workspace,
   key: string,
@@ -425,6 +428,7 @@ async function modelJson(
 }
 
 function assertDraft(draft: unknown): asserts draft is DraftShape {
+  assertAIChecklist((draft as DraftShape | null)?.steps);
   if (
     !draft ||
     typeof draft !== 'object' ||

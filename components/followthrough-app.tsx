@@ -1,6 +1,10 @@
 // Created by Cory McCabe
 'use client';
-import { normalizeProjectKeyword, suggestProjectKeywords, uniqueProjectKeywords } from '@/lib/project-keywords';
+import {
+  normalizeProjectKeyword,
+  suggestProjectKeywords,
+  uniqueProjectKeywords,
+} from '@/lib/project-keywords';
 import {
   useCallback,
   useEffect,
@@ -9,6 +13,7 @@ import {
   type ReactNode,
 } from 'react';
 import { flushSync } from 'react-dom';
+import { googleConnectionResult } from '@/lib/google-connection-result';
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -65,10 +70,16 @@ import {
 import { localDay } from '@/lib/scheduler';
 import { createPlanRefresh, PLAN_REFRESH_INTERVAL } from '@/lib/plan-refresh';
 import { normalizedTaskSearch, tasksForTaskList } from '@/lib/task-search';
-import { SearchHighlightedText, TaskSearchContext } from '@/components/task-search-preview';
+import {
+  SearchHighlightedText,
+  TaskSearchContext,
+} from '@/components/task-search-preview';
 import { scheduledTaskComparator } from '@/lib/task-order';
 import { tasksScheduledToday } from '@/lib/task-availability';
-import { hasUnfinishedPrerequisites, taskPrerequisiteGroups } from '@/lib/task-prerequisites';
+import {
+  hasUnfinishedPrerequisites,
+  taskPrerequisiteGroups,
+} from '@/lib/task-prerequisites';
 import {
   createDeviceTimeZoneSync,
   refreshedWorkHoursDraft,
@@ -78,6 +89,9 @@ import {
 import { TOOL_DEFINITIONS, toolAction } from '@/lib/tools';
 import ShortcutSettings from '@/components/shortcut-settings';
 import CalendarSettings from '@/components/calendar-settings';
+import TaskSuggestions, {
+  SuggestionSettings,
+} from '@/components/task-suggestions';
 import OpenAISettings from '@/components/openai-settings';
 import EmailCaptureSettings from '@/components/email-capture-settings';
 import AccountDataSettings from '@/components/account-data-settings';
@@ -130,7 +144,10 @@ function dayLabel(day: string) {
 function todayHeading(day: string) {
   if (!day) return '';
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'UTC', weekday: 'long', month: 'short', day: 'numeric',
+    timeZone: 'UTC',
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
   }).formatToParts(new Date(day + 'T12:00:00Z'));
   const part = (type: string) => parts.find((p) => p.type === type)?.value;
   return `${part('weekday')}, ${part('month')}. ${part('day')}`;
@@ -182,7 +199,9 @@ export default function FollowthroughApp({
     >({}),
     stateRef = useRef(state),
     busyRef = useRef(false),
-    captureRequestRef = useRef<{ source: string; requestId: string } | null>(null),
+    captureRequestRef = useRef<{ source: string; requestId: string } | null>(
+      null,
+    ),
     completingRef = useRef(new Set<string>());
   const navigateToTab = useCallback(
     (nextTab: WorkspaceTab, mode: 'push' | 'replace' = 'push') => {
@@ -218,14 +237,17 @@ export default function FollowthroughApp({
     stateRef.current = next;
     flushSync(() => setState(next));
   }, []);
-  const refresh = useCallback(async (canAccept: () => boolean = () => true) => {
-    const response = await fetch('/api/workspace', { cache: 'no-store' }),
-      data = (await response.json()) as Snapshot & { error?: string };
-    if (!response.ok)
-      throw new Error(data.error || 'Could not load your plan.');
-    if (canAccept()) accept(data);
-    return data as Snapshot;
-  }, [accept]);
+  const refresh = useCallback(
+    async (canAccept: () => boolean = () => true) => {
+      const response = await fetch('/api/workspace', { cache: 'no-store' }),
+        data = (await response.json()) as Snapshot & { error?: string };
+      if (!response.ok)
+        throw new Error(data.error || 'Could not load your plan.');
+      if (canAccept()) accept(data);
+      return data as Snapshot;
+    },
+    [accept],
+  );
   const commit = useCallback<Commit>(
     async (action) => {
       if (busyRef.current)
@@ -307,7 +329,10 @@ export default function FollowthroughApp({
     return () => {
       window.clearInterval(timer);
       window.removeEventListener('focus', foregroundDeviceTimeZone);
-      document.removeEventListener('visibilitychange', foregroundDeviceTimeZone);
+      document.removeEventListener(
+        'visibilitychange',
+        foregroundDeviceTimeZone,
+      );
     };
   }, [loaded, commit]);
   useEffect(() => {
@@ -316,23 +341,19 @@ export default function FollowthroughApp({
       .then((next) => {
         if (!live) return;
         const location = new URL(window.location.href),
-          calendarResult = location.searchParams.get('calendar'),
+          connectionResult = googleConnectionResult(location),
           requestedTaskId = location.searchParams.get('task');
         let destination = workspaceTabFromPath(location.pathname);
-        if (calendarResult) {
+        if (connectionResult) {
           destination = 'settings';
-          if (calendarResult === 'connected')
-            setNotice(
-              'Google connected. Select the calendars that should block task time.',
-            );
-          else
-            setError(
-              'Google connection was not completed. Try connecting again in Settings.',
-            );
-          location.searchParams.delete('calendar');
+          if (connectionResult.connected) setNotice(connectionResult.message);
+          else setError(connectionResult.message);
         }
         if (requestedTaskId) {
-          const requestedTask = resolveTaskReference(next.tasks, requestedTaskId);
+          const requestedTask = resolveTaskReference(
+            next.tasks,
+            requestedTaskId,
+          );
           if (requestedTask) {
             setEditing(requestedTask.id);
           } else {
@@ -381,7 +402,10 @@ export default function FollowthroughApp({
       );
       if (!requestedTaskId) setEditing(null);
       else {
-        const task = resolveTaskReference(stateRef.current.tasks, requestedTaskId);
+        const task = resolveTaskReference(
+          stateRef.current.tasks,
+          requestedTaskId,
+        );
         setEditing(task?.id ?? null);
       }
     };
@@ -425,6 +449,7 @@ export default function FollowthroughApp({
       syncCalendars: async () => {
         const response = await fetch('/api/calendars', {
           method: 'POST',
+          keepalive: true,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'sync' }),
         });
@@ -440,7 +465,9 @@ export default function FollowthroughApp({
       },
       onError: (error) =>
         setError(
-          error instanceof Error ? error.message : 'Could not update your plan.',
+          error instanceof Error
+            ? error.message
+            : 'Could not update your plan.',
         ),
     });
     const changed = () => updates.changed();
@@ -519,7 +546,10 @@ export default function FollowthroughApp({
     if (busyRef.current || !source.trim()) return;
     const submittedSource = source;
     if (captureRequestRef.current?.source !== submittedSource) {
-      captureRequestRef.current = { source: submittedSource, requestId: crypto.randomUUID() };
+      captureRequestRef.current = {
+        source: submittedSource,
+        requestId: crypto.randomUUID(),
+      };
     }
     setError('');
     setSaving(true);
@@ -535,13 +565,18 @@ export default function FollowthroughApp({
           result?: { tasks?: Task[] };
           error?: string;
         };
-      if (!response.ok) throw new Error(data.error || 'Could not save your task.');
+      if (!response.ok)
+        throw new Error(data.error || 'Could not save your task.');
       accept(data.state);
       captureRequestRef.current = null;
       // Keep anything typed while the previous request was being saved.
-      setSource((current) => current === submittedSource ? '' : current);
+      setSource((current) => (current === submittedSource ? '' : current));
       const count = data.result?.tasks?.length;
-      setNotice(count && count > 1 ? `${count} tasks added to your plan.` : 'Added to your plan.');
+      setNotice(
+        count && count > 1
+          ? `${count} tasks added to your plan.`
+          : 'Added to your plan.',
+      );
       window.dispatchEvent(new Event('followthrough-workspace-change'));
     } catch (e) {
       // Preserve both the input and request ID so a retry cannot duplicate a
@@ -555,15 +590,24 @@ export default function FollowthroughApp({
   const active = state.tasks.filter((t) =>
     ['ready', 'waiting'].includes(t.status),
   );
-  const availableToday = tasksScheduledToday(state.tasks, state.blocks, state.currentDate, state.settings.timeZone);
+  const availableToday = tasksScheduledToday(
+    state.tasks,
+    state.blocks,
+    state.currentDate,
+    state.settings.timeZone,
+  );
   const projectsAlphabetically = [...state.projects].sort(
     compareProjectsByName,
   );
   const compareBySchedule = scheduledTaskComparator(state.blocks);
   const searching = normalizedTaskSearch(query).length > 0;
   const visible = tasksForTaskList({
-    tasks: state.tasks, projects: state.projects, blocks: state.blocks,
-    query, statusFilter, projectFilter,
+    tasks: state.tasks,
+    projects: state.projects,
+    blocks: state.blocks,
+    query,
+    statusFilter,
+    projectFilter,
   });
   const taskById = new Map(state.tasks.map((t) => [t.id, t]));
   const selected = editing
@@ -656,7 +700,8 @@ export default function FollowthroughApp({
   };
   const taskRow = (task: Task) => {
     const project = state.projects.find((p) => p.id === task.projectId),
-      blocked = task.status !== 'done' && hasUnfinishedPrerequisites(task, state.tasks),
+      blocked =
+        task.status !== 'done' && hasUnfinishedPrerequisites(task, state.tasks),
       warning = state.warnings.find(
         (w) =>
           w.taskId === task.id && ['deadline', 'capacity'].includes(w.reason),
@@ -665,7 +710,8 @@ export default function FollowthroughApp({
       completionPhase = completionPhases[task.id],
       searchQuery = tab === 'tasks' ? query : '',
       // Search is global, even when it starts in a project-filtered list.
-      showProjectPrefix = tab !== 'tasks' || searching || projectFilter !== project?.id;
+      showProjectPrefix =
+        tab !== 'tasks' || searching || projectFilter !== project?.id;
     return (
       <div
         className={
@@ -685,7 +731,13 @@ export default function FollowthroughApp({
           {!task.deletedAt && (
             <Checkbox
               className="task-completion"
-              title={blocked ? 'Blocked by unfinished tasks. Complete those tasks first.' : task.status === 'done' ? 'Reopen task' : 'Mark complete'}
+              title={
+                blocked
+                  ? 'Blocked by unfinished tasks. Complete those tasks first.'
+                  : task.status === 'done'
+                    ? 'Reopen task'
+                    : 'Mark complete'
+              }
               aria-label={
                 task.status === 'done'
                   ? 'Reopen ' + task.title
@@ -699,10 +751,20 @@ export default function FollowthroughApp({
             />
           )}
           <button className="task-body" onClick={() => openTask(task.id)}>
-            <strong><SearchHighlightedText text={taskLabel(task.title, project, showProjectPrefix)} query={searchQuery} /></strong>
+            <strong>
+              <SearchHighlightedText
+                text={taskLabel(task.title, project, showProjectPrefix)}
+                query={searchQuery}
+              />
+            </strong>
             <span className="task-meta">
               {project && (
-                <span style={{ color: project.color }}><SearchHighlightedText text={project.name} query={searchQuery} /></span>
+                <span style={{ color: project.color }}>
+                  <SearchHighlightedText
+                    text={project.name}
+                    query={searchQuery}
+                  />
+                </span>
               )}
               <span>
                 {task.estimateProvisional ? '~' : ''}
@@ -850,7 +912,9 @@ export default function FollowthroughApp({
           <div className="feedback-layer">{feedbackMessages}</div>
           <TabsContent value="today">
             <div className="page-heading">
-              <div><h1>{todayHeading(state.currentDate)}</h1></div>
+              <div>
+                <h1>{todayHeading(state.currentDate)}</h1>
+              </div>
             </div>
             {state.projects.length === 0 && state.tasks.length === 0 && (
               <div className="empty-panel beta-welcome">
@@ -894,19 +958,30 @@ export default function FollowthroughApp({
                     </Button>
                   </div>
                 </div>
+                <TaskSuggestions state={state} onAccepted={() => refresh()} />
                 <div className="section-heading">
-                  <h2>{availableToday.length ? 'Followthrough on these first' : "That’s it for today!"}</h2>
-                  {availableToday.length > 0 && <span>
-                    {availableToday.length}{' '}
-                    {availableToday.length === 1 ? 'task' : 'tasks'}
-                  </span>}
+                  <h2>
+                    {availableToday.length
+                      ? 'Followthrough on these first'
+                      : 'That’s it for today!'}
+                  </h2>
+                  {availableToday.length > 0 && (
+                    <span>
+                      {availableToday.length}{' '}
+                      {availableToday.length === 1 ? 'task' : 'tasks'}
+                    </span>
+                  )}
                 </div>
                 {availableToday.length > 0 && (
                   <div className="task-list">
                     {[...availableToday].sort(compareBySchedule).map(taskRow)}
                   </div>
                 )}
-                <Button variant="link" className="view-all-tasks-link" onClick={() => navigateToTab('tasks')}>
+                <Button
+                  variant="link"
+                  className="view-all-tasks-link"
+                  onClick={() => navigateToTab('tasks')}
+                >
                   View all tasks →
                 </Button>
               </section>
@@ -961,7 +1036,9 @@ export default function FollowthroughApp({
                             onClick={() => openTask(event.taskId)}
                             style={{
                               borderLeftColor: state.projects.find(
-                                (project) => project.id === taskById.get(event.taskId)?.projectId,
+                                (project) =>
+                                  project.id ===
+                                  taskById.get(event.taskId)?.projectId,
                               )?.color,
                             }}
                           >
@@ -1232,7 +1309,12 @@ export default function FollowthroughApp({
             onSave={async (project) => {
               await commit(
                 editingProject
-                  ? { action: 'update_project', id: editingProject.id, expectedProject: editingProject, project }
+                  ? {
+                      action: 'update_project',
+                      id: editingProject.id,
+                      expectedProject: editingProject,
+                      project,
+                    }
                   : { action: 'create_project', project },
               );
               setProjectDialog(false);
@@ -1298,31 +1380,90 @@ function TaskEditor({
     [blockers, setBlockers] = useState(initial.blockers || []),
     [localError, setLocalError] = useState('');
   const [expectedUpdatedAt] = useState(initial.updatedAt);
-  const prerequisiteGroups = taskPrerequisiteGroups(state.tasks, state.projects, initial.id ?? '', projectId || null);
-  const hasOpenPrerequisites = hasUnfinishedPrerequisites({ blockers }, state.tasks);
-  const [codexDraft, setCodexDraft] = useState<{ taskVersion: string; url: string } | null>(null);
+  const prerequisiteGroups = taskPrerequisiteGroups(
+    state.tasks,
+    state.projects,
+    initial.id ?? '',
+    projectId || null,
+  );
+  const hasOpenPrerequisites = hasUnfinishedPrerequisites(
+    { blockers },
+    state.tasks,
+  );
+  const [codexDraft, setCodexDraft] = useState<{
+    taskVersion: string;
+    url: string;
+  } | null>(null);
   const [codexDraftError, setCodexDraftError] = useState(false);
   const [codexDraftRetry, setCodexDraftRetry] = useState(0);
   const taskVersion = `${initial.id}:${initial.updatedAt}`;
   useEffect(() => {
-    if (!initial.id || initial.deletedAt || initial.status === 'done' || initial.status === 'archived') return;
+    if (
+      !initial.id ||
+      initial.deletedAt ||
+      initial.status === 'done' ||
+      initial.status === 'archived'
+    )
+      return;
     const controller = new AbortController();
     setCodexDraft(null);
     setCodexDraftError(false);
     void fetch('/api/codex/handoff', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: initial.id, expectedUpdatedAt: initial.updatedAt }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: initial.id,
+        expectedUpdatedAt: initial.updatedAt,
+      }),
       signal: controller.signal,
-    }).then(async (response) => {
-      const result = (await response.json()) as { chatgptUrl?: string };
-      if (!response.ok || !result.chatgptUrl) throw new Error('Handoff unavailable');
-      setCodexDraft({ taskVersion, url: result.chatgptUrl });
-    }).catch(() => { if (!controller.signal.aborted) setCodexDraftError(true); });
+    })
+      .then(async (response) => {
+        const result = (await response.json()) as { chatgptUrl?: string };
+        if (!response.ok || !result.chatgptUrl)
+          throw new Error('Handoff unavailable');
+        setCodexDraft({ taskVersion, url: result.chatgptUrl });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCodexDraftError(true);
+      });
     return () => controller.abort();
-  }, [initial.id, initial.updatedAt, initial.deletedAt, initial.status, taskVersion, codexDraftRetry]);
+  }, [
+    initial.id,
+    initial.updatedAt,
+    initial.deletedAt,
+    initial.status,
+    taskVersion,
+    codexDraftRetry,
+  ]);
   function hasUnsavedChanges() {
-    const current = [title, projectId, notes, steps, estimate, remaining, priority, status, due, start, splittable, blockers];
-    const saved = [initial.title || '', initial.projectId || '', initial.notes || '', initial.steps || [], initial.estimateMinutes || 30, initial.remainingMinutes || initial.estimateMinutes || 30, initial.priority || 'medium', initial.status || 'ready', initial.dueDate || '', initial.notBefore || '', initial.splittable !== false, initial.blockers || []];
+    const current = [
+      title,
+      projectId,
+      notes,
+      steps,
+      estimate,
+      remaining,
+      priority,
+      status,
+      due,
+      start,
+      splittable,
+      blockers,
+    ];
+    const saved = [
+      initial.title || '',
+      initial.projectId || '',
+      initial.notes || '',
+      initial.steps || [],
+      initial.estimateMinutes || 30,
+      initial.remainingMinutes || initial.estimateMinutes || 30,
+      initial.priority || 'medium',
+      initial.status || 'ready',
+      initial.dueDate || '',
+      initial.notBefore || '',
+      initial.splittable !== false,
+      initial.blockers || [],
+    ];
     return JSON.stringify(current) !== JSON.stringify(saved);
   }
 
@@ -1390,33 +1531,52 @@ function TaskEditor({
         <Button
           type="button"
           variant="outline"
-          disabled={saving || !title.trim() || (status !== 'done' && hasOpenPrerequisites)}
-          title={status !== 'done' && hasOpenPrerequisites ? 'Blocked by unfinished tasks. Complete those tasks first.' : undefined}
+          disabled={
+            saving ||
+            !title.trim() ||
+            (status !== 'done' && hasOpenPrerequisites)
+          }
+          title={
+            status !== 'done' && hasOpenPrerequisites
+              ? 'Blocked by unfinished tasks. Complete those tasks first.'
+              : undefined
+          }
           onClick={(e) => void submit(e, status === 'done' ? 'ready' : 'done')}
         >
           <Check /> {status === 'done' ? 'Reopen task' : 'Mark complete'}
         </Button>
       )}
-      {initial.id && status !== 'done' && status !== 'archived' && (
-        codexDraft?.taskVersion === taskVersion ? (
-          <a href={codexDraft.url} target="_blank" rel="noopener noreferrer"
+      {initial.id &&
+        status !== 'done' &&
+        status !== 'archived' &&
+        (codexDraft?.taskVersion === taskVersion ? (
+          <a
+            href={codexDraft.url}
+            target="_blank"
+            rel="noopener noreferrer"
             className={buttonVariants({ className: 'do-task-button' })}
             onClick={(event) => {
               if (saving || hasUnsavedChanges()) {
                 event.preventDefault();
-                setLocalError('Save your changes before sending this task to Codex.');
+                setLocalError(
+                  'Save your changes before sending this task to Codex.',
+                );
               }
-            }}>
+            }}
+          >
             <ArrowUpRight /> Do this for me
           </a>
         ) : (
-          <Button type="button" className="do-task-button" disabled={!codexDraftError}
-            onClick={() => setCodexDraftRetry((value) => value + 1)}>
+          <Button
+            type="button"
+            className="do-task-button"
+            disabled={!codexDraftError}
+            onClick={() => setCodexDraftRetry((value) => value + 1)}
+          >
             {codexDraftError ? <ArrowUpRight /> : <Loader2 className="spin" />}
             {codexDraftError ? 'Retry handoff' : 'Preparing task…'}
           </Button>
-        )
-      )}
+        ))}
       {initial.captureMode === 'basic' && initial.estimateProvisional && (
         <div className="draft-note">
           <strong>Basic capture</strong>
@@ -1496,16 +1656,18 @@ function TaskEditor({
           >
             <option value="ready">Ready</option>
             <option value="waiting">On hold</option>
-            <option value="done" disabled={hasOpenPrerequisites && status !== 'done'}>Complete</option>
+            <option
+              value="done"
+              disabled={hasOpenPrerequisites && status !== 'done'}
+            >
+              Complete
+            </option>
             <option value="archived">Archived</option>
           </NativeSelect>
         </Field>
       </div>
       <div className="field-row">
-        <Field
-          label="Deadline"
-          hint="Leave empty for automatic planning."
-        >
+        <Field label="Deadline" hint="Leave empty for automatic planning.">
           <Input
             type="date"
             value={due}
@@ -1526,9 +1688,7 @@ function TaskEditor({
           checked={splittable}
           onCheckedChange={setSplittable}
         />
-        <label htmlFor="multiple-sessions">
-          Allow multiple work sessions
-        </label>
+        <label htmlFor="multiple-sessions">Allow multiple work sessions</label>
       </div>
       <div className="editor-section">
         <div className="section-heading">
@@ -1554,9 +1714,7 @@ function TaskEditor({
           ))}
         </div>
       </div>
-      <Field
-        label="Task notes"
-      >
+      <Field label="Task notes">
         <Textarea
           rows={3}
           maxLength={10000}
@@ -1573,23 +1731,44 @@ function TaskEditor({
         </small>
         <div className="dependency-list">
           {prerequisiteGroups.map((group) => (
-            <section className="dependency-group" key={group.id} aria-labelledby={'prerequisite-project-' + group.id}>
-              <h3 id={'prerequisite-project-' + group.id} style={{ color: group.project?.color }}>
+            <section
+              className="dependency-group"
+              key={group.id}
+              aria-labelledby={'prerequisite-project-' + group.id}
+            >
+              <h3
+                id={'prerequisite-project-' + group.id}
+                style={{ color: group.project?.color }}
+              >
                 <FolderOpen aria-hidden="true" />
                 {group.project?.name || 'No project'}
               </h3>
-              {group.tasks.length ? group.tasks.map((candidate) => (
-                <div className="check-field" key={candidate.id}>
-                  <Checkbox
-                    id={'dep-' + candidate.id}
-                    checked={blockers.includes(candidate.id)}
-                    onCheckedChange={(checked) => setBlockers((current) => checked
-                      ? [...new Set([...current, candidate.id])]
-                      : current.filter((id) => id !== candidate.id))}
-                  />
-                  <label htmlFor={'dep-' + candidate.id}>{candidate.title}</label>
-                </div>
-              )) : <p className="secondary-text">{group.project ? 'No other open tasks in this project.' : 'No other open tasks without a project.'}</p>}
+              {group.tasks.length ? (
+                group.tasks.map((candidate) => (
+                  <div className="check-field" key={candidate.id}>
+                    <Checkbox
+                      id={'dep-' + candidate.id}
+                      checked={blockers.includes(candidate.id)}
+                      onCheckedChange={(checked) =>
+                        setBlockers((current) =>
+                          checked
+                            ? [...new Set([...current, candidate.id])]
+                            : current.filter((id) => id !== candidate.id),
+                        )
+                      }
+                    />
+                    <label htmlFor={'dep-' + candidate.id}>
+                      {candidate.title}
+                    </label>
+                  </div>
+                ))
+              ) : (
+                <p className="secondary-text">
+                  {group.project
+                    ? 'No other open tasks in this project.'
+                    : 'No other open tasks without a project.'}
+                </p>
+              )}
             </section>
           ))}
         </div>
@@ -1654,12 +1833,21 @@ function ProjectForm({
     [aliases, setAliases] = useState(initial.aliases?.join('\n') || ''),
     [aliasesEdited, setAliasesEdited] = useState(false),
     [error, setError] = useState('');
-  const suggestions = suggestProjectKeywords(name, shortName, projects, initial.id);
-  const aliasText = !initial.id && !aliasesEdited ? suggestions.join('\n') : aliases;
+  const suggestions = suggestProjectKeywords(
+    name,
+    shortName,
+    projects,
+    initial.id,
+  );
+  const aliasText =
+    !initial.id && !aliasesEdited ? suggestions.join('\n') : aliases;
   const keywords = uniqueProjectKeywords(aliasText.split(/\r?\n/));
   const keys = new Set(keywords.map(normalizeProjectKeyword));
-  const available = suggestions.filter(value => !keys.has(normalizeProjectKeyword(value)));
-  const invalidKeywords = keywords.length > 20 || keywords.some(value => value.length > 100);
+  const available = suggestions.filter(
+    (value) => !keys.has(normalizeProjectKeyword(value)),
+  );
+  const invalidKeywords =
+    keywords.length > 20 || keywords.some((value) => value.length > 100);
   return (
     <form
       className="editor-form"
@@ -1711,31 +1899,47 @@ function ProjectForm({
           <span>{color.toUpperCase()}</span>
         </span>
       </Field>
-      <Field label="Keywords" hint="Other names and dictation variants. One per line; suggestions can be edited or removed.">
+      <Field
+        label="Keywords"
+        hint="Other names and dictation variants. One per line; suggestions can be edited or removed."
+      >
         <Textarea
           aria-label="Project keywords"
           rows={4}
           maxLength={2200}
           value={aliasText}
-          onChange={(event) => { setAliasesEdited(true); setAliases(event.target.value); }}
+          onChange={(event) => {
+            setAliasesEdited(true);
+            setAliases(event.target.value);
+          }}
         />
         <small>{keywords.length}/20 keywords</small>
         {available.length > 0 && (
           <div className="flex flex-wrap gap-2" aria-label="Suggested keywords">
-            {available.map(value => (
-              <Button key={value} type="button" variant="outline" size="sm"
+            {available.map((value) => (
+              <Button
+                key={value}
+                type="button"
+                variant="outline"
+                size="sm"
                 disabled={keywords.length >= 20}
                 aria-label={`Add suggested keyword ${value}`}
                 onClick={() => {
                   setAliasesEdited(true);
                   setAliases([...keywords, value].join('\n'));
-                }}>
-                <Plus size={14} />{value}
+                }}
+              >
+                <Plus size={14} />
+                {value}
               </Button>
             ))}
           </div>
         )}
-        {invalidKeywords && <p className="form-error" role="alert">Use up to 20 keywords, each at most 100 characters.</p>}
+        {invalidKeywords && (
+          <p className="form-error" role="alert">
+            Use up to 20 keywords, each at most 100 characters.
+          </p>
+        )}
       </Field>
       {error && (
         <p className="form-error" role="alert">
@@ -1751,7 +1955,10 @@ function ProjectForm({
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={saving || !name.trim() || invalidKeywords}>
+        <Button
+          type="submit"
+          disabled={saving || !name.trim() || invalidKeywords}
+        >
           {saving && <Loader2 className="spin" />}
           {initial.id ? 'Save changes' : 'Create project'}
         </Button>
@@ -1946,6 +2153,7 @@ function SettingsPanel({
       </form>
       <div className="connections">
         <CalendarSettings />
+        <SuggestionSettings />
         <OpenAISettings />
         {state.integrations.emailSetupAvailable && <EmailCaptureSettings />}
         <div className="settings-card">

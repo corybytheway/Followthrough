@@ -3,6 +3,71 @@ import XCTest
 
 final class FollowthroughMacUITests: XCTestCase {
 
+    @MainActor func testSuggestedTasksPreviewAndDirectAcceptance() async throws {
+        continueAfterFailure = false
+        let native = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        guard let session = try? Data(contentsOf: native.appendingPathComponent("local-session.json")),
+              let identity = try? JSONSerialization.jsonObject(with: session) as? [String: Any],
+              identity["ownerId"] as? String == "local_seedy",
+              let backup = ProcessInfo.processInfo.environment["FOLLOWTHROUGH_SUGGESTIONS_MAC_BACKUP"],
+              FileManager.default.fileExists(atPath: backup) else { throw XCTSkip("Requires the fictional loopback suggestion fixture and an explicit database backup.") }
+        func workspace() async throws -> [String: Any] {
+            var request = URLRequest(url: URL(string: "http://localhost:4319/api/workspace")!)
+            request.setValue("__sites_local_auth=1", forHTTPHeaderField: "Cookie")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        }
+        let before = try await workspace()
+        let originalTasks = try XCTUnwrap(before["tasks"] as? [[String: Any]])
+        let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", "http://localhost:4319"]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = session.base64EncodedString()
+        app.launchEnvironment["FOLLOWTHROUGH_LOCAL_STORAGE"] = "suggested-tasks-mac"
+        app.launch()
+        let disclosure = app.buttons["suggestionsDisclosure"]
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 30), app.debugDescription)
+        if disclosure.value as? String == "Expanded" { disclosure.click() }
+        record(app, "Task suggestions Mac collapsed")
+        app.terminate(); app.launch()
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 30), app.debugDescription)
+        XCTAssertEqual(disclosure.value as? String, "Collapsed")
+        disclosure.click()
+        XCTAssertTrue(app.buttons["Accept linked tasks"].waitForExistence(timeout: 10), app.debugDescription)
+        record(app, "Task suggestions Mac expanded")
+        let scroll = app.scrollViews.firstMatch
+        let more = app.buttons["Suggest more like this"].firstMatch
+        if !more.isHittable { scroll.scroll(byDeltaX: 0, deltaY: -230) }
+        more.click()
+        XCTAssertTrue(app.staticTexts["Suggest more like this?"].waitForExistence(timeout: 5))
+        record(app, "Task suggestions Mac feedback more")
+        app.buttons["Cancel"].click()
+        let less = app.buttons["Suggest less like this"].firstMatch
+        less.click()
+        XCTAssertTrue(app.staticTexts["Suggest less like this?"].waitForExistence(timeout: 5))
+        record(app, "Task suggestions Mac feedback less")
+        app.buttons["Cancel"].click()
+        let showMore = app.buttons["Show 1 more"]
+        if showMore.exists {
+            if !showMore.isHittable { scroll.scroll(byDeltaX: 0, deltaY: -300) }
+            showMore.click()
+        }
+        let accept = app.buttons["acceptSuggestion_Check the mail"]
+        XCTAssertTrue(accept.waitForExistence(timeout: 5))
+        for _ in 0..<4 where !accept.isHittable { scroll.scroll(byDeltaX: 0, deltaY: -250) }
+        accept.click()
+        let accepted = NSPredicate { _, _ in !accept.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: accepted, evaluatedWith: nil)], timeout: 15), .completed)
+        XCTAssertFalse(app.staticTexts["Review suggested task"].exists)
+        let after = try await workspace()
+        let tasks = try XCTUnwrap(after["tasks"] as? [[String: Any]])
+        let originalIDs = Set(originalTasks.compactMap { $0["id"] as? String })
+        let added = tasks.filter { !originalIDs.contains($0["id"] as? String ?? "") }
+        XCTAssertEqual(added.count, 1)
+        XCTAssertEqual(added.first?["title"] as? String, "Check the mail")
+        record(app, "Task suggestions Mac direct acceptance")
+    }
+
     @MainActor func testShortcutFocusesMenuBarAndKeepsDraft() throws {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")

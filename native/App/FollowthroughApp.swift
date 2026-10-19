@@ -215,7 +215,7 @@ struct WorkspaceSaveStatus: View {
 
     private var saving: Bool { store.connected && store.syncing && !store.pending.isEmpty && !store.blockedMutation }
     private var needsAttention: Bool {
-        store.error != nil || store.blockedMutation || !store.connected || (!store.pending.isEmpty && !saving)
+        store.error != nil || store.suggestionSyncError != nil || store.blockedMutation || !store.connected || (!store.pending.isEmpty && !saving)
     }
 
     private var statusSize: CGFloat {
@@ -262,7 +262,7 @@ private struct WorkspaceSaveDetails: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if let error = store.error {
+            if let error = store.error ?? store.suggestionSyncError {
                 Label(store.blockedMutation ? "Review saved changes" : "Could not sync", systemImage: "exclamationmark.icloud")
                     .font(.headline)
                 Text(error).font(.callout).foregroundStyle(Color.secondary)
@@ -280,7 +280,7 @@ private struct WorkspaceSaveDetails: View {
             if !store.connected {
                 Button("Reconnect") { store.connect() }
                     .disabled(store.authorizing)
-            } else if store.error != nil || !store.pending.isEmpty || store.blockedMutation {
+            } else if store.error != nil || store.suggestionSyncError != nil || !store.pending.isEmpty || store.blockedMutation {
                 Button("Retry") { store.retry() }
                     .disabled(store.syncing)
             }
@@ -478,7 +478,10 @@ struct TodayView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.large)
         #endif
-        .refreshable { await store.sync() }
+        .refreshable {
+            await store.sync()
+            await store.refreshSuggestions(check: true, force: true)
+        }
         #if os(macOS)
         .modifier(SectionScrollToTop(store: store, section: "today", anchor: "todayTop", captureAnchor: "todayTop"))
         #else
@@ -500,12 +503,18 @@ struct TodayTasks: View {
     var body: some View {
         VStack(alignment:.leading,spacing:24) {
             InlineCaptureCard(store: store)
+            TaskSuggestionsView(store: store)
+                .task(id: workspace.revision) { await store.refreshSuggestions(check: true) }
+                .blur(radius: store.captureFocused ? 8 : 0)
+                .disabled(store.captureFocused)
+                .accessibilityHidden(store.captureFocused)
             TodayTaskList(store: store, workspace: workspace)
                 .blur(radius: store.captureFocused ? 8 : 0)
                 .disabled(store.captureFocused)
                 .accessibilityHidden(store.captureFocused)
         }
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: workspace.todayTasks.map(\.id))
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: store.presentationSuggestions.map(\.id))
     }
 }
 struct TodayTaskList: View {

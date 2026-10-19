@@ -54,10 +54,25 @@ function syncFollowthrough() {
   }
 }
 
+// Runs independently so Gmail latency cannot delay the calendar timer.
+function refreshFollowthroughSuggestions() {
+  const properties = PropertiesService.getScriptProperties();
+  const gateway = properties.getProperty('SITES_GATEWAY_TOKEN');
+  const key = properties.getProperty('SCHEDULER_KEY');
+  if (!gateway || !key) return;
+  const response = UrlFetchApp.fetch('https://followthrough.corybytheway.chatgpt.site/api/suggestions/background', {
+    method:'post', contentType:'application/json', payload:'{}',
+    headers:{'OAI-Sites-Authorization':'Bearer '+gateway,'x-followthrough-scheduler-key':key},
+    followRedirects:false, muteHttpExceptions:true,
+  });
+  if (response.getResponseCode() !== 200 && response.getResponseCode() !== 409)
+    throw new Error('Suggestions could not be checked. Calendar sync runs independently.');
+}
+
 function installFollowthroughScheduler() {
   syncFollowthrough();
   const existing = ScriptApp.getProjectTriggers().filter(function (trigger) {
-    return trigger.getHandlerFunction() === 'syncFollowthrough';
+    return ['syncFollowthrough','refreshFollowthroughSuggestions'].includes(trigger.getHandlerFunction());
   });
   existing.forEach(function (trigger) {
     ScriptApp.deleteTrigger(trigger);
@@ -66,7 +81,8 @@ function installFollowthroughScheduler() {
     .timeBased()
     .everyMinutes(1)
     .create();
-  console.log('Followthrough timer installed: every minute.');
+  ScriptApp.newTrigger('refreshFollowthroughSuggestions').timeBased().everyMinutes(5).create();
+  console.log('Calendar timer: every minute; independent suggestion timer: every five minutes.');
 }
 
 // A calendar click loads this inert page first. Its browser script immediately

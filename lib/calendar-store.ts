@@ -1,5 +1,5 @@
 // Created by Cory McCabe
-import { env } from 'cloudflare:workers';
+import { env, waitUntil } from 'cloudflare:workers';
 import {
   emptyCalendarConnection,
   calendarAccountIdentities,
@@ -11,6 +11,7 @@ import { seal, unseal } from './calendar-security';
 import { InputError } from './validation';
 import { backgroundConfigured, backgroundHealthy } from './calendar-background';
 import { APP_ORIGIN } from './app-origin';
+import { runCalendarOperation } from './calendar-operation';
 type Row = { credentials: string; document: string };
 export const calendarConfig = () => env as unknown as Record<string, string>;
 const secret = () => calendarConfig().CALENDAR_ENCRYPTION_KEY || '';
@@ -120,28 +121,30 @@ export async function calendarFlags(owner: string) {
 export async function withCalendarLock<T>(
   owner: string,
   work: () => Promise<T>,
+  options: { waitMs?: number } = {},
 ): Promise<T> {
-  const token = crypto.randomUUID(),
-    now = Date.now();
-  const lock = await env.DB.prepare(
-    'INSERT INTO calendar_locks (owner_id, token, expires_at) VALUES (?, ?, ?) ON CONFLICT(owner_id) DO UPDATE SET token = excluded.token, expires_at = excluded.expires_at WHERE calendar_locks.expires_at < ?',
-  )
-    .bind(owner, token, now + 300_000, now)
-    .run();
-  if (!lock.meta.changes)
-    throw Object.assign(
-      new InputError(
-        'A calendar operation is already running. Try again when it finishes.',
-      ),
-      { status: 409 },
-    );
-  try {
-    return await work();
-  } finally {
-    await env.DB.prepare(
-      'DELETE FROM calendar_locks WHERE owner_id = ? AND token = ?',
-    )
-      .bind(owner, token)
-      .run();
-  }
+  const token = crypto.randomUUID();
+  return runCalendarOperation(
+    work,
+    {
+      acquire: async () => {
+        const now = Date.now();
+        const lock = await env.DB.prepare(
+          'INSERT INTO calendar_locks (owner_id, token, expires_at) VALUES (?, ?, ?) ON CONFLICT(owner_id) DO UPDATE SET token = excluded.token, expires_at = excluded.expires_at WHERE calendar_locks.expires_at < ?',
+        )
+          .bind(owner, token, now + 300_000, now)
+          .run();
+        return !!lock.meta.changes;
+      },
+      release: async () => {
+        await env.DB.prepare(
+          'DELETE FROM calendar_locks WHERE owner_id = ? AND token = ?',
+        )
+          .bind(owner, token)
+          .run();
+      },
+      retain: waitUntil,
+    },
+    options.waitMs,
+  );
 }

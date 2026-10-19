@@ -251,6 +251,17 @@ enum SharedStorage {
     }()
     static let directory: URL = {
         let fm = FileManager.default
+        #if DEBUG && (os(macOS) || targetEnvironment(simulator))
+        // Isolate local UI runs from the user's existing native workspace cache.
+        if let name = ProcessInfo.processInfo.environment["FOLLOWTHROUGH_LOCAL_STORAGE"],
+           name.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil {
+            let local = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("Followthrough Reviews", isDirectory: true)
+                .appendingPathComponent(name, isDirectory: true)
+            try? fm.createDirectory(at: local, withIntermediateDirectories: true)
+            return local
+        }
+        #endif
         if let shared = fm.containerURL(forSecurityApplicationGroupIdentifier: group) {
             do {
                 try fm.createDirectory(at:shared,withIntermediateDirectories:true)
@@ -450,6 +461,7 @@ struct TaskSyncConflict: Identifiable {
 
 /// Transient visual acknowledgment; the durable intent remains in the outbox.
 struct TaskCompletionFeedback: Sendable {
+    static let acknowledgmentDuration: Duration = .milliseconds(450)
     let id = UUID()
     let before: FTTask
     let status: String

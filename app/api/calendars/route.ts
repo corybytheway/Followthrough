@@ -21,6 +21,13 @@ import { randomToken, hash, pkceChallenge } from '@/lib/calendar-security';
 import { readWorkspace, saveCalendarAvailability } from '@/lib/store';
 import { syncCalendars } from '@/lib/calendar-sync';
 import { calendarSelectionMatches } from '@/lib/calendar-model';
+import {
+  readSuggestions,
+  saveSuggestions,
+  suggestionsAvailable,
+  clearGmailSuggestions,
+  withSuggestionLock,
+} from '@/lib/suggestion-store';
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'no-store' };
 export async function GET(request: Request) {
@@ -247,14 +254,40 @@ export async function POST(request: Request) {
         }
         case 'set_output': {
           const provider = input.provider;
-          if (provider !== 'google' && provider !== 'icloud') throw new InputError('Choose Google or Apple Calendar.');
-          if (connection.previousOutput) throw new InputError('Finish syncing the previous calendar move before choosing another destination.');
-          const id = provider === 'google' ? connection.outputCalendarId : text(input.calendarId, 'Task calendar', 2000, true);
-          if (provider === 'google' && (!credentials.google?.refreshToken || !id)) throw new InputError('Connect Google first.');
-          if (provider === 'icloud' && (!credentials.icloud || !connection.icloudCalendars.some(c => c.id === id))) throw new InputError('Choose an Apple calendar from your connected account.');
+          if (provider !== 'google' && provider !== 'icloud')
+            throw new InputError('Choose Google or Apple Calendar.');
+          if (connection.previousOutput)
+            throw new InputError(
+              'Finish syncing the previous calendar move before choosing another destination.',
+            );
+          const id =
+            provider === 'google'
+              ? connection.outputCalendarId
+              : text(input.calendarId, 'Task calendar', 2000, true);
+          if (
+            provider === 'google' &&
+            (!credentials.google?.refreshToken || !id)
+          )
+            throw new InputError('Connect Google first.');
+          if (
+            provider === 'icloud' &&
+            (!credentials.icloud ||
+              !connection.icloudCalendars.some((c) => c.id === id))
+          )
+            throw new InputError(
+              'Choose an Apple calendar from your connected account.',
+            );
           const oldProvider = connection.outputProvider || 'google';
-          const oldId = oldProvider === 'icloud' ? connection.icloudOutputCalendarId : connection.outputCalendarId;
-          if (oldId && connection.lastSync && (provider !== oldProvider || id !== oldId)) connection.previousOutput = { provider: oldProvider, id: oldId };
+          const oldId =
+            oldProvider === 'icloud'
+              ? connection.icloudOutputCalendarId
+              : connection.outputCalendarId;
+          if (
+            oldId &&
+            connection.lastSync &&
+            (provider !== oldProvider || id !== oldId)
+          )
+            connection.previousOutput = { provider: oldProvider, id: oldId };
           connection.outputProvider = provider;
           if (provider === 'icloud') connection.icloudOutputCalendarId = id;
           connection.lastSync = null;
@@ -262,7 +295,10 @@ export async function POST(request: Request) {
         }
         case 'start_sync': {
           if (connection.outputProvider === 'icloud') {
-            if (!credentials.icloud || !connection.icloudOutputCalendarId) throw new InputError('Connect Apple Calendar and choose a task destination.');
+            if (!credentials.icloud || !connection.icloudOutputCalendarId)
+              throw new InputError(
+                'Connect Apple Calendar and choose a task destination.',
+              );
             connection.syncEnabled = true;
             break;
           }
@@ -289,9 +325,18 @@ export async function POST(request: Request) {
               : input.action === 'disconnect_icloud'
                 ? 'icloud'
                 : 'zoho';
-          if (connection.previousOutput?.provider === provider) throw new InputError('Finish moving task blocks before disconnecting this calendar.');
+          if (connection.previousOutput?.provider === provider)
+            throw new InputError(
+              'Finish moving task blocks before disconnecting this calendar.',
+            );
           connection.syncEnabled = false;
           if (provider === 'google') {
+            if (suggestionsAvailable(owner))
+              await withSuggestionLock(owner, async (lease) => {
+                const state = await readSuggestions(owner);
+                clearGmailSuggestions(state);
+                await saveSuggestions(owner, state, lease);
+              }, { waitMs: 30_000 });
             delete credentials.google;
             delete credentials.oauth;
             connection.googleCalendars = [];

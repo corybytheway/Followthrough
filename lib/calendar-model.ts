@@ -14,7 +14,13 @@ export type CalendarCredentials = {
   };
   icloud?: { username: string; password: string };
   zoho?: { username: string; password: string; serverUrl: string };
-  oauth?: { stateHash: string; verifier: string; expiresAt: number };
+  oauth?: {
+    stateHash: string;
+    verifier: string;
+    expiresAt: number;
+    purpose?: 'gmail';
+    account?: string;
+  };
 };
 export type CalendarConnection = {
   marker: string;
@@ -94,7 +100,9 @@ export function calendarAccountIdentities(
     : undefined;
   return {
     googleAccount:
-      primary && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(primary) ? primary : undefined,
+      primary && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(primary)
+        ? primary
+        : undefined,
     icloudAccount: credentials.icloud?.username,
     zohoAccount: credentials.zoho?.username,
   };

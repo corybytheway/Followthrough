@@ -8,7 +8,10 @@ import {
   type Task,
   type Workspace,
 } from './model';
-import { suggestProjectKeywords, uniqueProjectKeywords } from './project-keywords';
+import {
+  suggestProjectKeywords,
+  uniqueProjectKeywords,
+} from './project-keywords';
 import { hasUnfinishedPrerequisites } from './task-prerequisites';
 export class InputError extends Error {
   status = 400;
@@ -96,6 +99,22 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
     t.projectId = v.projectId as string | null;
   }
   if (v.notes !== undefined) t.notes = text(v.notes, 'notes', 10000);
+  if (v.provenance !== undefined) {
+    const origin = object(v.provenance);
+    const suggestionId = text(origin.suggestionId, 'Suggestion ID', 64, true);
+    if (!/^[a-f0-9]{64}$/.test(suggestionId))
+      throw new InputError('Invalid suggestion reference.');
+    const kind = text(origin.kind, 'Suggestion kind', 30, true);
+    if (!['gmail', 'frequency', 'workflow', 'smaller_start'].includes(kind))
+      throw new InputError('Invalid suggestion kind.');
+    const url =
+      origin.url === undefined
+        ? undefined
+        : text(origin.url, 'Source link', 1000);
+    if (url && !url.startsWith('https://mail.google.com/'))
+      throw new InputError('Invalid Gmail source link.');
+    t.provenance = { suggestionId, kind, ...(url ? { url } : {}) };
+  }
   if (v.captureMode !== undefined) {
     if (v.captureMode !== 'basic' && v.captureMode !== 'ai')
       throw new InputError('Choose a valid capture mode.');
@@ -183,7 +202,9 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
     t.blockers = [...new Set(v.blockers as string[])];
   }
   if (t.status === 'done' && hasUnfinishedPrerequisites(t, w.tasks))
-    throw new InputError('Blocked by unfinished tasks. Complete those tasks first.');
+    throw new InputError(
+      'Blocked by unfinished tasks. Complete those tasks first.',
+    );
   const all = new Map(w.tasks.map((a) => [a.id, a]));
   all.set(t.id, t);
   const visiting = new Set<string>(),
@@ -226,9 +247,11 @@ export function projectInput(
         ? projectShortName(existing)
         : suggestProjectShortName(name)
       : text(v.shortName, 'Short name', 100) || suggestProjectShortName(name);
-  const aliases = v.aliases === undefined
-    ? existing?.aliases ?? suggestProjectKeywords(name, shortName, w.projects)
-    : v.aliases;
+  const aliases =
+    v.aliases === undefined
+      ? (existing?.aliases ??
+        suggestProjectKeywords(name, shortName, w.projects))
+      : v.aliases;
   if (!Array.isArray(aliases) || aliases.length > 20)
     throw new InputError('Use up to 20 project keywords.');
   const color =
@@ -245,7 +268,9 @@ export function projectInput(
       v.description === undefined
         ? existing?.description || ''
         : text(v.description, 'Project description', 2000),
-    aliases: uniqueProjectKeywords(aliases.map((a) => text(a, 'Keyword', 100, true))),
+    aliases: uniqueProjectKeywords(
+      aliases.map((a) => text(a, 'Keyword', 100, true)),
+    ),
     color,
   };
 }

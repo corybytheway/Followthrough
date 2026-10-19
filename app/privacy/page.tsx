@@ -16,6 +16,40 @@ export default async function PrivacyPage() {
       <article className="settings-card beta-data-notice">
         <h1>Beta data & privacy</h1>
         <p>
+          Optional task suggestions use your task completion history, checklist
+          progress, and user changes that move a start date later to recognize
+          routines and suggest smaller first steps. Automatic calendar movements
+          do not count as postponements. Suggestions stay separate from your
+          plan until you review them. More/less feedback is private to your
+          account and can be reset in Settings.
+        </p>
+        <p>
+          If you explicitly enable Gmail suggestions, Followthrough requests
+          read-only Gmail access for your connected Google account. It reviews
+          seven days of Inbox conversations, excluding Promotions, Social, Spam
+          and Trash, and recent sent replies in those conversations. Selected
+          plain-text email content is sent to OpenAI to identify clear actions.
+          Attachments and remote content are excluded. Full email bodies are not
+          stored in tasks or calendar descriptions. Minimal evidence and
+          proposed tasks are encrypted; unreviewed suggestions expire after
+          thirty days and content-free dismissal identifiers after ninety days.
+          Turning off Gmail suggestions stops reading and removes pending email
+          suggestions. Tasks you already accepted remain part of your workspace.
+        </p>
+        <p>
+          Followthrough’s use and transfer of information received from Google
+          APIs adheres to the Google API Services User Data Policy, including
+          its Limited Use requirements. OpenAI requests use store: false. This
+          disables response application-state storage; it does not establish
+          Zero Data Retention. OpenAI may retain content in abuse-monitoring
+          logs according to your organization’s applicable controls and
+          policies.{' '}
+          <a href="https://developers.openai.com/api/docs/guides/your-data">
+            OpenAI data controls
+          </a>
+          .
+        </p>
+        <p>
           Followthrough uses your ChatGPT sign-in ID to keep your workspace
           separate from other accounts. Your tasks, projects, work hours, and
           imported busy periods are stored for your account.

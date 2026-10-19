@@ -50,6 +50,8 @@ async function connect(
     '@/lib/calendar-security': { hash: async (value: string) => value },
     '@/lib/validation': { InputError },
     '@/lib/calendar-model': { shouldStartGoogleSyncOnConnect },
+    '@/lib/gmail-suggestions': { GMAIL_SCOPE: 'gmail.readonly' },
+    '@/lib/suggestion-store': { suggestionsAvailable: () => false },
   };
   const exports: { GET?: (request: Request) => Promise<Response> } = {};
   new Function('require', 'exports', callback)((name: string) => {
