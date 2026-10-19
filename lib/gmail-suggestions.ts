@@ -28,12 +28,12 @@ import {
 } from './suggestion-store';
 
 export { GMAIL_SCOPE, gmailGet } from './gmail-client';
-/** Owner-pilot diagnostic: analyze one owned task's email without queuing or scheduling it. */
-export async function previewGmailTask(owner: string, taskId: unknown) {
+/** All Gmail reads and analysis remain under the caller's suggestion lease. */
+async function previewGmailTaskWithLease(owner: string, taskId: unknown, lease: string) {
   if (!suggestionsAvailable(owner)) throw new InputError('Task suggestions are not enabled.');
   const { workspace } = await readWorkspace(owner);
   // A deleted quote retains its owner-scoped provenance; explicitly recovering
-  // its separate follow-up must not restore the deleted quote itself.
+  // its separate follow-up must not restore that deleted task.
   const task = workspace.tasks.find((t) => t.id === taskId);
   const source = task?.provenance;
   if (source?.kind !== 'gmail' || !source.url) throw new InputError('Choose an existing Gmail-suggested task.');
@@ -47,19 +47,19 @@ export async function previewGmailTask(owner: string, taskId: unknown) {
   const conversation = await gmailConversation(await googleAccess(credentials.google), threadId);
   const config = await openAIConnection(owner);
   if (!config.key) throw new InputError('Connect OpenAI first.');
-  await withSuggestionLock(owner, async (lease) => {
-    const latest = await readSuggestions(owner);
-    if (!latest.gmail.enabled) throw new InputError('Gmail suggestions are turned off.');
-    reserveGmailAnalysis(latest.gmail, Date.now());
-    await saveSuggestions(owner, latest, lease);
-  });
+  reserveGmailAnalysis(state.gmail, Date.now());
+  await saveSuggestions(owner, state, lease);
   const account = connection.googleCalendars.find((c) => c.primary)?.id || '';
   return { preview: true, suggestions: await analyzeGmailConversations([conversation], workspace, config.key, config.model, account, { includeExisting: true, sourceTask: { id: task!.id, title: task!.title, projectId: task!.projectId } }) };
 }
+/** Owner-pilot diagnostic: analyze one owned task's email without queuing or scheduling it. */
+export async function previewGmailTask(owner: string, taskId: unknown) {
+  return withSuggestionLock(owner, (lease) => previewGmailTaskWithLease(owner, taskId, lease));
+}
 /** Explicit owner action: queue missed, held follow-ups; never accept or schedule them. */
 export async function queueGmailFollowups(owner: string, taskId: unknown) {
-  const preview = await previewGmailTask(owner, taskId);
   await withSuggestionLock(owner, async (lease) => {
+    const preview = await previewGmailTaskWithLease(owner, taskId, lease);
     const state = await readSuggestions(owner);
     if (!state.gmail.enabled) throw new InputError('Gmail suggestions are turned off.');
     const { workspace } = await readWorkspace(owner);
