@@ -25,29 +25,13 @@ struct TaskSuggestionsView: View {
             })
         }
         if store.suggestions?.status.available == true, !suggestions.isEmpty {
-            VStack(alignment: .leading, spacing: 0) {
-                Button {
-                    // Use the task lists' spring for the whole disclosure so
-                    // the cards and the content below move together.
-                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) {
-                        expanded.toggle()
-                    }
-                } label: {
-                    HStack {
-                        Text("Suggested tasks").font(.headline)
-                        Image(systemName: "chevron.right").font(.caption)
-                            .rotationEffect(.degrees(expanded ? 90 : 0))
-                        Spacer(minLength: 8)
-                        Text(suggestions.reduce(0) { $0 + $1.drafts.count }, format: .number)
-                            .font(.subheadline).foregroundStyle(.secondary)
-                    }.frame(minHeight: 44).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Suggested tasks, \(suggestions.reduce(0) { $0 + $1.drafts.count })")
-                .accessibilityAddTraits(.isButton)
-                .accessibilityValue(expanded ? "Expanded" : "Collapsed")
-                .accessibilityIdentifier("suggestionsDisclosure")
+            SuggestionDisclosure(
+                progress: expanded ? 1 : 0,
+                expanded: expanded,
+                contentHeight: contentHeight,
+                taskCount: suggestions.reduce(0) { $0 + $1.drafts.count },
+                onToggle: { expanded.toggle() }
+            ) {
                 // Stable content identity keeps the header's accessibility bounds
                 // separate while the cards reveal and collapse.
                 VStack(alignment: .leading, spacing: 8) {
@@ -78,15 +62,8 @@ struct TaskSuggestionsView: View {
                 } action: { height in
                     contentHeight = height
                 }
-                .modifier(SuggestionDisclosureReveal(height: expanded ? contentHeight : 0))
-                // Include size measurements that arrive after the toggle.
-                .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: expanded)
-                .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: contentHeight)
-                .accessibilityElement(children: .contain)
-                .accessibilityHidden(!expanded)
-                .allowsHitTesting(expanded)
-                .disabled(!expanded)
             }
+            .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: expanded)
             .sheet(item: $feedbackChoice) { choice in
                 SuggestionFeedbackDialog(
                     choice: choice,
@@ -113,18 +90,60 @@ struct TaskSuggestionsView: View {
     }
 }
 
-private struct SuggestionDisclosureReveal: ViewModifier, Animatable {
-    var height: CGFloat
+private struct SuggestionDisclosure<Content: View>: View, Animatable {
+    var progress: CGFloat
+    let expanded: Bool
+    let contentHeight: CGFloat
+    let taskCount: Int
+    let onToggle: () -> Void
+    let content: Content
 
-    var animatableData: CGFloat {
-        get { height }
-        set { height = max(0, newValue) }
+    init(progress: CGFloat, expanded: Bool, contentHeight: CGFloat, taskCount: Int,
+         onToggle: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.progress = progress
+        self.expanded = expanded
+        self.contentHeight = contentHeight
+        self.taskCount = taskCount
+        self.onToggle = onToggle
+        self.content = content()
     }
 
-    func body(content: Content) -> some View {
-        // Keep the clipping bounds and surrounding layout at the same
-        // interpolated height throughout the disclosure animation.
-        content.frame(height: height, alignment: .top).clipped()
+    var animatableData: CGFloat {
+        get { progress }
+        // The spring drives a reveal fraction, so clamp any overshoot.
+        set { progress = min(1, max(0, newValue)) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onToggle) {
+                HStack {
+                    Text("Suggested tasks").font(.headline)
+                    Image(systemName: "chevron.right").font(.caption)
+                        .rotationEffect(.degrees(90 * Double(progress)))
+                    Spacer(minLength: 8)
+                    Text(taskCount, format: .number)
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }.frame(minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Suggested tasks, \(taskCount)")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .accessibilityIdentifier("suggestionsDisclosure")
+
+            content
+                .frame(height: contentHeight * progress, alignment: .top)
+                .clipped()
+                .accessibilityElement(children: .contain)
+                .accessibilityHidden(!expanded)
+                .allowsHitTesting(expanded)
+                .disabled(!expanded)
+        }
+        // Both properties render the same interpolated progress. Do not
+        // start a second implicit animation for the caret or the frame.
+        .animation(nil, value: progress)
     }
 }
 
