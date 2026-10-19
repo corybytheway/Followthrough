@@ -477,3 +477,9 @@ a:focus-visible {
     height: 78px;
   }
 }
+
+/* Connected account labels wrap without pushing controls off narrow screens. */
+.google-account-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding-block: 12px; border-bottom: 1px solid var(--border); }
+.google-account-row:last-child { border-bottom: 0; }
+.google-account-email { overflow-wrap: anywhere; flex: 1 1 200px; }
+.google-account-row > .small-note { flex-basis: 100%; }

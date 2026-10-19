@@ -1,11 +1,12 @@
 // Created by Cory McCabe
 import test from 'node:test';
+import * as calendarModel from '../lib/calendar-model';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { setImmediate } from 'node:timers/promises';
 import ts from 'typescript';
-import { emptyCalendarConnection, shouldStartGoogleSyncOnConnect, type CalendarCredentials } from '../lib/calendar-model';
+import { emptyCalendarConnection, type CalendarCredentials } from '../lib/calendar-model';
 import * as security from '../lib/calendar-security';
 import * as validation from '../lib/validation';
 import type * as SuggestionStore from '../lib/suggestion-store';
@@ -42,12 +43,13 @@ for (const purpose of ['gmail', 'calendar'] as const) {
     const gmailScope = 'https://www.googleapis.com/auth/gmail.readonly';
     const connection = { ...emptyCalendarConnection(), outputCalendarId: email, outputCalendarName: 'Primary', outputOnPrimary: true, syncEnabled: true,
       googleCalendars: [{ id: email, name: 'Primary', primary: true }], selectedGoogle: [email] };
-    const originalConnection = structuredClone(connection);
     const credentials: CalendarCredentials = {
       google: { clientId: 'test-client', clientSecret: 'test-secret', refreshToken: 'old-refresh', scopes: ['calendar-access'] },
       oauth: { stateHash: await security.hash('test-state'), verifier: 'test-proof', expiresAt: Date.now() + 60_000,
         ...(purpose === 'gmail' ? { purpose: 'gmail', account: email } : {}) },
     };
+    calendarModel.normalizeGoogleAccounts(connection, credentials);
+    const originalConnection = structuredClone(connection);
     const calendar = {
       calendarConfig: () => ({ SUGGESTIONS_PILOT_ENABLED: 'true', CALENDAR_BACKGROUND_OWNER_ID: owner, CALENDAR_ENCRYPTION_KEY: '01'.repeat(32) }),
       readCalendar: async () => ({ connection, credentials }),
@@ -61,7 +63,7 @@ for (const purpose of ['gmail', 'calendar'] as const) {
     };
     const store = load<typeof SuggestionStore>('../lib/suggestion-store.ts', {
       'cloudflare:workers': { env: { DB: { prepare: (sql: string) => new Query(sql) } } },
-      './calendar-store': calendar, './calendar-security': security, './validation': validation,
+      './calendar-store': calendar, './calendar-model': calendarModel, './calendar-security': security, './validation': validation,
     });
     const provider = deferred();
     const acquired = deferred();
@@ -81,7 +83,7 @@ for (const purpose of ['gmail', 'calendar'] as const) {
       },
       '@/lib/calendar-security': security, '@/lib/validation': validation,
       '@/lib/gmail-suggestions': { GMAIL_SCOPE: gmailScope, gmailGet: async () => ({ emailAddress: email }) },
-      '@/lib/calendar-model': { shouldStartGoogleSyncOnConnect },
+      '@/lib/calendar-model': calendarModel,
       '@/lib/suggestion-store': {
         ...store,
         withSuggestionLock: (account: string, run: (lease: string) => Promise<unknown>, options?: { waitMs?: number }) => {

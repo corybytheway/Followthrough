@@ -1,5 +1,6 @@
 // Created by Cory McCabe
 import test from 'node:test';
+import * as calendarModel from '../lib/calendar-model';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
@@ -50,17 +51,18 @@ function fixture() {
     calendarFlags: async () => ({}),
   };
   const workspaceStore = load<typeof WorkspaceStore>('../lib/store.ts', {
-    'cloudflare:workers': { env }, './model': model, './calendar-store': calendar,
+    'cloudflare:workers': { env }, './model': model, './calendar-store': calendar, './calendar-model': calendarModel,
     './openai-connection': { hasOpenAIConnection: async () => false },
     './capture-status': captureStatus, './email-connection': { emailCaptureStatus: async () => false },
     './scheduler': scheduler, './actions': actions, './validation': validation,
   });
   const suggestions = load<typeof SuggestionStore>('../lib/suggestion-store.ts', {
-    'cloudflare:workers': { env }, './calendar-security': security, './calendar-store': calendar,
+    'cloudflare:workers': { env }, './calendar-security': security, './calendar-store': calendar, './calendar-model': calendarModel,
     './store': workspaceStore, './validation': validation, './suggestion-engine': engine,
     './suggestion-model': suggestionModel, './suggestion-acceptance': acceptance, './suggestion-groups': groups,
   });
   const route = load<{ POST: (request: Request) => Promise<Response> }>('../app/api/suggestions/route.ts', {
+    '@/lib/calendar-model': calendarModel,
     '@/lib/http': {
       requireOwner: async () => owner,
       jsonBody: (request: Request) => request.json(),

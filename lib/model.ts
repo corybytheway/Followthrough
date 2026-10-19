@@ -89,6 +89,7 @@ export type BusyEvent = {
   start: string;
   end: string;
   source: 'manual' | 'google' | 'icloud' | 'zoho';
+  accountId?: string;
 };
 export type Block = {
   id: string;

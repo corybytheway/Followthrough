@@ -17,7 +17,13 @@ struct SettingsView: View {
                 Section("Task suggestions") {
                     Text("Suggestions recognize your routines, remember workflows, and help with tasks that keep moving later. Review each before changing your plan.").font(.callout).foregroundStyle(.secondary)
                     if let status = store.suggestions?.status {
-                        LabeledContent("Gmail review", value: status.gmailEnabled ? status.googleAccount : "Off")
+                        if let accounts = status.googleAccounts, !accounts.isEmpty {
+                            ForEach(accounts) { account in
+                                LabeledContent(account.email, value: account.gmailEnabled ? String(localized: "Gmail on") : String(localized: "Gmail off"))
+                            }
+                        } else {
+                            LabeledContent("Gmail review", value: status.gmailEnabled ? status.googleAccount : "Off")
+                        }
                         if let error = status.error { Text(error).font(.caption).foregroundStyle(.secondary) }
                     }
                     if let base = try? store.client.baseURL {
@@ -32,7 +38,13 @@ struct SettingsView: View {
             #endif
             Section("Calendar connections") {
                 if let status = calendarStatus {
-                    CalendarAccountRow(name: "Google Calendar", account: status.googleAccount ?? status.googlePrimaryEmail, connected: status.googleConnected)
+                    if status.googleAccounts.isEmpty {
+                        CalendarAccountRow(name: "Google Calendar", account: nil, connected: false)
+                    } else {
+                        ForEach(status.googleAccounts) { account in
+                            CalendarAccountRow(name: "Google Calendar", account: account.email, connected: true)
+                        }
+                    }
                     CalendarAccountRow(name: "Apple Calendar", account: status.icloudAccount, connected: status.icloudConnected)
                     CalendarAccountRow(name: "Zoho Calendar", account: status.zohoAccount, connected: status.zohoConnected)
                     NavigationLink {
@@ -61,7 +73,7 @@ struct SettingsView: View {
                 if let base = try? store.client.baseURL {
                     Link(destination: base.appendingPathComponent("settings")) {
                         HStack {
-                            Text("Manage connections")
+                            Text("Add or manage accounts")
                             Spacer()
                             Image(systemName: "arrow.up.right").font(.callout)
                         }
@@ -344,7 +356,20 @@ private struct ConflictCalendarSettings: View {
 
     var body: some View {
         Form {
-            ForEach(NativeCalendarProvider.allCases) { provider in
+            ForEach(status.googleAccounts) { account in
+                Section {
+                    ForEach(account.calendars) { calendar in
+                        ConflictCalendarRow(calendar: calendar, selected: account.selected.contains(calendar.id), ignoreAllDay: account.ignoreAllDay.contains(calendar.id), required: status.outputOnPrimary && account.id == status.outputGoogleAccountId && calendar.id == status.outputCalendarId, enabled: !saving && !requiresReload, saving: savingCalendarID == "\(account.id):\(calendar.id)", onSelected: { selected in
+                            update(provider: .google, id: calendar.id, accountID: account.id, selected: selected)
+                        }, onIgnoreAllDay: { ignored in
+                            update(provider: .google, id: calendar.id, accountID: account.id, ignored: ignored)
+                        })
+                    }
+                } header: {
+                    CalendarProviderHeading(title: String(localized: "Google Calendar"), account: account.email)
+                }
+            }
+            ForEach(NativeCalendarProvider.allCases.filter { $0 != .google }) { provider in
                 if !status.calendars(provider).isEmpty {
                     Section {
                         ForEach(status.calendars(provider)) { calendar in
@@ -379,24 +404,24 @@ private struct ConflictCalendarSettings: View {
         #endif
     }
 
-    private func update(provider: NativeCalendarProvider, id: String, selected: Bool? = nil, ignored: Bool? = nil) {
+    private func update(provider: NativeCalendarProvider, id: String, accountID: String? = nil, selected: Bool? = nil, ignored: Bool? = nil) {
         guard !saving && !requiresReload else { return }
         let previous = status
         if let selected {
-            var values = status.selected(provider)
+            var values = status.selected(provider, accountID: accountID)
             if selected && !values.contains(id) { values.append(id) }
             else if !selected { values.removeAll { $0 == id } }
-            status.setSelected(values, provider: provider)
-            if !selected { status.setIgnored(status.ignored(provider).filter { $0 != id }, provider: provider) }
+            status.setSelected(values, provider: provider, accountID: accountID)
+            if !selected { status.setIgnored(status.ignored(provider, accountID: accountID).filter { $0 != id }, provider: provider, accountID: accountID) }
         }
         if let ignored {
-            var values = status.ignored(provider)
+            var values = status.ignored(provider, accountID: accountID)
             if ignored && !values.contains(id) { values.append(id) }
             else if !ignored { values.removeAll { $0 == id } }
-            status.setIgnored(values, provider: provider)
+            status.setIgnored(values, provider: provider, accountID: accountID)
         }
         saving = true
-        savingCalendarID = id
+        savingCalendarID = accountID.map { "\($0):\(id)" } ?? id
         error = nil
         var fields = status.selectionFields
         fields["expectedSelection"] = .object(previous.selectionPayload)
@@ -568,7 +593,18 @@ private struct TaskCalendarPicker: View {
 
     var body: some View {
         Form {
-            ForEach(NativeCalendarProvider.allCases) { provider in
+            ForEach(status.googleAccounts) { account in
+                Section {
+                    ForEach(account.calendars.filter { $0.primary == true }) { calendar in
+                        TaskCalendarChoiceRow(calendar: calendar, selected: status.isOutput(calendar.id, provider: .google, accountID: account.id), reason: nil) {
+                            select(calendar, provider: .google, accountID: account.id)
+                        }
+                    }
+                } header: {
+                    CalendarProviderHeading(title: String(localized: "Google Calendar"), account: account.email)
+                }
+            }
+            ForEach(NativeCalendarProvider.allCases.filter { $0 != .google }) { provider in
                 if !status.calendars(provider).isEmpty {
                     Section {
                         ForEach(status.calendars(provider)) { calendar in
@@ -591,13 +627,13 @@ private struct TaskCalendarPicker: View {
         .disabled(saving)
     }
 
-    private func select(_ calendar: NativeCalendarChoice, provider: NativeCalendarProvider) {
-        guard !status.isOutput(calendar.id, provider: provider), status.outputUnavailableReason(calendar, provider: provider) == nil else { return }
+    private func select(_ calendar: NativeCalendarChoice, provider: NativeCalendarProvider, accountID: String? = nil) {
+        guard !status.isOutput(calendar.id, provider: provider, accountID: accountID), (provider == .google || status.outputUnavailableReason(calendar, provider: provider) == nil) else { return }
         saving = true
         error = nil
         Task {
             do {
-                status = try await store.saveCalendars(["action": .string("set_output"), "provider": .string(provider.rawValue), "calendarId": .string(calendar.id)])
+                status = try await store.saveCalendars(["action": .string("set_output"), "provider": .string(provider.rawValue), "calendarId": .string(calendar.id), "accountId": accountID.map(JSONValue.string) ?? .null])
                 onSave(status)
             } catch { self.error = error.localizedDescription }
             saving = false
@@ -717,7 +753,17 @@ struct NativeCalendarChoice: Decodable, Identifiable, Sendable, Equatable {
     var readOnly: Bool?
 }
 
+struct NativeGoogleAccount: Decodable, Identifiable, Sendable, Equatable {
+    var id: String
+    var email: String
+    var calendars: [NativeCalendarChoice]
+    var selected: [String]
+    var ignoreAllDay: [String]
+}
+
 struct NativeCalendarStatus: Decodable, Sendable, Equatable {
+    var googleAccounts: [NativeGoogleAccount] = []
+    var outputGoogleAccountId: String?
     var googleConnected = false
     var icloudConnected = false
     var zohoConnected = false
@@ -741,6 +787,7 @@ struct NativeCalendarStatus: Decodable, Sendable, Equatable {
     var lastError: String?
 
     private enum CodingKeys: String, CodingKey {
+        case googleAccounts, outputGoogleAccountId
         case googleConnected, icloudConnected, zohoConnected, googleAccount, icloudAccount, zohoAccount
         case googleCalendars, icloudCalendars, zohoCalendars, selectedGoogle, selectedIcloud, selectedZoho
         case ignoreAllDayGoogle, ignoreAllDayIcloud, ignoreAllDayZoho, outputProvider, outputCalendarId
@@ -749,6 +796,8 @@ struct NativeCalendarStatus: Decodable, Sendable, Equatable {
 
     init(from decoder: Decoder) throws {
         let value = try decoder.container(keyedBy: CodingKeys.self)
+        googleAccounts = try value.decodeIfPresent([NativeGoogleAccount].self, forKey: .googleAccounts) ?? []
+        outputGoogleAccountId = try value.decodeIfPresent(String.self, forKey: .outputGoogleAccountId)
         googleConnected = try value.decodeIfPresent(Bool.self, forKey: .googleConnected) ?? false
         icloudConnected = try value.decodeIfPresent(Bool.self, forKey: .icloudConnected) ?? false
         zohoConnected = try value.decodeIfPresent(Bool.self, forKey: .zohoConnected) ?? false
@@ -770,16 +819,21 @@ struct NativeCalendarStatus: Decodable, Sendable, Equatable {
         outputOnPrimary = try value.decodeIfPresent(Bool.self, forKey: .outputOnPrimary) ?? false
         taskOutputProviders = try value.decodeIfPresent([String].self, forKey: .taskOutputProviders) ?? []
         lastError = try value.decodeIfPresent(String.self, forKey: .lastError)
+        if googleAccounts.isEmpty, googleConnected, let email = googleAccount ?? googlePrimaryEmail {
+            googleAccounts = [NativeGoogleAccount(id: email.lowercased(), email: email, calendars: googleCalendars, selected: selectedGoogle, ignoreAllDay: ignoreAllDayGoogle)]
+            outputGoogleAccountId = email.lowercased()
+        }
     }
 
     var googlePrimaryEmail: String? { googleCalendars.first { $0.primary == true && $0.id.contains("@") }?.id }
-    var selectedCount: Int { selectedGoogle.count + selectedIcloud.count + selectedZoho.count }
-    var totalCalendars: Int { googleCalendars.count + icloudCalendars.count + zohoCalendars.count }
+    var selectedCount: Int { googleAccounts.reduce(0) { $0 + $1.selected.count } + selectedIcloud.count + selectedZoho.count }
+    var totalCalendars: Int { googleAccounts.reduce(0) { $0 + $1.calendars.count } + icloudCalendars.count + zohoCalendars.count }
     var outputTitle: String {
         if outputProvider == "icloud" {
             return icloudCalendars.first { $0.id == icloudOutputCalendarId }?.name ?? "Apple Calendar"
         }
-        return googleCalendars.first { $0.id == outputCalendarId }?.name ?? "Not selected"
+        let account = googleAccounts.first { $0.id == outputGoogleAccountId }
+        return account?.calendars.first { $0.id == outputCalendarId }?.name ?? "Not selected"
     }
     fileprivate func calendars(_ provider: NativeCalendarProvider) -> [NativeCalendarChoice] {
         switch provider { case .google: googleCalendars; case .icloud: icloudCalendars; case .zoho: zohoCalendars }
@@ -787,21 +841,33 @@ struct NativeCalendarStatus: Decodable, Sendable, Equatable {
     fileprivate func account(_ provider: NativeCalendarProvider) -> String? {
         switch provider { case .google: googleAccount ?? googlePrimaryEmail; case .icloud: icloudAccount; case .zoho: zohoAccount }
     }
-    fileprivate func selected(_ provider: NativeCalendarProvider) -> [String] {
-        switch provider { case .google: selectedGoogle; case .icloud: selectedIcloud; case .zoho: selectedZoho }
+    fileprivate func selected(_ provider: NativeCalendarProvider, accountID: String? = nil) -> [String] {
+        if provider == .google, let accountID { return googleAccounts.first { $0.id == accountID }?.selected ?? [] }
+        return switch provider { case .google: selectedGoogle; case .icloud: selectedIcloud; case .zoho: selectedZoho }
     }
-    fileprivate func ignored(_ provider: NativeCalendarProvider) -> [String] {
-        switch provider { case .google: ignoreAllDayGoogle; case .icloud: ignoreAllDayIcloud; case .zoho: ignoreAllDayZoho }
+    fileprivate func ignored(_ provider: NativeCalendarProvider, accountID: String? = nil) -> [String] {
+        if provider == .google, let accountID { return googleAccounts.first { $0.id == accountID }?.ignoreAllDay ?? [] }
+        return switch provider { case .google: ignoreAllDayGoogle; case .icloud: ignoreAllDayIcloud; case .zoho: ignoreAllDayZoho }
     }
-    fileprivate mutating func setSelected(_ values: [String], provider: NativeCalendarProvider) {
+    fileprivate mutating func setSelected(_ values: [String], provider: NativeCalendarProvider, accountID: String? = nil) {
+        if provider == .google, let accountID, let index = googleAccounts.firstIndex(where: { $0.id == accountID }) {
+            googleAccounts[index].selected = values
+            selectedGoogle = googleAccounts[0].selected
+            return
+        }
         switch provider { case .google: selectedGoogle = values; case .icloud: selectedIcloud = values; case .zoho: selectedZoho = values }
     }
-    fileprivate mutating func setIgnored(_ values: [String], provider: NativeCalendarProvider) {
+    fileprivate mutating func setIgnored(_ values: [String], provider: NativeCalendarProvider, accountID: String? = nil) {
+        if provider == .google, let accountID, let index = googleAccounts.firstIndex(where: { $0.id == accountID }) {
+            googleAccounts[index].ignoreAllDay = values
+            ignoreAllDayGoogle = googleAccounts[0].ignoreAllDay
+            return
+        }
         switch provider { case .google: ignoreAllDayGoogle = values; case .icloud: ignoreAllDayIcloud = values; case .zoho: ignoreAllDayZoho = values }
     }
-    fileprivate func isOutput(_ id: String, provider: NativeCalendarProvider) -> Bool {
+    fileprivate func isOutput(_ id: String, provider: NativeCalendarProvider, accountID: String? = nil) -> Bool {
         if provider == .icloud { return outputProvider == "icloud" && icloudOutputCalendarId == id }
-        return provider == .google && (outputProvider ?? "google") == "google" && outputCalendarId == id
+        return provider == .google && (accountID == nil || accountID == outputGoogleAccountId) && (outputProvider ?? "google") == "google" && outputCalendarId == id
     }
     fileprivate func outputUnavailableReason(_ calendar: NativeCalendarChoice, provider: NativeCalendarProvider) -> String? {
         if calendar.readOnly == true || calendar.writable == false { return "Read-only calendar" }
@@ -817,7 +883,8 @@ struct NativeCalendarStatus: Decodable, Sendable, Equatable {
         return fields
     }
     fileprivate var selectionPayload: [String: JSONValue] {
-        ["selectedGoogle": .array(selectedGoogle.map(JSONValue.string)),
+        ["googleAccounts": .array(googleAccounts.map { account in .object(["id": .string(account.id), "selected": .array(account.selected.map(JSONValue.string)), "ignoreAllDay": .array(account.ignoreAllDay.map(JSONValue.string))]) }),
+         "selectedGoogle": .array(selectedGoogle.map(JSONValue.string)),
          "selectedIcloud": .array(selectedIcloud.map(JSONValue.string)),
          "selectedZoho": .array(selectedZoho.map(JSONValue.string)),
          "ignoreAllDayGoogle": .array(ignoreAllDayGoogle.map(JSONValue.string)),

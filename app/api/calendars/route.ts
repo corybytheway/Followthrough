@@ -20,7 +20,7 @@ import { zohoCalendars, zohoServer } from '@/lib/zoho-calendar';
 import { randomToken, hash, pkceChallenge } from '@/lib/calendar-security';
 import { readWorkspace, saveCalendarAvailability } from '@/lib/store';
 import { syncCalendars } from '@/lib/calendar-sync';
-import { calendarSelectionMatches } from '@/lib/calendar-model';
+import { calendarSelectionMatches, connectedGoogleAccounts, normalizeGoogleAccounts, projectLegacyGoogleAccount, googleOutputAccount, MAX_GOOGLE_ACCOUNTS } from '@/lib/calendar-model';
 import {
   readSuggestions,
   saveSuggestions,
@@ -53,6 +53,7 @@ export async function POST(request: Request) {
       );
     const result = await withCalendarLock(owner, async () => {
       const { connection, credentials } = await readCalendar(owner);
+      normalizeGoogleAccounts(connection, credentials);
       let authorizationUrl: string | undefined;
       switch (input.action) {
         case 'configure_google': {
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
             throw new InputError(
               'Followthrough manages the Google application for this account.',
             );
-          if (credentials.google?.refreshToken)
+          if (connectedGoogleAccounts(connection, credentials).length)
             throw new InputError(
               'Disconnect Google before replacing its app configuration.',
             );
@@ -81,21 +82,27 @@ export async function POST(request: Request) {
               'Use a Google web application client with the callback URL shown in Settings.',
             );
           credentials.google = { clientId, clientSecret };
+          credentials.googleApp = { clientId, clientSecret };
           break;
         }
         case 'connect_google': {
           if (!credentials.google) {
-            const shared = await sharedGoogleApp(owner);
+            const shared = credentials.googleApp || await sharedGoogleApp(owner);
             if (shared) credentials.google = shared;
           }
           if (!credentials.google)
             throw new InputError('Set up the Google application first.');
+          const target = input.accountId === undefined ? undefined : connection.googleAccounts!.find((account) => account.id === input.accountId);
+          if (input.accountId !== undefined && !target) throw new InputError('Choose a connected Google account.');
+          if (!target && connection.googleAccounts!.length >= MAX_GOOGLE_ACCOUNTS) throw new InputError(`Connect up to ${MAX_GOOGLE_ACCOUNTS} Google accounts.`);
           const state = randomToken(),
             verifier = randomToken();
           credentials.oauth = {
             stateHash: await hash(state),
             verifier,
             expiresAt: Date.now() + 600_000,
+            accountId: target?.id,
+            account: target?.email,
           };
           const params = new URLSearchParams({
             client_id: credentials.google.clientId,
@@ -103,7 +110,9 @@ export async function POST(request: Request) {
             response_type: 'code',
             scope: GOOGLE_SCOPES.join(' '),
             access_type: 'offline',
-            prompt: 'consent',
+            prompt: 'select_account consent',
+            include_granted_scopes: 'true',
+            ...(target ? { login_hint: target.email } : {}),
             state,
             code_challenge: await pkceChallenge(verifier),
             code_challenge_method: 'S256',
@@ -159,10 +168,13 @@ export async function POST(request: Request) {
           break;
         }
         case 'refresh_calendars': {
-          if (credentials.google?.refreshToken)
-            connection.googleCalendars = calendarChoices(
-              await googleCalendars(await googleAccess(credentials.google)),
-            );
+          for (const account of connectedGoogleAccounts(connection, credentials)) {
+            const saved = connection.googleAccounts!.find((item) => item.id === account.id)!;
+            saved.calendars = calendarChoices(await googleCalendars(await googleAccess(account.secret)));
+            saved.selected = saved.selected.filter((id) => saved.calendars.some((calendar) => calendar.id === id));
+            saved.ignoreAllDay = saved.ignoreAllDay.filter((id) => saved.selected.includes(id));
+          }
+          projectLegacyGoogleAccount(connection, credentials);
           if (credentials.icloud)
             connection.icloudCalendars = await icloudCalendars(
               credentials.icloud,
@@ -194,6 +206,24 @@ export async function POST(request: Request) {
               ),
               { status: 409 },
             );
+          if (input.googleAccounts !== undefined) {
+            if (!Array.isArray(input.googleAccounts) || input.googleAccounts.length !== connection.googleAccounts!.length)
+              throw new InputError('Reload your Google accounts before choosing calendars.');
+            for (const account of connection.googleAccounts!) {
+              const choices = input.googleAccounts.filter((value: unknown) => object(value).id === account.id);
+              if (choices.length !== 1) throw new InputError('Choose each connected Google account once.');
+              const value = object(choices[0]);
+              if (!Array.isArray(value.selected) || value.selected.length > 50 || value.selected.some((id) => typeof id !== 'string' || !account.calendars.some((calendar) => calendar.id === id)))
+                throw new InputError('Choose calendars from this Google account.');
+              const selected = [...new Set(value.selected as string[])];
+              if (connection.outputOnPrimary && account.id === connection.outputGoogleAccountId && connection.outputCalendarId && !selected.includes(connection.outputCalendarId)) selected.push(connection.outputCalendarId);
+              if (!Array.isArray(value.ignoreAllDay) || value.ignoreAllDay.some((id) => typeof id !== 'string' || !selected.includes(id)))
+                throw new InputError('Ignore all-day events only on selected calendars.');
+              account.selected = selected;
+              account.ignoreAllDay = [...new Set(value.ignoreAllDay as string[])];
+            }
+            projectLegacyGoogleAccount(connection, credentials);
+          }
           for (const [key, choices, max] of [
             ['selectedGoogle', connection.googleCalendars, 50],
             ['selectedIcloud', connection.icloudCalendars, 20],
@@ -201,6 +231,7 @@ export async function POST(request: Request) {
           ] as const) {
             // Older clients must preserve selections for the newly added provider.
             const value =
+              key === 'selectedGoogle' && input.googleAccounts !== undefined ? connection.selectedGoogle :
               key === 'selectedZoho' && input[key] === undefined
                 ? connection[key]
                 : input[key];
@@ -224,6 +255,7 @@ export async function POST(request: Request) {
               key === 'selectedGoogle' &&
               connection.outputOnPrimary &&
               connection.outputCalendarId &&
+              connection.googleAccounts![0]?.id === connection.outputGoogleAccountId &&
               !connection[key].includes(connection.outputCalendarId)
             )
               connection[key].push(connection.outputCalendarId);
@@ -234,6 +266,7 @@ export async function POST(request: Request) {
             ['ignoreAllDayZoho', connection.selectedZoho],
           ] as const) {
             const value =
+              key === 'ignoreAllDayGoogle' && input.googleAccounts !== undefined ? connection.ignoreAllDayGoogle :
               input[key] === undefined
                 ? connection[key].filter((id) => selected.includes(id))
                 : input[key];
@@ -248,6 +281,8 @@ export async function POST(request: Request) {
               );
             connection[key] = [...new Set(value as string[])];
           }
+          const firstGoogle = connection.googleAccounts![0];
+          if (firstGoogle) { firstGoogle.selected = connection.selectedGoogle; firstGoogle.ignoreAllDay = connection.ignoreAllDayGoogle; }
           // A changed selection must receive a full successful availability read.
           connection.lastSync = null;
           break;
@@ -260,15 +295,10 @@ export async function POST(request: Request) {
             throw new InputError(
               'Finish syncing the previous calendar move before choosing another destination.',
             );
-          const id =
-            provider === 'google'
-              ? connection.outputCalendarId
-              : text(input.calendarId, 'Task calendar', 2000, true);
-          if (
-            provider === 'google' &&
-            (!credentials.google?.refreshToken || !id)
-          )
-            throw new InputError('Connect Google first.');
+          const googleAccount = provider === 'google' ? connection.googleAccounts!.find((account) => account.id === (input.accountId ?? connection.outputGoogleAccountId ?? connection.googleAccounts![0]?.id)) : undefined;
+          const id = provider === 'google' ? googleAccount?.calendars.find((calendar) => calendar.primary)?.id : text(input.calendarId, 'Task calendar', 2000, true);
+          if (provider === 'google' && (!googleAccount || !credentials.googleAccounts?.[googleAccount.id]?.refreshToken || !id))
+            throw new InputError('Choose a connected Google account.');
           if (
             provider === 'icloud' &&
             (!credentials.icloud ||
@@ -282,14 +312,24 @@ export async function POST(request: Request) {
             oldProvider === 'icloud'
               ? connection.icloudOutputCalendarId
               : connection.outputCalendarId;
+          // lastSync is cleared when selections change, while published blocks
+          // can remain on the old calendar. An empty cleanup is safe.
           if (
             oldId &&
-            connection.lastSync &&
             (provider !== oldProvider || id !== oldId)
           )
-            connection.previousOutput = { provider: oldProvider, id: oldId };
+            connection.previousOutput = { provider: oldProvider, id: oldId, ...(oldProvider === 'google' ? { accountId: connection.outputGoogleAccountId || undefined } : {}) };
           connection.outputProvider = provider;
           if (provider === 'icloud') connection.icloudOutputCalendarId = id;
+          else {
+            if (connection.migrationSourceCalendarId) throw new InputError('Finish the current calendar migration before choosing another destination.');
+            connection.outputGoogleAccountId = googleAccount!.id;
+            connection.outputCalendarId = id!;
+            connection.outputCalendarName = googleAccount!.calendars.find((calendar) => calendar.id === id)?.name;
+            connection.outputOnPrimary = true;
+            connection.primaryMetadataRestored = true;
+            if (!googleAccount!.selected.includes(id!)) googleAccount!.selected.push(id!);
+          }
           connection.lastSync = null;
           break;
         }
@@ -302,7 +342,7 @@ export async function POST(request: Request) {
             connection.syncEnabled = true;
             break;
           }
-          if (!credentials.google?.refreshToken)
+          if (!googleOutputAccount(connection, credentials))
             throw new InputError(
               'Connect Google to schedule tasks on your primary calendar.',
             );
@@ -325,23 +365,41 @@ export async function POST(request: Request) {
               : input.action === 'disconnect_icloud'
                 ? 'icloud'
                 : 'zoho';
-          if (connection.previousOutput?.provider === provider)
+          const googleAccountId = provider === 'google' && input.accountId !== undefined ? text(input.accountId, 'Google account', 300, true) : undefined;
+          // Busy events saved before multi-account support had no accountId.
+          // They came from the original (first) Google connection.
+          const legacyGoogleAccountId = connection.googleAccounts?.[0]?.id;
+          if (googleAccountId && !connection.googleAccounts!.some((account) => account.id === googleAccountId)) throw new InputError('Choose a connected Google account.');
+          const pendingMove = connection.previousOutput;
+          const disconnectsPrevious = pendingMove?.provider === provider &&
+            (provider !== 'google' || !googleAccountId || pendingMove.accountId === googleAccountId);
+          const disconnectsDestination = !!pendingMove && (connection.outputProvider || 'google') === provider &&
+            (provider !== 'google' || !googleAccountId || connection.outputGoogleAccountId === googleAccountId);
+          if (disconnectsPrevious || disconnectsDestination)
             throw new InputError(
               'Finish moving task blocks before disconnecting this calendar.',
             );
-          connection.syncEnabled = false;
+          if (provider !== 'google' || !googleAccountId || ((connection.outputProvider || 'google') === 'google' && connection.outputGoogleAccountId === googleAccountId)) connection.syncEnabled = false;
           if (provider === 'google') {
             if (suggestionsAvailable(owner))
               await withSuggestionLock(owner, async (lease) => {
                 const state = await readSuggestions(owner);
-                clearGmailSuggestions(state);
+                clearGmailSuggestions(state, googleAccountId, connection.googleAccounts![0]?.email);
                 await saveSuggestions(owner, state, lease);
               }, { waitMs: 30_000 });
-            delete credentials.google;
-            delete credentials.oauth;
-            connection.googleCalendars = [];
-            connection.selectedGoogle = [];
-            connection.ignoreAllDayGoogle = [];
+            connection.googleAccounts = connection.googleAccounts!.filter((account) => googleAccountId && account.id !== googleAccountId);
+            if (googleAccountId) delete credentials.googleAccounts?.[googleAccountId];
+            else credentials.googleAccounts = {};
+            if (!connection.googleAccounts.length) delete credentials.google;
+            if (!googleAccountId || credentials.oauth?.accountId === googleAccountId) delete credentials.oauth;
+            if (!googleAccountId || connection.outputGoogleAccountId === googleAccountId) {
+              connection.outputGoogleAccountId = null;
+              connection.outputCalendarId = null;
+              connection.outputOnPrimary = false;
+              connection.migrationSourceCalendarId = null;
+              connection.pendingCalendarMove = null;
+            }
+            projectLegacyGoogleAccount(connection, credentials);
           } else if (provider === 'icloud') {
             delete credentials.icloud;
             connection.icloudCalendars = [];
@@ -356,7 +414,7 @@ export async function POST(request: Request) {
           await saveCalendarAvailability(
             owner,
             (await readWorkspace(owner)).workspace.busy.filter(
-              (e) => e.source !== 'manual' && e.source !== provider,
+              (e) => e.source !== 'manual' && (e.source !== provider || (provider === 'google' && !!googleAccountId && (e.accountId || legacyGoogleAccountId) !== googleAccountId)),
             ),
           );
           break;
@@ -364,6 +422,7 @@ export async function POST(request: Request) {
         default:
           throw new InputError('Choose a supported calendar action.');
       }
+      projectLegacyGoogleAccount(connection, credentials);
       connection.lastError = null;
       await saveCalendar(owner, connection, credentials);
       return { authorizationUrl };

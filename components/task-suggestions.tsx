@@ -428,12 +428,13 @@ export function SuggestionSettings() {
       .then(setData)
       .catch(() => {});
   }, []);
-  const run = async (action: string) => {
+  const run = async (action: string, accountId?: string) => {
     setBusy(true);
     setError('');
     try {
       const next = await request({
         action,
+        accountId,
         confirmReadOnly: consent,
         confirmAI: consent,
       });
@@ -467,49 +468,27 @@ export function SuggestionSettings() {
         check is due. Turning this off stops mailbox checks and clears pending
         Gmail suggestions.
       </p>
-      {data.status.gmailEnabled ? (
-        <>
-          <p className="status-label">
-            Enabled for {data.status.googleAccount}
-          </p>
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={() => void run('disable_gmail')}
-          >
-            Turn off Gmail suggestions
-          </Button>
-        </>
-      ) : (
-        <>
-          <label className="suggestion-consent">
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
-            />
-            I agree to read-only Gmail review and sending selected email text to
-            OpenAI for task suggestions.
-          </label>
-          <Button
-            disabled={busy || !consent || !data.status.googleConnected}
-            onClick={() => void run('connect_gmail')}
-          >
-            Connect Gmail suggestions
-          </Button>
-          {!data.status.googleConnected && (
-            <p className="small-note">
-              Connect your Google Calendar account first.
-            </p>
-          )}
-        </>
+      {(data.status.googleAccounts || []).some((account) => !account.gmailEnabled) && (
+        <label className="suggestion-consent">
+          <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
+          I agree to read-only Gmail review and sending selected email text to OpenAI for task suggestions from each account I connect.
+        </label>
       )}
+      {(data.status.googleAccounts || []).map((account) => (
+        <div className="google-account-row" key={account.id}>
+          <div><span className="google-account-email">{account.email}</span><p className="small-note">{account.gmailEnabled ? 'Gmail suggestions on' : 'Gmail suggestions off'}</p></div>
+          <Button variant="outline" disabled={busy || (!account.gmailEnabled && !consent)} onClick={() => void run(account.gmailEnabled ? 'disable_gmail' : 'connect_gmail', account.id)}>
+            {account.gmailEnabled ? 'Turn off Gmail suggestions' : 'Connect Gmail'}
+          </Button>
+          {account.error && <p className="small-note">{account.error}</p>}
+        </div>
+      ))}
+      {!data.status.googleConnected && <p className="small-note">Add a Google account in Calendar connections to connect Gmail.</p>}
       <p className="small-note">
         Email bodies are not saved in tasks or calendar descriptions. OpenAI’s
         retention policies still apply.{' '}
         <Link href="/privacy">Privacy details</Link>
       </p>
-      {data.status.error && <p className="small-note">{data.status.error}</p>}
       <Button
         variant="outline"
         disabled={busy || !data.status.feedbackCount}

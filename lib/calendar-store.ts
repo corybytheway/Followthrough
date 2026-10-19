@@ -2,6 +2,8 @@
 import { env, waitUntil } from 'cloudflare:workers';
 import {
   emptyCalendarConnection,
+  normalizeGoogleAccounts,
+  connectedGoogleAccounts,
   calendarAccountIdentities,
   type CalendarConnection,
   type CalendarCredentials,
@@ -26,10 +28,11 @@ export async function sharedGoogleApp(owner: string) {
   const host = calendarConfig().CALENDAR_BACKGROUND_OWNER_ID;
   if (!host || host === owner) return null;
   const { credentials } = await readCalendar(host);
-  return credentials.google
+  const app = credentials.googleApp || credentials.google;
+  return app
     ? {
-        clientId: credentials.google.clientId,
-        clientSecret: credentials.google.clientSecret,
+        clientId: app.clientId,
+        clientSecret: app.clientSecret,
       }
     : null;
 }
@@ -43,7 +46,7 @@ export async function readCalendar(owner: string): Promise<{
     .bind(owner)
     .first<Row>();
   const stored = row ? (JSON.parse(row.document) as CalendarConnection) : null;
-  return row
+  const result = row
     ? {
         connection: {
           ...stored!,
@@ -53,15 +56,18 @@ export async function readCalendar(owner: string): Promise<{
           ignoreAllDayGoogle: stored!.ignoreAllDayGoogle || [],
           ignoreAllDayIcloud: stored!.ignoreAllDayIcloud || [],
         },
-        credentials: await unseal(row.credentials, secret(), owner),
+        credentials: await unseal<CalendarCredentials>(row.credentials, secret(), owner),
       }
     : { connection: emptyCalendarConnection(), credentials: {} };
+  normalizeGoogleAccounts(result.connection, result.credentials);
+  return result;
 }
 export async function saveCalendar(
   owner: string,
   connection: CalendarConnection,
   credentials: CalendarCredentials,
 ) {
+  normalizeGoogleAccounts(connection, credentials);
   const document = JSON.stringify(connection);
   if (document.length > 200_000)
     throw new InputError(
@@ -90,9 +96,9 @@ export async function calendarStatus(owner: string): Promise<CalendarStatus> {
       backgroundConfigured(calendarConfig(), owner) &&
       backgroundHealthy(connection.lastBackgroundSync),
     available: !!secret(),
-    googleConfigured: !!credentials.google || !!sharedApp,
+    googleConfigured: !!credentials.googleApp || !!credentials.google || !!sharedApp,
     googleAppManaged: !!sharedApp,
-    googleConnected: !!credentials.google?.refreshToken,
+    googleConnected: connectedGoogleAccounts(connection, credentials).length > 0,
     icloudConnected: !!credentials.icloud,
     zohoConnected: !!credentials.zoho,
     ...calendarAccountIdentities(connection, credentials),
@@ -109,7 +115,7 @@ export async function calendarFlags(owner: string) {
     ? (JSON.parse(row.document) as CalendarConnection)
     : null;
   return {
-    google: !!connection?.googleCalendars.length,
+    google: !!(connection?.googleAccounts?.length || connection?.googleCalendars.length),
     icloud: !!connection?.icloudCalendars.length,
     zoho: !!connection?.zohoCalendars?.length,
     background:

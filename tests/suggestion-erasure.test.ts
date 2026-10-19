@@ -1,5 +1,6 @@
 // Created by Cory McCabe
 import test from 'node:test';
+import * as calendarModel from '../lib/calendar-model';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
@@ -70,7 +71,7 @@ function fixture() {
   };
   const store = load('../lib/suggestion-store.ts', {
     'cloudflare:workers': { env: { DB } },
-    './calendar-store': calendar,
+    './calendar-store': calendar, './calendar-model': calendarModel,
     './calendar-security': { seal: async (value: unknown) => JSON.stringify(value) },
     './validation': { InputError },
   }) as {
@@ -80,7 +81,7 @@ function fixture() {
   const route = load('../app/api/account/data/route.ts', {
     'cloudflare:workers': { env: { DB } },
     '@/lib/http': { requireOwner: async () => 'former-owner', jsonBody: async () => ({ confirm: 'DELETE' }), fail: (error: unknown) => { throw error; } },
-    '@/lib/calendar-store': calendar,
+    '@/lib/calendar-store': calendar, '@/lib/calendar-model': calendarModel,
     '@/lib/suggestion-store': store,
     '@/lib/validation': { InputError, object },
   }) as { DELETE: (request: Request) => Promise<Response> };
