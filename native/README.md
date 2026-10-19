@@ -112,13 +112,13 @@ python3 native/Scripts/run-device.py --device DEVICE_UDID \
 
 Keep the phone unlocked for launch. The launcher requires an explicit device and validates the physical app and extensions before installation.
 
-Physical iPhone builds connect to `https://followthrough.corymccabe.com` and exclude the local test-session injection path. Sign in on the phone and approve **Connect this device** for the intended workspace; never copy the Mac's credentials. Physical-device calendar permissions, share-sheet integration, and widget refresh remain separate acceptance checks. No App Store Connect app record or TestFlight upload is needed for development installation.
+Physical iPhone builds connect to `https://followthrough.site` and exclude the local test-session injection path. Sign in on the phone and approve **Connect this device** for the intended workspace; never copy the Mac's credentials. Physical-device calendar permissions, share-sheet integration, and widget refresh remain separate acceptance checks. No App Store Connect app record or TestFlight upload is needed for development installation.
 
 ## Connect your existing account
 
 In native Settings, choose **Connect my Followthrough account**. The browser uses a fresh sign-in session so a different ChatGPT account in your normal browser does not silently select the wrong workspace. Check the email shown before **Connect this device** approval. **Switch account** opens that same flow after connection. Pending local changes must finish syncing first. The app changes workspaces only after the new session is saved to Keychain; it does not import local test tasks into your real account.
 
-The canonical workspace remains `https://followthrough.corymccabe.com`. Native API requests use the existing actions relay, which forwards only an explicit native route/method allowlist using a server-held hosting credential. Native bearer authorization remains mandatory on the primary server, and the website stays invite-only. Calendar credentials remain server-side.
+The canonical workspace is `https://followthrough.site`. Native API requests use `https://actions.followthrough.site`, which forwards only an explicit native route/method allowlist using a server-held hosting credential. Native bearer authorization remains mandatory on the primary server, and the website stays invite-only. Calendar credentials remain server-side. Saved connections using either previous workspace domain resolve browser links and sign-in to the new domain while retaining their original Keychain and local storage identities, including pending changes.
 
 Use `run-local.py mac --no-session` when launching with a real account; the optional test-session launcher is only for loopback fixtures. The minimal deployed API support is maintained separately from this branch's experimental calendar destination and scheduler changes.
 
@@ -137,6 +137,14 @@ xcodebuild -project native/Followthrough.xcodeproj -scheme FollowthroughIOS \
 ```
 
 The Xcode test targets are `FollowthroughUITests` and `FollowthroughMacUITests`. They act only on this local app and loopback test workspace. Offline tests require coordinating the local server stop/restart; see the test source and `VALIDATION.md` for recorded results. Use `python3 native/Scripts/generate-project.py` after adding/removing native source files; the generator preserves deterministic project identifiers.
+
+Verify current and legacy website routing, native relay selection, local/custom server isolation, and server URL validation without contacting a live workspace:
+
+```sh
+xcrun swiftc native/Shared/Models.swift native/App/APIClient.swift \
+  native/Scripts/verify-server-routing.swift -o /tmp/followthrough-server-routing
+/tmp/followthrough-server-routing
+```
 
 The release boundary remains explicit: TestFlight, public distribution, subscriptions, and App Store submission wait for Cory's direction after local acceptance.
 
