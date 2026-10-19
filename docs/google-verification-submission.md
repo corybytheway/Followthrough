@@ -16,6 +16,12 @@ The following is prepared text, not a submitted statement:
 
 ## Reviewer access
 
+Calendar wording should also be refreshed when the video URL permits saving the form: the existing saved 754-character text mentions the primary calendar, while the current product supports a user-selected owned calendar. The proposed 738-character replacement is:
+
+> Followthrough schedules tasks around selected calendar availability and writes task sessions to a user-selected Google calendar they own, including their primary calendar. calendar.events.owned lets it read relevant owned-calendar events, create task events, update their times/descriptions after replanning, and remove Followthrough-created events when tasks finish or are deleted. Saved event IDs and ownership metadata limit reconciliation to Followthrough task events and preserve existing appointments. Read-only/free-busy scopes cannot write events. calendar.app.created alone cannot write to users' existing calendars; it is retained for app-created calendar compatibility. Calendar data is used for scheduling and synchronization.
+
+Save remained disabled with the video field empty in both normal and verification editors. Unsaved edits were discarded; the existing Calendar justification and all five scopes remain saved unchanged. Do not add a placeholder video to bypass this requirement.
+
 No Google reviewer identity or controlled reviewer workspace has been provisioned. An unlisted video does not grant app access. If Google requests interactive access, obtain the reviewer identity/access requirements, arrange sample-only access, and verify the complete flow before sending instructions. Existing Sites allowlisting and the application's Gmail owner-pilot gate are separate restrictions; adding an outer allowlist entry alone does not enable Gmail for a new workspace. Do not share the owner's account/password or silently change CALENDAR_BACKGROUND_OWNER_ID, which also controls existing automations.
 
 Any new reviewer access needs a concrete scope, duration, and explicit approval. Preserve the existing product; do not create another hosted Site for the demonstration. The public homepage/privacy policy can be reviewed without app access.
