@@ -494,23 +494,6 @@ export async function suggestionAction(owner: string, raw: unknown) {
           };
           item.acceptedTaskIds = [target.id];
         } else {
-          if (
-            drafts.some((d) =>
-              workspace.tasks.some(
-                (t) =>
-                  !t.deletedAt &&
-                  !['done', 'archived'].includes(t.status) &&
-                  t.projectId === d.projectId &&
-                  normalizedAction(t.title) === normalizedAction(d.title),
-              ),
-            )
-          )
-            throw Object.assign(
-              new InputError(
-                'One of these tasks is already in your plan. Refresh suggestions.',
-              ),
-              { status: 409 },
-            );
           mutation = {
             action: 'capture_tasks',
             captureGroupId: group,

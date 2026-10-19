@@ -1,7 +1,7 @@
 // Created by Cory McCabe
 import type { Workspace } from './model';
 import { captureDependencyIndexes } from './capture-dependencies';
-import { recordTaskBehavior, eligibleTask } from './suggestion-engine';
+import { recordTaskBehavior, eligibleTask, normalizedAction } from './suggestion-engine';
 import {
   InputError,
   integer,
@@ -117,6 +117,15 @@ export function applyAction(
         task.captureIndex = index;
         return task;
       });
+      // Check the same workspace that the revision-guarded mutation will save.
+      // Capture group replay above remains idempotent even if titles now overlap.
+      if (tasks.some((task) => task.provenance?.suggestionId && w.tasks.some((existing) =>
+        !existing.deletedAt && !['done', 'archived'].includes(existing.status) &&
+        existing.projectId === task.projectId &&
+        normalizedAction(existing.title) === normalizedAction(task.title)
+      ))) throw Object.assign(new InputError(
+        'One of these tasks is already in your plan. Refresh suggestions.',
+      ), { status: 409 });
       // Resolve draft-local references only after every durable ID exists.
       tasks.forEach((task, index) => {
         task.blockers = [
