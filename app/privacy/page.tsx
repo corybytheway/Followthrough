@@ -77,7 +77,7 @@ export default async function PrivacyPage() {
         </p>
         <p>
           For questions or a manual data request, contact{' '}
-          <a href="mailto:cory@corymccabe.com">cory@corymccabe.com</a>.
+          <a href="mailto:hello@ethosapps.dev">hello@ethosapps.dev</a>.
         </p>
         <Link href="/settings">Back to Settings</Link>
       </article>
