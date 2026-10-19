@@ -12,11 +12,12 @@ enum APIError: LocalizedError {
     var status: Int? { if case .response(let code, _) = self { return code }; return nil }
 }
 struct APIClient: Sendable {
+    static let liveServer = "https://followthrough.site"
     let baseURL: URL
     // Sites keeps the web workspace behind sign-in. Native requests use its
     // dedicated relay, which still requires the device's scoped bearer token.
     private var transportURL: URL {
-        ["followthrough.site", "followthrough.corymccabe.com"].contains(baseURL.host ?? "")
+        baseURL.absoluteString == Self.liveServer
             ? URL(string: "https://actions.followthrough.site")!
             : baseURL
     }
@@ -31,11 +32,21 @@ struct APIClient: Sendable {
               url.query == nil, url.fragment == nil, url.path.isEmpty || url.path == "/",
               url.scheme == "https" || (url.scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(url.host ?? ""))
         else { throw APIError.invalidServer }
-        baseURL = url
+        // Old saved servers remain valid Keychain/cache identities. Resolve
+        // their network destinations here without moving sessions or outboxes.
+        let liveHosts = ["followthrough.site", "followthrough.corymccabe.com", "followthrough.corybytheway.chatgpt.site"]
+        if url.scheme == "https", url.port == nil || url.port == 443, liveHosts.contains(url.host ?? "") {
+            baseURL = URL(string: Self.liveServer)!
+        } else {
+            baseURL = url
+        }
+    }
+    func url(for path: String) -> URL {
+        let destination = path.hasPrefix("api/native/") ? transportURL : baseURL
+        return destination.appendingPathComponent(path)
     }
     func send<T: Decodable & Sendable>(_ path: String, method: String = "GET", body: [String: JSONValue]? = nil, token: String? = nil) async throws -> T {
-        let destination = path.hasPrefix("api/native/") ? transportURL : baseURL
-        var request = URLRequest(url: destination.appendingPathComponent(path)); request.httpMethod = method
+        var request = URLRequest(url: url(for: path)); request.httpMethod = method
         request.timeoutInterval = 60
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }

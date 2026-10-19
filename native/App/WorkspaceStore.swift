@@ -37,7 +37,7 @@ import Security
         #if DEBUG && (os(macOS) || targetEnvironment(simulator))
         return "http://localhost:4318"
         #else
-        return "https://followthrough.site"
+        return APIClient.liveServer
         #endif
     }()
     @ObservationIgnored private var session: NativeSession?
@@ -73,7 +73,10 @@ import Security
             && (completionStatus(for: task) == "done" || !(current?.hasUnfinishedPrerequisites(for: task) ?? false))
     }
     func connectLiveWorkspace() {
-        connect(to: "https://followthrough.site")
+        // Keep an existing live workspace's storage identity and pending changes.
+        // APIClient resolves legacy identities to the current website domain.
+        let alreadyLive = (try? client.baseURL.absoluteString) == APIClient.liveServer
+        connect(to: alreadyLive ? server : APIClient.liveServer)
     }
     func selectSection(_ section: String) {
         if selectedSection == section {
