@@ -312,9 +312,10 @@ export async function POST(request: Request) {
             oldProvider === 'icloud'
               ? connection.icloudOutputCalendarId
               : connection.outputCalendarId;
+          // lastSync is cleared when selections change, while published blocks
+          // can remain on the old calendar. An empty cleanup is safe.
           if (
             oldId &&
-            connection.lastSync &&
             (provider !== oldProvider || id !== oldId)
           )
             connection.previousOutput = { provider: oldProvider, id: oldId, ...(oldProvider === 'google' ? { accountId: connection.outputGoogleAccountId || undefined } : {}) };
