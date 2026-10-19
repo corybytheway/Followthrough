@@ -365,6 +365,9 @@ export async function POST(request: Request) {
                 ? 'icloud'
                 : 'zoho';
           const googleAccountId = provider === 'google' && input.accountId !== undefined ? text(input.accountId, 'Google account', 300, true) : undefined;
+          // Busy events saved before multi-account support had no accountId.
+          // They came from the original (first) Google connection.
+          const legacyGoogleAccountId = connection.googleAccounts?.[0]?.id;
           if (googleAccountId && !connection.googleAccounts!.some((account) => account.id === googleAccountId)) throw new InputError('Choose a connected Google account.');
           const pendingMove = connection.previousOutput;
           const disconnectsPrevious = pendingMove?.provider === provider &&
@@ -410,7 +413,7 @@ export async function POST(request: Request) {
           await saveCalendarAvailability(
             owner,
             (await readWorkspace(owner)).workspace.busy.filter(
-              (e) => e.source !== 'manual' && (e.source !== provider || (provider === 'google' && !!googleAccountId && e.accountId !== googleAccountId)),
+              (e) => e.source !== 'manual' && (e.source !== provider || (provider === 'google' && !!googleAccountId && (e.accountId || legacyGoogleAccountId) !== googleAccountId)),
             ),
           );
           break;

@@ -380,6 +380,11 @@ async function queueForBoth(f: ReturnType<typeof fixture>) {
     await f.suggestions.saveSuggestions(f.owner, state, lease);
   });
 }
+async function addLegacyGoogleBusy(f: ReturnType<typeof fixture>) {
+  const { workspace } = await f.workspace.readWorkspace(f.owner);
+  workspace.busy.push({ id: 'legacy-google-busy', source: 'google', title: 'Old Google busy', start: '2026-10-20T17:00:00Z', end: '2026-10-20T18:00:00Z' });
+  f.database.prepare('UPDATE workspaces SET document = ? WHERE owner_id = ?').run(JSON.stringify(workspace), f.owner);
+}
 function oauthProvider(email: string) {
   return {
     googleToken: async () => ({ access_token: 'new-access', refresh_token: 'new-refresh', scope: `calendar-access ${gmailClient.GMAIL_SCOPE}` }),
@@ -492,6 +497,7 @@ for (const path of ['/api/calendars', '/api/native/calendars']) {
     const f = fixture();
     try {
       await seedMultipleAccounts(f);
+      await addLegacyGoogleBusy(f);
       await queueForBoth(f);
       const route = path.includes('/native/') ? f.nativeRoute : f.route;
       assert.equal((await route.POST(postInput(path, { action: 'disconnect_google', accountId: multiEmails[1] }))).status, 200);
@@ -502,11 +508,22 @@ for (const path of ['/api/calendars', '/api/native/calendars']) {
       assert.ok(credentials.googleAccounts?.[multiEmails[0]]?.refreshToken);
       const response = await f.suggestions.suggestionResponse(f.owner);
       assert.deepEqual(response.suggestions.map((item) => item.source.account), [multiEmails[0]]);
-      assert.deepEqual((await f.workspace.readWorkspace(f.owner)).workspace.busy.map((busy) => busy.accountId), [multiEmails[0]]);
+      assert.deepEqual((await f.workspace.readWorkspace(f.owner)).workspace.busy.map((busy) => busy.accountId), [multiEmails[0], undefined]);
       assert.equal(response.status.googleAccounts?.[0].gmailEnabled, true);
     } finally { f.database.close(); }
   });
 }
+
+void test('disconnecting the migrated Google account removes its untagged busy periods', async () => {
+  const f = fixture();
+  try {
+    await seedMultipleAccounts(f);
+    await addLegacyGoogleBusy(f);
+    assert.equal((await f.route.POST(postInput('/api/calendars', { action: 'disconnect_google', accountId: multiEmails[0] }))).status, 200);
+    const { workspace } = await f.workspace.readWorkspace(f.owner);
+    assert.deepEqual(workspace.busy.map((busy) => busy.accountId), [multiEmails[1]]);
+  } finally { f.database.close(); }
+});
 
 void test('turning off one mailbox preserves the other and accepts its suggestion normally', async () => {
   const f = fixture();
