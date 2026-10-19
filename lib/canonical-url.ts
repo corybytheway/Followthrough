@@ -9,5 +9,9 @@ export function canonicalDocumentUrl(request: Request): URL | null {
       !['GET', 'HEAD'].includes(request.method) ||
       !request.headers.get('accept')?.includes('text/html') ||
       /^\/(api|mcp|native|callback|signin-with-chatgpt|signout-with-chatgpt|_next)(\/|$)/.test(url.pathname)) return null;
-  return new URL(url.pathname + url.search, APP_ORIGIN);
+  // Assign URL components so a leading // remains a path, never an authority.
+  const target = new URL(APP_ORIGIN);
+  target.pathname = url.pathname;
+  target.search = url.search;
+  return target;
 }
