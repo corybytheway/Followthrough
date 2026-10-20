@@ -661,7 +661,11 @@ enum IOSFoldGeometry {
     static func verticalDivision(in geometry: GeometryProxy) -> CGRect? {
         let width = geometry.size.width
         guard width.isFinite, width > 0 else { return nil }
-        if #available(iOS 27.1, *), let region = geometry.reservedRegions(kind: .division).first(where: { region in
+        // Mirror region frames into the same logical coordinates used by
+        // SwiftUI's leading/trailing alignment and custom Layout placement.
+        if #available(iOS 27.1, *), let region = geometry.reservedRegions(
+            kind: .division, layoutDirectionBehavior: .mirrors
+        ).first(where: { region in
             let frame = region.frame
             return region.isActive && frame.minX.isFinite && frame.maxX.isFinite
                 && frame.minY.isFinite && frame.maxY.isFinite
@@ -680,7 +684,8 @@ enum IOSFoldGeometry {
         let leadingWidth = fold.minX
         let trailingWidth = geometry.size.width - fold.maxX
         guard max(leadingWidth, trailingWidth) > 0 else { return (geometry.size.width, .center) }
-        // The query and semantic alignment both mirror in right-to-left layouts.
+        // verticalDivision explicitly mirrors frames, so these are logical
+        // leading/trailing widths; do not mirror them a second time for RTL.
         return leadingWidth >= trailingWidth ? (leadingWidth, .leading) : (trailingWidth, .trailing)
     }
 }
