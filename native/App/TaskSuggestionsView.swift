@@ -11,6 +11,8 @@ struct TaskSuggestionsView: View {
     @AppStorage("suggestionsExpanded") private var expanded = false
     @State private var showAll = false
     @State private var feedbackChoice: SuggestionFeedbackChoice?
+    @State private var contentHeight: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if os(iOS)
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .body) private var feedbackSheetHeight = 260
@@ -23,20 +25,16 @@ struct TaskSuggestionsView: View {
             })
         }
         if store.suggestions?.status.available == true, !suggestions.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Button { expanded.toggle() } label: {
-                    HStack {
-                        Text("Suggested tasks").font(.headline)
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.caption)
-                        Spacer(minLength: 8)
-                        Text(suggestions.reduce(0) { $0 + $1.drafts.count }, format: .number)
-                            .font(.subheadline).foregroundStyle(.secondary)
-                    }.contentShape(Rectangle()).frame(minHeight: 44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityValue(expanded ? "Expanded" : "Collapsed")
-                .accessibilityIdentifier("suggestionsDisclosure")
-                if expanded {
+            SuggestionDisclosure(
+                progress: expanded ? 1 : 0,
+                expanded: expanded,
+                contentHeight: contentHeight,
+                taskCount: suggestions.reduce(0) { $0 + $1.drafts.count },
+                onToggle: { expanded.toggle() }
+            ) {
+                // Stable content identity keeps the header's accessibility bounds
+                // separate while the cards reveal and collapse.
+                VStack(alignment: .leading, spacing: 8) {
                     ForEach(showAll ? suggestions : Array(suggestions.prefix(3))) { item in
                         SuggestionCard(
                             item: item,
@@ -57,7 +55,15 @@ struct TaskSuggestionsView: View {
                             .buttonStyle(.plain).foregroundStyle(Color.followAccent)
                     }
                 }
+                .padding(.top, 8)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    contentHeight = height
+                }
             }
+            .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: expanded)
             .sheet(item: $feedbackChoice) { choice in
                 SuggestionFeedbackDialog(
                     choice: choice,
@@ -81,6 +87,63 @@ struct TaskSuggestionsView: View {
                 #endif
             }
         }
+    }
+}
+
+private struct SuggestionDisclosure<Content: View>: View, Animatable {
+    var progress: CGFloat
+    let expanded: Bool
+    let contentHeight: CGFloat
+    let taskCount: Int
+    let onToggle: () -> Void
+    let content: Content
+
+    init(progress: CGFloat, expanded: Bool, contentHeight: CGFloat, taskCount: Int,
+         onToggle: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.progress = progress
+        self.expanded = expanded
+        self.contentHeight = contentHeight
+        self.taskCount = taskCount
+        self.onToggle = onToggle
+        self.content = content()
+    }
+
+    var animatableData: CGFloat {
+        get { progress }
+        // The spring drives a reveal fraction, so clamp any overshoot.
+        set { progress = min(1, max(0, newValue)) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onToggle) {
+                HStack {
+                    Text("Suggested tasks").font(.headline)
+                    Image(systemName: "chevron.right").font(.caption)
+                        .rotationEffect(.degrees(90 * Double(progress)))
+                    Spacer(minLength: 8)
+                    Text(taskCount, format: .number)
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }.frame(minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Suggested tasks, \(taskCount)")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .accessibilityIdentifier("suggestionsDisclosure")
+
+            content
+                .frame(height: contentHeight * progress, alignment: .top)
+                .clipped()
+                .accessibilityElement(children: .contain)
+                .accessibilityHidden(!expanded)
+                .allowsHitTesting(expanded)
+                .disabled(!expanded)
+        }
+        // Both properties render the same interpolated progress. Do not
+        // start a second implicit animation for the caret or the frame.
+        .animation(nil, value: progress)
     }
 }
 
@@ -190,12 +253,11 @@ struct SuggestionDecisionButtons: View {
     var body: some View {
         HStack(spacing: 0) {
             Button(action: onAccept) {
-                Image(systemName: accepted ? "checkmark.circle.fill" : "checkmark")
-                    .font(.system(size: accepted ? 36 : 14, weight: .semibold))
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(Color.followNavy, Color.followMint)
+                Image(systemName: accepted ? "checkmark" : "plus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.followNavy)
                     .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
-                    .frame(width: 36, height: 36)
+                    .frame(width: 28, height: 28)
                     .background(Color.followMint, in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .accessibilityLabel(linked ? "Accept linked tasks" : "Accept \(title)")
@@ -335,14 +397,14 @@ struct SuggestionFeedback: View {
                 .font(.caption2).foregroundStyle(.secondary).padding(.top, 15)
             Spacer(minLength: 4)
             Button { onFeedback("more") } label: {
-                Image(systemName: item.feedback == "more" ? "hand.thumbsup.fill" : "hand.thumbsup").padding(.top, 12).frame(minWidth: 44, minHeight: 44, alignment: .top)
-            }.foregroundStyle(item.feedback == "more" ? Color.followAccent : Color.secondary)
+                Image(systemName: item.feedback == "more" ? "hand.thumbsup.fill" : "hand.thumbsup").padding(.top, 12).frame(minWidth: 44, minHeight: 44, alignment: .top).contentShape(Rectangle())
+            }.foregroundStyle(item.feedback == "more" ? Color.followMint : Color.secondary)
                 .accessibilityLabel("Suggest more like this")
             Button { onFeedback("less") } label: {
-                Image(systemName: item.feedback == "less" ? "hand.thumbsdown.fill" : "hand.thumbsdown").padding(.top, 12).frame(minWidth: 44, minHeight: 44, alignment: .top)
-            }.foregroundStyle(item.feedback == "less" ? Color.followAccent : Color.secondary)
+                Image(systemName: item.feedback == "less" ? "hand.thumbsdown.fill" : "hand.thumbsdown").padding(.top, 12).frame(minWidth: 44, minHeight: 44, alignment: .top).contentShape(Rectangle())
+            }.foregroundStyle(item.feedback == "less" ? Color.followMint : Color.secondary)
                 .accessibilityLabel("Suggest less like this")
-        }.buttonStyle(.borderless).disabled(!enabled)
+        }.buttonStyle(.plain).disabled(!enabled)
     }
 }
 

@@ -57,6 +57,7 @@ import Carbon
 /// App-owned status item and shortcut survive closing the workspace window.
 @MainActor @Observable final class MacMenuBarCapture: NSObject {
     private(set) var focusRequestID = 0
+    var isShown: Bool { popover.isShown }
     @ObservationIgnored private var statusItem: NSStatusItem?
     @ObservationIgnored private let popover = NSPopover()
     @ObservationIgnored private var makeContent: (() -> NSViewController)?
@@ -120,7 +121,14 @@ struct MacCaptureShortcutHost: View {
                     NSApplication.shared.activate()
                 }
                 menuBar.updateIcon(monochrome: monochrome)
-                shortcut.onCapture = { [menuBar] in menuBar.showCapture() }
+                shortcut.onCapture = { [menuBar, store] in
+                    let app = NSApplication.shared
+                    if app.isActive, app.mainWindow?.isVisible == true, !menuBar.isShown {
+                        store.focusCapture()
+                    } else {
+                        menuBar.showCapture()
+                    }
+                }
                 shortcut.register()
             }
             .onChange(of: monochrome) { _, value in menuBar.updateIcon(monochrome: value) }
@@ -165,17 +173,7 @@ private struct MacCaptureKeyboardHints: View {
     @Environment(MacCaptureShortcut.self) private var shortcut
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                Text("Enter to add")
-                Text("·").accessibilityHidden(true)
-                MacCaptureGlobalHint(isRegistered: shortcut.isRegistered)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Enter to add")
-                MacCaptureGlobalHint(isRegistered: shortcut.isRegistered)
-            }
-        }
+        MacCaptureGlobalHint(isRegistered: shortcut.isRegistered)
         .font(.system(size: 12))
         .foregroundStyle(.white.opacity(0.7))
         .fixedSize(horizontal: false, vertical: true)
@@ -189,7 +187,7 @@ private struct MacCaptureGlobalHint: View {
         if isRegistered {
             Text("⌃⌥F from anywhere")
                 .accessibilityLabel("Control, Option, F to add a task from anywhere")
-                .help("Control–Option–F opens menu bar task entry from any app while Followthrough is running.")
+                .help("Control–Option–F focuses task entry in Followthrough or opens menu bar task entry from another app.")
                 .accessibilityIdentifier("captureGlobalShortcutHint")
         } else {
             Text("Global shortcut unavailable")
@@ -350,21 +348,9 @@ struct CaptureCard: View {
                     .font(.system(size: 19, weight: .semibold))
                 Spacer(minLength: 8)
                 #if os(macOS)
-                if focusedPresentation {
-                    Button { store.dismissCaptureFocus() } label: {
-                        Image(systemName: "xmark").font(.system(size: 16, weight: .medium))
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.75))
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityLabel("Close capture")
-                } else {
-                    // Reserve the same header space without an idle control.
-                    Color.clear.frame(width: 44, height: 44)
-                        .accessibilityHidden(true)
-                }
+                // Keep the header height stable when capture gains focus.
+                Color.clear.frame(width: 44, height: 44)
+                    .accessibilityHidden(true)
                 #endif
             }
             if focusedPresentation, let receipt = store.captureReceipt {
@@ -425,6 +411,10 @@ struct CaptureCard: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("captureCard")
         #if os(macOS)
+        .accessibilityValue(focusedPresentation ? "Focused" : "Idle")
+        .onExitCommand {
+            if focusedPresentation { store.dismissCaptureFocus() }
+        }
         .defaultFocus($inputFocused, focusedPresentation && store.captureReceipt == nil)
         #endif
         .onChange(of: inputFocused) { _, focused in

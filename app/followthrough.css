@@ -19,9 +19,36 @@
 .suggestions-heading svg {
   transform: rotate(-90deg);
   flex-shrink: 0;
+  transition: transform 200ms ease;
 }
 .suggestions-heading svg.expanded {
   transform: none;
+}
+.suggestions-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    grid-template-rows 200ms ease,
+    opacity 160ms ease,
+    visibility 0s 200ms;
+}
+.suggestions-content[data-expanded='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+.suggestions-content-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .suggestions-heading svg,
+  .suggestions-content {
+    transition: none;
+  }
 }
 .suggestion-count {
   margin-left: auto;
@@ -86,7 +113,7 @@
 .suggestion-decisions button:first-child::before {
   content: '';
   position: absolute;
-  inset: 4px;
+  inset: 8px;
   background: var(--mint);
   border-radius: 50%;
   z-index: 0;
@@ -183,10 +210,10 @@
   min-height: 44px !important;
   padding: 12px 0 0;
   align-items: flex-start;
+  background: transparent;
 }
 .suggestion-feedback button[aria-pressed='true'] {
-  background: var(--mint);
-  color: var(--ink);
+  color: var(--mint);
 }
 .suggestion-feedback-actions {
   display: flex;
@@ -880,11 +907,23 @@ summary {
 .settings-card h2 {
   margin: 0;
 }
+:root {
+  --work-day-selected-fill: #a5e5ce;
+  --work-day-selected-text: #07563e;
+  --work-day-off-fill: #eceef1;
+  --work-day-off-text: #667085;
+}
+.dark {
+  --work-day-selected-fill: #2d654e;
+  --work-day-selected-text: #b5ffe0;
+  --work-day-off-fill: #303236;
+  --work-day-off-text: #cfd2d8;
+}
 .work-days {
   border: 0;
   padding: 0;
   display: flex;
-  gap: 6px;
+  gap: 0;
   flex-wrap: wrap;
 }
 .work-days legend {
@@ -897,28 +936,41 @@ summary {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #f4f6fa;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  font-size: 13px;
+  flex: 0 0 44px;
   width: 44px;
-  height: 40px;
+  height: 44px;
   cursor: pointer;
+}
+.work-days label span {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--work-day-off-fill);
+  color: var(--work-day-off-text);
+  font-size: 13px;
+  font-weight: 600;
 }
 .work-days input {
   position: absolute;
   opacity: 0;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   cursor: pointer;
 }
 .work-days label:has(input:focus-visible) {
   outline: 3px solid var(--ring);
   outline-offset: 2px;
+  border-radius: 50%;
 }
-.work-days .selected {
-  color: var(--mint-ink);
-  background: color-mix(in srgb, var(--mint) 18%, white);
-  border-color: color-mix(in srgb, var(--mint) 55%, var(--line));
+.work-days .selected span {
+  color: var(--work-day-selected-text);
+  background: var(--work-day-selected-fill);
 }
 .settings-grid > .editor-form [data-slot='input'],
 .settings-grid > .editor-form [data-slot='native-select'] {
@@ -1045,12 +1097,6 @@ summary {
   }
   .settings-card {
     padding: 21px;
-  }
-  .work-days label {
-    width: 36px;
-  }
-  .work-days {
-    gap: 4px;
   }
   .field-row {
     gap: 12px;
