@@ -13,6 +13,7 @@ import AppIntents
         #if os(macOS)
         Window("Followthrough", id: "main") {
             WorkspaceWindowContent(store: store)
+                .frame(minHeight: 480)
                 .environment(captureShortcut)
                 .background { MacCaptureShortcutHost(store: store, shortcut: captureShortcut, menuBar: menuBarCapture) }
         }
@@ -483,7 +484,9 @@ struct TodayView: View {
                 #if os(macOS)
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment:.top,spacing:24) {
-                        TodayTasks(store:store,workspace:workspace).frame(minWidth:420,maxWidth:.infinity)
+                        // Measure the two-column layout at a readable task width,
+                        // rather than the capture placeholder's unwrapped width.
+                        TodayTasks(store:store,workspace:workspace).frame(minWidth:420,idealWidth:420,maxWidth:.infinity)
                         DaySchedule(workspace:workspace,onSelect:{store.selectedTask = $0}).frame(width:300)
                             .blur(radius: store.captureFocused ? 8 : 0)
                             .disabled(store.captureFocused).accessibilityHidden(store.captureFocused)
