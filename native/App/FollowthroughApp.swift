@@ -172,9 +172,9 @@ private struct MacFloatingTaskAction: View {
             Spacer()
             Button { store.focusCapture() } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(Color.followNavy)
-                    .frame(width: 48, height: 48)
+                    .frame(width: 44, height: 44)
                     .background(Color.followMint, in: Circle())
                     .contentShape(Circle())
             }
