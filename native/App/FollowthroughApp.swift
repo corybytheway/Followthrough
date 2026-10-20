@@ -176,7 +176,7 @@ private struct MacFloatingTaskAction: View {
                     .foregroundStyle(Color.followNavy)
                     .frame(width: 44, height: 44)
                     .background(Color.followMint, in: Circle())
-                    .shadow(color: .black.opacity(0.24), radius: 12, x: 0, y: 4)
+                    .shadow(color: .black.opacity(0.30), radius: 16, x: 0, y: 4)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
