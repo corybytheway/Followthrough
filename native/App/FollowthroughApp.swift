@@ -153,7 +153,7 @@ struct SidebarView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
         }
-        .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
+        .navigationSplitViewColumnWidth(min: 160, ideal: 170, max: 180)
     }
 
     private func isSelected(_ section: String) -> Bool {
@@ -176,6 +176,7 @@ private struct MacFloatingTaskAction: View {
                     .foregroundStyle(Color.followNavy)
                     .frame(width: 44, height: 44)
                     .background(Color.followMint, in: Circle())
+                    .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 3)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
