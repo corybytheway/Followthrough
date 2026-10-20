@@ -2104,6 +2104,7 @@ function SettingsPanel({
             >
               <input
                 type="checkbox"
+                aria-label={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][i]}
                 checked={settings.workDays.includes(i)}
                 onChange={(e) =>
                   update(
@@ -2114,7 +2115,7 @@ function SettingsPanel({
                   )
                 }
               />
-              {d}
+              <span aria-hidden="true">{d}</span>
             </label>
           ))}
         </fieldset>
