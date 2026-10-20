@@ -506,7 +506,11 @@ final class FollowthroughUITests: XCTestCase {
         let window = app.windows.firstMatch
         XCTAssertTrue(schedule.waitForExistence(timeout: 5))
         if window.frame.width >= 900 {
-            XCTAssertGreaterThanOrEqual(schedule.frame.minX, card.frame.maxX + 20)
+            XCTAssertLessThanOrEqual(schedule.frame.maxX, card.frame.minX - 20)
+            let heading = app.staticTexts["todayDateHeading"]
+            XCTAssertTrue(heading.exists)
+            XCTAssertEqual(heading.frame.minX, card.frame.minX, accuracy: 1)
+            XCTAssertLessThanOrEqual(heading.frame.maxX, card.frame.maxX + 1)
         } else if window.frame.width < 792 {
             XCTAssertGreaterThanOrEqual(schedule.frame.minY, card.frame.maxY)
         }

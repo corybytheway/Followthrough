@@ -468,11 +468,14 @@ private struct TaskSyncConflictView: View {
 struct TodayView: View {
     @Bindable var store: WorkspaceStore
     let workspace: Workspace
+    #if os(iOS)
+    @State private var usesIOSColumns = false
+    #endif
     private var navigationHeading: String {
         #if os(macOS)
         ""
         #else
-        TodayHeading.title(timeZone:workspace.settings.timeZone)
+        usesIOSColumns ? "" : TodayHeading.title(timeZone:workspace.settings.timeZone)
         #endif
     }
     var body: some View {
@@ -515,7 +518,8 @@ struct TodayView: View {
         }
         .background(Color.canvas).navigationTitle(navigationHeading)
         #if os(iOS)
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(usesIOSColumns ? .inline : .large)
+        .onPreferenceChange(IOSTodayColumnsPreference.self) { usesIOSColumns = $0 }
         #endif
         .refreshable {
             await store.sync()
@@ -538,14 +542,18 @@ private struct IOSTodayContent: View {
     private var usesColumns: Bool { columns.hasRoom && !dynamicTypeSize.isAccessibilitySize }
 
     var body: some View {
-        let layout = usesColumns
-            ? AnyLayout(HStackLayout(alignment: .top, spacing: columns.spacing))
-            : AnyLayout(VStackLayout(alignment: .leading, spacing: 24))
         // Preserve the editor and its focus as the available display changes.
-        layout {
-            TodayTasks(store: store, workspace: workspace)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(width: usesColumns ? columns.taskWidth : nil)
+        IOSTodayLayout(usesColumns: usesColumns, spacing: usesColumns ? columns.spacing : 24) {
+            VStack(alignment: .leading, spacing: 24) {
+                if usesColumns {
+                    TodayHeading(timeZone: workspace.settings.timeZone)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("todayDateHeading")
+                }
+                TodayTasks(store: store, workspace: workspace)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: usesColumns ? columns.taskWidth : nil)
             DaySchedule(workspace: workspace, onSelect: { store.selectedTask = $0 })
                 .frame(width: usesColumns ? columns.scheduleWidth : nil)
                 .blur(radius: store.captureFocused ? 8 : 0)
@@ -558,6 +566,40 @@ private struct IOSTodayContent: View {
         .onGeometryChange(for: IOSTodayColumns.self) { geometry in
             IOSTodayColumns.measure(geometry)
         } action: { columns = $0 }
+        .preference(key: IOSTodayColumnsPreference.self, value: usesColumns)
+    }
+}
+
+private struct IOSTodayColumnsPreference: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = nextValue() }
+}
+
+/// Keep tasks first in the view tree, but place the schedule beside them on the leading side.
+private struct IOSTodayLayout: Layout {
+    let usesColumns: Bool
+    let spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let childProposal = ProposedViewSize(width: proposal.width.flatMap { $0.isFinite ? $0 : nil }, height: nil)
+        let tasks = subviews[0].sizeThatFits(childProposal)
+        let schedule = subviews[1].sizeThatFits(childProposal)
+        return usesColumns
+            ? CGSize(width: tasks.width + spacing + schedule.width, height: max(tasks.height, schedule.height))
+            : CGSize(width: max(tasks.width, schedule.width), height: tasks.height + spacing + schedule.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let childProposal = ProposedViewSize(width: bounds.width, height: nil)
+        let tasks = subviews[0].sizeThatFits(childProposal)
+        let schedule = subviews[1].sizeThatFits(childProposal)
+        // SwiftUI mirrors these logical coordinates for right-to-left layouts.
+        let tasksX = usesColumns ? bounds.maxX - tasks.width : bounds.minX
+        let scheduleX = bounds.minX
+        subviews[0].place(at: CGPoint(x: tasksX, y: bounds.minY), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: tasks.width, height: tasks.height))
+        subviews[1].place(at: CGPoint(x: scheduleX, y: usesColumns ? bounds.minY : bounds.minY + tasks.height + spacing),
+                          anchor: .topLeading, proposal: ProposedViewSize(width: schedule.width, height: schedule.height))
     }
 }
 
@@ -574,6 +616,7 @@ private struct IOSTodayColumns: Equatable {
         let width = geometry.size.width
         guard width.isFinite, width > 0 else { return result }
         result.hasRoom = width >= 744
+        result.taskWidth = max(0, width - result.scheduleWidth - result.spacing)
         if let fold = IOSFoldGeometry.verticalDivision(in: geometry) {
             // ReservedRegion.frame already includes the margins for controls.
             let start = fold.minX
@@ -584,8 +627,8 @@ private struct IOSTodayColumns: Equatable {
             let paneWidth = max(leadingWidth, trailingWidth)
             guard paneWidth > 0, paneWidth.isFinite else { return result }
             result.hasRoom = result.hasRoom && leadingWidth >= 240 && trailingWidth >= 240
-            result.taskWidth = leadingWidth
-            result.scheduleWidth = trailingWidth
+            result.scheduleWidth = leadingWidth
+            result.taskWidth = trailingWidth
             result.spacing = end - start + extra * 2
             // Large text stacks in one flat pane instead of across the hinge.
             result.stackedWidth = paneWidth
