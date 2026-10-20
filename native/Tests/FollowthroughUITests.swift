@@ -491,6 +491,110 @@ final class FollowthroughUITests: XCTestCase {
         waitForCaptureDismissal()
     }
 
+    func testTodayLayoutAndCaptureDraft() throws {
+        app.launchArguments = ["-server", "http://localhost:4318/",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL"]
+        app.launchEnvironment["FOLLOWTHROUGH_LOCAL_STORAGE"] = "duo-resize-regression"
+        try launchAuthenticated()
+        let originalOrientation = XCUIDevice.shared.orientation
+        defer { XCUIDevice.shared.orientation = originalOrientation == .unknown ? .portrait : originalOrientation }
+
+        let input = app.descendants(matching: .any)["captureInput"].firstMatch
+        let card = app.descendants(matching: .any)["captureCard"].firstMatch
+        let schedule = app.staticTexts["Your day"].firstMatch
+        // On Duo the application frame can describe the inactive display.
+        let window = app.windows.firstMatch
+        XCTAssertTrue(schedule.waitForExistence(timeout: 5))
+        if window.frame.width >= 900 {
+            XCTAssertLessThanOrEqual(schedule.frame.maxX, card.frame.minX - 20)
+            let heading = app.staticTexts["todayDateHeading"]
+            XCTAssertTrue(heading.exists)
+            XCTAssertEqual(heading.frame.minX, card.frame.minX, accuracy: 1)
+            XCTAssertLessThanOrEqual(heading.frame.maxX, card.frame.maxX + 1)
+        } else if window.frame.width < 792 {
+            XCTAssertGreaterThanOrEqual(schedule.frame.minY, card.frame.maxY)
+        }
+        record("Duo Today available width")
+        let draft = "Keep this draft while the display changes."
+        input.tap()
+        input.typeText(draft)
+
+        // Device Hub pose checks cover folding; orientation requests must
+        // preserve capture even when the simulator keeps the current pose.
+        for orientation in [UIDeviceOrientation.landscapeLeft, .portrait, .landscapeRight, .portrait] {
+            XCUIDevice.shared.orientation = orientation
+            XCTAssertTrue(input.waitForExistence(timeout: 10))
+            XCTAssertEqual(input.value as? String, draft, "Orientation updates must retain the inline capture draft.")
+            XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "captureCard").count, 1)
+            XCTAssertTrue(input.isHittable, "The same editor must stay reachable after rotation.")
+            if window.frame.width >= 900 {
+                XCTAssertLessThanOrEqual(card.frame.width, window.frame.width - 348,
+                                         "A wide display must reserve space beside capture for the schedule.")
+            }
+            record("Duo capture orientation \(orientation.rawValue)")
+        }
+        app.terminate()
+    }
+
+    func testWelcomeRemainsReadableAtLargestAccessibilitySize() throws {
+        // A separate loopback identity leaves the connected workspace intact.
+        app.launchArguments = ["-server", "http://127.0.0.1:4397",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchEnvironment.removeValue(forKey: "FOLLOWTHROUGH_SESSION")
+        app.launchEnvironment["FOLLOWTHROUGH_LOCAL_STORAGE"] = "duo-welcome-regression"
+        app.launch()
+        let introduction = app.staticTexts["Your projects, your calendar, and one clear next step."]
+        XCTAssertTrue(introduction.waitForExistence(timeout: 10))
+        XCTAssertGreaterThan(introduction.frame.height, 100, "Large body text must wrap instead of being compressed to one truncated line.")
+        let explanation = app.staticTexts["Sign in securely in your browser and approve this device."]
+        for _ in 0..<6 where !explanation.isHittable { app.swipeUp() }
+        XCTAssertTrue(explanation.isHittable, "The lower sign-in explanation must be reachable by scrolling.")
+        XCTAssertGreaterThan(explanation.frame.height, 100)
+        record("Duo welcome largest accessibility text")
+        app.terminate()
+    }
+
+    func testFloatingCaptureRetainsDraftWhenDismissed() throws {
+        app.launchArguments = ["-server", "http://localhost:4318/",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL"]
+        app.launchEnvironment["FOLLOWTHROUGH_LOCAL_STORAGE"] = "duo-overlay-regression"
+        try launchAuthenticated()
+        tapTab("Settings")
+        tapTab("New task")
+
+        let input = app.descendants(matching: .any)["captureInput"].firstMatch
+        let card = app.descendants(matching: .any)["captureCard"].firstMatch
+        let window = app.windows.firstMatch
+        let draft = "Keep this floating capture draft unsent."
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.typeText(draft)
+        record("Duo floating capture")
+
+        // Use the active window, since application coordinates may target
+        // Duo's inactive outer display. Tap the larger space beside the card.
+        let leftGap = card.frame.minX - window.frame.minX
+        let rightGap = window.frame.maxX - card.frame.maxX
+        let outsideX = rightGap > leftGap
+            ? card.frame.maxX - window.frame.minX + rightGap / 2
+            : leftGap / 2
+        window.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: outsideX, dy: card.frame.midY - window.frame.minY)).tap()
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !card.exists }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
+        XCTAssertTrue(app.navigationBars["Settings"].exists)
+
+        tapTab("New task")
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, draft)
+        // Also exercise empty space in the card's own pane.
+        window.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: card.frame.midX - window.frame.minX,
+                                 dy: max(1, (card.frame.minY - window.frame.minY) / 2))).tap()
+        let dismissedAgain = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !card.exists }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissedAgain], timeout: 10), .completed)
+        app.terminate()
+    }
+
     func testDuoVerticalTabOrderAndCapturePreservesSelection() throws {
         let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-vertical-tabs-fixture.json")
         guard let data = try? Data(contentsOf: fixtureURL),

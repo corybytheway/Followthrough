@@ -304,6 +304,11 @@ private struct CaptureFocusOverlay: View {
 
     var body: some View {
         GeometryReader { geometry in
+            #if os(iOS)
+            let pane = IOSFoldGeometry.widestPane(in: geometry)
+            #else
+            let pane = (width: geometry.size.width, alignment: Alignment.center)
+            #endif
             ZStack {
                 Color.black.opacity(0.3)
                     .ignoresSafeArea()
@@ -318,10 +323,12 @@ private struct CaptureFocusOverlay: View {
                 }
                 .scrollBounceBehavior(.basedOnSize)
                 .scrollIndicators(.hidden)
-                .frame(width: min(600, max(1, geometry.size.width - 48)),
+                .frame(width: min(600, max(1, pane.width - 48)),
                        height: min(height, max(1, geometry.size.height - 48)))
                 .clipShape(RoundedRectangle(cornerRadius: 22))
                 .modifier(CaptureCardShadow())
+                .frame(width: pane.width, height: geometry.size.height)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: pane.alignment)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

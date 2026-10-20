@@ -79,7 +79,10 @@ private struct IOSKeyboardVisibility: ViewModifier {
 
     private func setVisible(_ value: Bool, notification: Notification) {
         let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: duration)) { visible = value }
+        // Rotation can report a keyboard show with a zero-height frame.
+        let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
+        let hasArea = frame.map { !$0.isEmpty } ?? true
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: duration)) { visible = value && hasArea }
     }
 }
 
@@ -213,6 +216,14 @@ private struct IOSCaptureTabSurface: UIViewControllerRepresentable {
         override func viewDidLayoutSubviews() {
             super.viewDidLayoutSubviews()
             refreshSurface()
+        }
+
+        override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+            super.viewWillTransition(to: size, with: coordinator)
+            coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+                // The native item can finish moving after our layout pass.
+                self?.refreshSurface()
+            }
         }
 
         override func viewDidDisappear(_ animated: Bool) {

@@ -102,28 +102,50 @@ struct RootView: View {
 }
 struct ConnectionView: View {
     @Bindable var store: WorkspaceStore
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Image(systemName:"bolt.fill").font(.system(size:32, weight:.bold)).foregroundStyle(Color.followMint)
-                .frame(width:64,height:64).background(Color.followNavy,in:RoundedRectangle(cornerRadius:18))
-            Text("Your tasks.\nPlanned for you.").font(.system(size:40,weight:.bold,design:.rounded))
-            Text("Your projects, your calendar, and one clear next step.").foregroundStyle(.secondary)
-            #if os(macOS)
-            MacCaptureShortcutLesson()
-            #endif
-            Button { store.connectLiveWorkspace() } label: {
-                HStack { if store.authorizing { ProgressView() }; Text("Connect your workspace"); Image(systemName:"arrow.up.right") }.frame(maxWidth:.infinity).padding(.vertical,8)
-            }.buttonStyle(FollowthroughActionButtonStyle()).disabled(store.authorizing)
-            Text("Sign in securely in your browser and approve this device.").font(.callout).foregroundStyle(.secondary)
-            #if DEBUG && (os(macOS) || targetEnvironment(simulator))
-            DisclosureGroup("Local development") {
-                TextField("Server", text:$store.server).textFieldStyle(.roundedBorder)
-                Text("The local server uses an isolated workspace. Your live tasks are not imported.").font(.caption).foregroundStyle(.secondary)
-                Button("Connect to development server") { store.connect() }.disabled(store.authorizing)
+        Group {
+            #if os(iOS)
+            GeometryReader { geometry in
+                let pane = IOSFoldGeometry.widestPane(in: geometry)
+                connectionContent
+                    .frame(width: pane.width)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: pane.alignment)
             }
+            #else
+            connectionContent
             #endif
-            if let error = store.error { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("connectionError") }
-        }.padding(36).frame(maxWidth:500).frame(maxWidth:.infinity,maxHeight:.infinity).background(Color.canvas)
+        }
+        .background(Color.canvas)
+    }
+
+    private var connectionContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Image(systemName:"bolt.fill").font(.system(size:32, weight:.bold)).foregroundStyle(Color.followMint)
+                    .frame(width:64,height:64).background(Color.followNavy,in:RoundedRectangle(cornerRadius:18))
+                Text("Your tasks.\nPlanned for you.").font(.system(size:40,weight:.bold,design:.rounded))
+                Text("Your projects, your calendar, and one clear next step.").foregroundStyle(.secondary)
+                #if os(macOS)
+                MacCaptureShortcutLesson()
+                #endif
+                Button { store.connectLiveWorkspace() } label: {
+                    HStack { if store.authorizing { ProgressView() }; Text("Connect your workspace"); Image(systemName:"arrow.up.right") }.frame(maxWidth:.infinity).padding(.vertical,8)
+                }.buttonStyle(FollowthroughActionButtonStyle()).disabled(store.authorizing)
+                Text("Sign in securely in your browser and approve this device.").font(.callout).foregroundStyle(.secondary)
+                #if DEBUG && (os(macOS) || targetEnvironment(simulator))
+                DisclosureGroup("Local development") {
+                    TextField("Server", text:$store.server).textFieldStyle(.roundedBorder)
+                    Text("The local server uses an isolated workspace. Your live tasks are not imported.").font(.caption).foregroundStyle(.secondary)
+                    Button("Connect to development server") { store.connect() }.disabled(store.authorizing)
+                }
+                #endif
+                if let error = store.error { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("connectionError") }
+            }.padding(36).frame(maxWidth:500).frame(maxWidth:.infinity)
+        }
+        .defaultScrollAnchor(.center, for: .alignment)
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 #if os(macOS)
@@ -465,11 +487,14 @@ private struct TaskSyncConflictView: View {
 struct TodayView: View {
     @Bindable var store: WorkspaceStore
     let workspace: Workspace
+    #if os(iOS)
+    @State private var usesIOSColumns = false
+    #endif
     private var navigationHeading: String {
         #if os(macOS)
         ""
         #else
-        TodayHeading.title(timeZone:workspace.settings.timeZone)
+        usesIOSColumns ? "" : TodayHeading.title(timeZone:workspace.settings.timeZone)
         #endif
     }
     var body: some View {
@@ -496,10 +521,7 @@ struct TodayView: View {
                     }
                 }
                 #else
-                TodayTasks(store:store,workspace:workspace)
-                DaySchedule(workspace:workspace,onSelect:{store.selectedTask = $0})
-                    .blur(radius: store.captureFocused ? 8 : 0)
-                    .disabled(store.captureFocused).accessibilityHidden(store.captureFocused)
+                IOSTodayContent(store: store, workspace: workspace)
                 #endif
             }.padding(24).frame(maxWidth:1300).environment(\.timeZone,TimeZone(identifier:workspace.settings.timeZone) ?? .current)
                 #if os(iOS)
@@ -515,7 +537,8 @@ struct TodayView: View {
         }
         .background(Color.canvas).navigationTitle(navigationHeading)
         #if os(iOS)
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(usesIOSColumns ? .inline : .large)
+        .onPreferenceChange(IOSTodayColumnsPreference.self) { usesIOSColumns = $0 }
         #endif
         .refreshable {
             await store.sync()
@@ -528,6 +551,145 @@ struct TodayView: View {
         #endif
     }
 }
+#if os(iOS)
+private struct IOSTodayContent: View {
+    @Bindable var store: WorkspaceStore
+    let workspace: Workspace
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var columns = IOSTodayColumns()
+
+    private var usesColumns: Bool { columns.hasRoom && !dynamicTypeSize.isAccessibilitySize }
+
+    var body: some View {
+        // Preserve the editor and its focus as the available display changes.
+        IOSTodayLayout(usesColumns: usesColumns, spacing: usesColumns ? columns.spacing : 24) {
+            VStack(alignment: .leading, spacing: 24) {
+                if usesColumns {
+                    TodayHeading(timeZone: workspace.settings.timeZone)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("todayDateHeading")
+                }
+                TodayTasks(store: store, workspace: workspace)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: usesColumns ? columns.taskWidth : nil)
+            DaySchedule(workspace: workspace, onSelect: { store.selectedTask = $0 })
+                .frame(width: usesColumns ? columns.scheduleWidth : nil)
+                .blur(radius: store.captureFocused ? 8 : 0)
+                .disabled(store.captureFocused)
+                .accessibilityHidden(store.captureFocused)
+        }
+        .frame(width: usesColumns ? nil : columns.stackedWidth)
+        // Accept a smaller proposal while the columns still have their old widths.
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: !usesColumns && columns.stacksOnTrailingSide ? .trailing : .leading)
+        .onGeometryChange(for: IOSTodayColumns.self) { geometry in
+            IOSTodayColumns.measure(geometry)
+        } action: { columns = $0 }
+        .preference(key: IOSTodayColumnsPreference.self, value: usesColumns)
+    }
+}
+
+private struct IOSTodayColumnsPreference: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = nextValue() }
+}
+
+/// Keep tasks first in the view tree, but place the schedule beside them on the leading side.
+private struct IOSTodayLayout: Layout {
+    let usesColumns: Bool
+    let spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let childProposal = ProposedViewSize(width: proposal.width.flatMap { $0.isFinite ? $0 : nil }, height: nil)
+        let tasks = subviews[0].sizeThatFits(childProposal)
+        let schedule = subviews[1].sizeThatFits(childProposal)
+        return usesColumns
+            ? CGSize(width: tasks.width + spacing + schedule.width, height: max(tasks.height, schedule.height))
+            : CGSize(width: max(tasks.width, schedule.width), height: tasks.height + spacing + schedule.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let childProposal = ProposedViewSize(width: bounds.width, height: nil)
+        let tasks = subviews[0].sizeThatFits(childProposal)
+        let schedule = subviews[1].sizeThatFits(childProposal)
+        // SwiftUI mirrors these logical coordinates for right-to-left layouts.
+        let tasksX = usesColumns ? bounds.maxX - tasks.width : bounds.minX
+        let scheduleX = bounds.minX
+        subviews[0].place(at: CGPoint(x: tasksX, y: bounds.minY), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: tasks.width, height: tasks.height))
+        subviews[1].place(at: CGPoint(x: scheduleX, y: usesColumns ? bounds.minY : bounds.minY + tasks.height + spacing),
+                          anchor: .topLeading, proposal: ProposedViewSize(width: schedule.width, height: schedule.height))
+    }
+}
+
+private struct IOSTodayColumns: Equatable {
+    var hasRoom = false
+    var taskWidth: CGFloat?
+    var scheduleWidth: CGFloat = 300
+    var spacing: CGFloat = 24
+    var stackedWidth: CGFloat?
+    var stacksOnTrailingSide = false
+
+    static func measure(_ geometry: GeometryProxy) -> Self {
+        var result = Self()
+        let width = geometry.size.width
+        guard width.isFinite, width > 0 else { return result }
+        result.hasRoom = width >= 744
+        result.taskWidth = max(0, width - result.scheduleWidth - result.spacing)
+        if let fold = IOSFoldGeometry.verticalDivision(in: geometry) {
+            // ReservedRegion.frame already includes the margins for controls.
+            let start = fold.minX
+            let end = fold.maxX
+            let extra = max(0, 24 - (end - start)) / 2
+            let leadingWidth = max(0, start - extra)
+            let trailingWidth = max(0, width - end - extra)
+            let paneWidth = max(leadingWidth, trailingWidth)
+            guard paneWidth > 0, paneWidth.isFinite else { return result }
+            result.hasRoom = result.hasRoom && leadingWidth >= 240 && trailingWidth >= 240
+            result.scheduleWidth = leadingWidth
+            result.taskWidth = trailingWidth
+            result.spacing = end - start + extra * 2
+            // Large text stacks in one flat pane instead of across the hinge.
+            result.stackedWidth = paneWidth
+            result.stacksOnTrailingSide = trailingWidth > leadingWidth
+        }
+        return result
+    }
+}
+
+enum IOSFoldGeometry {
+    static func verticalDivision(in geometry: GeometryProxy) -> CGRect? {
+        let width = geometry.size.width
+        guard width.isFinite, width > 0 else { return nil }
+        // Mirror region frames into the same logical coordinates used by
+        // SwiftUI's leading/trailing alignment and custom Layout placement.
+        if #available(iOS 27.1, *), let region = geometry.reservedRegions(
+            kind: .division, layoutDirectionBehavior: .mirrors
+        ).first(where: { region in
+            let frame = region.frame
+            return region.isActive && frame.minX.isFinite && frame.maxX.isFinite
+                && frame.minY.isFinite && frame.maxY.isFinite
+                && frame.height > frame.width && frame.maxX >= 0 && frame.minX <= width
+                && frame.maxY > 0 && frame.minY < geometry.size.height
+        }) {
+            let start = max(0, region.frame.minX)
+            let end = min(width, region.frame.maxX)
+            return CGRect(x: start, y: region.frame.minY, width: end - start, height: region.frame.height)
+        }
+        return nil
+    }
+
+    static func widestPane(in geometry: GeometryProxy) -> (width: CGFloat, alignment: Alignment) {
+        guard let fold = verticalDivision(in: geometry) else { return (geometry.size.width, .center) }
+        let leadingWidth = fold.minX
+        let trailingWidth = geometry.size.width - fold.maxX
+        guard max(leadingWidth, trailingWidth) > 0 else { return (geometry.size.width, .center) }
+        // verticalDivision explicitly mirrors frames, so these are logical
+        // leading/trailing widths; do not mirror them a second time for RTL.
+        return leadingWidth >= trailingWidth ? (leadingWidth, .leading) : (trailingWidth, .trailing)
+    }
+}
+#endif
 struct TodayHeading: View {
     let timeZone: String
     static func title(timeZone: String) -> String { let f = DateFormatter(); f.locale = Locale(identifier:"en_US"); f.timeZone = TimeZone(identifier:timeZone); f.dateFormat = "EEEE, MMM. d"; return f.string(from:.now) }
