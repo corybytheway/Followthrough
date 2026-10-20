@@ -19,6 +19,14 @@ import AppIntents
         .defaultSize(width: 1180, height: 820)
         .windowResizability(.contentMinSize)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    store.dismissCaptureFocus()
+                    store.selectSection("settings")
+                }
+                .keyboardShortcut(",", modifiers: .command)
+                .disabled(store.presentationWorkspace == nil || store.selectedTask != nil)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Capture a task") { store.focusCapture() }.keyboardShortcut("n")
                 Button("Sync workspace") { Task { await store.sync() } }.keyboardShortcut("r")
@@ -1672,7 +1680,7 @@ private struct MenuBarCaptureComposer: View {
             .accessibilityIdentifier("menuBarCaptureProgress")
         } else {
             HStack(alignment: .center, spacing: 8) {
-                TextField("New task…", text: $text, axis: .vertical)
+                TextField("New task… (⌃⌥F)", text: $text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.body)
                     .lineLimit(1...4)

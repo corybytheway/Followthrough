@@ -68,7 +68,7 @@ final class FollowthroughMacUITests: XCTestCase {
         record(app, "Task suggestions Mac direct acceptance")
     }
 
-    @MainActor func testShortcutFocusesMenuBarAndKeepsDraft() throws {
+    @MainActor func testBackgroundShortcutFocusesMenuBarAndKeepsDraft() throws {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
         app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", "http://127.0.0.1:4399"]
@@ -76,7 +76,9 @@ final class FollowthroughMacUITests: XCTestCase {
         app.launch()
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["Connect your workspace"].waitForExistence(timeout: 10))
-        app.typeKey("f", modifierFlags: [.control, .option])
+        let finder = XCUIApplication(bundleIdentifier: "com.apple.finder")
+        finder.activate()
+        finder.typeKey("f", modifierFlags: [.control, .option])
         let input = app.textFields["menuBarCaptureInput"]
         XCTAssertTrue(input.waitForExistence(timeout: 5), app.debugDescription)
         input.typeText("Menu bar focused draft")
@@ -84,13 +86,46 @@ final class FollowthroughMacUITests: XCTestCase {
         XCTAssertFalse(app.textFields["captureInput"].exists)
         input.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(input.waitForNonExistence(timeout: 5))
-        app.typeKey("f", modifierFlags: [.control, .option])
+        finder.activate()
+        finder.typeKey("f", modifierFlags: [.control, .option])
         XCTAssertTrue(input.waitForExistence(timeout: 5))
         XCTAssertEqual(input.value as? String, "Menu bar focused draft")
         input.typeKey(.rightArrow, modifierFlags: [])
         input.typeText(" preserved")
         XCTAssertEqual(input.value as? String, "Menu bar focused draft preserved")
         record(app, "Menu bar shortcut immediately typeable and preserved draft")
+    }
+
+    @MainActor func testForegroundCaptureShortcutAndCommandCommaSettings() throws {
+        continueAfterFailure = false
+        let app = try localApplication()
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout: 25), app.debugDescription)
+
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(app.buttons["Close capture"].waitForExistence(timeout: 5))
+        app.typeKey(",", modifierFlags: .command)
+        let workHours = app.descendants(matching: .any)["workStartPicker"].firstMatch
+        XCTAssertTrue(workHours.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(workHours.isHittable)
+        XCTAssertFalse(app.buttons["Close capture"].exists)
+
+        let draft = "Foreground shortcut draft"
+        for key in ["f", "n"] {
+            app.activate()
+            app.typeKey(key, modifierFlags: key == "f" ? [.control, .option] : .command)
+            XCTAssertTrue(app.buttons["Close capture"].waitForExistence(timeout: 5), app.debugDescription)
+            XCTAssertFalse(app.textFields["menuBarCaptureInput"].exists)
+            app.typeKey("a", modifierFlags: .command)
+            app.typeText(draft)
+            XCTAssertEqual(app.textFields["captureInput"].value as? String, draft,
+                           "Both shortcuts must focus workspace capture without clicking its field.")
+            app.typeKey(.escape, modifierFlags: [])
+            XCTAssertTrue(app.buttons["Close capture"].waitForNonExistence(timeout: 5))
+            XCTAssertTrue(workHours.isHittable, "Closing capture must return to Settings.")
+        }
+        record(app, "Foreground capture shortcuts and Command-Comma Settings")
     }
 
     @MainActor func testGlobalShortcutOpensMenuBarWithoutWorkspaceWindow() throws {
