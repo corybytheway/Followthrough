@@ -357,3 +357,8 @@ This later pass used the canonical `main` checkout and does not replace the hist
 - Control–Option–F invokes the same workspace capture action as Command–N when the main app is active. From Finder, or with the workspace closed, it opens the menu bar composer. Repeated presses in the popover retain and refocus its draft.
 - Signed Debug and Release Mac builds passed. The Mac UI test target compiled. Two background shortcut tests passed with no failures in 70.227 seconds, including immediate typing, draft retention, and a closed workspace. The foreground capture/Command–Comma regression passed with no failures in 36.998 seconds, including typing without a field click and returning to Settings.
 - Results: `/private/tmp/ft-mac-shortcuts-background.xcresult` and `/private/tmp/ft-mac-shortcuts-foreground.xcresult`. Direct native UI checks also verified Command–Comma from Today and from focused capture, plus removal of the footer text. The production-identity Release build was relaunched with the user's existing account; no tasks or settings were submitted during verification.
+
+## 2026-10-19: Mac sidebar project creation
+
+- Replaced the icon-only plus beside Projects with a labeled New project button in the fixed sidebar footer above Settings. The project list retains its own scroll area.
+- The signed Release Mac build and strict code-signature verification passed. Direct native UI inspection confirmed the new placement; clicking New project opened the existing empty project editor, and Cancel returned to Today without creating a project. The updated production-identity build is running from `/private/tmp/ft-mac-shortcuts-release/Build/Products/Release/Followthrough.app` with the existing account retained.

@@ -136,7 +136,7 @@ struct SidebarView: View {
                     .buttonStyle(.plain).listRowBackground(store.selectedSection == section.0 ? Color.followBlue.opacity(0.12) : Color.clear)
             }
             if let workspace = store.workspace {
-                Section {
+                Section("Projects") {
                     ForEach(workspace.projectsAlphabetically) { project in
                         Button { store.selectedSection = project.id } label: {
                             Label {
@@ -155,31 +155,50 @@ struct SidebarView: View {
                             Button("Edit project",systemImage:"pencil") { editingProject = project }
                         }
                     }
-                } header: {
-                    HStack {
-                        Text("Projects")
-                        Spacer()
-                        Button("New project",systemImage:"plus") { addingProject = true }
-                            .labelStyle(.iconOnly)
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.primary)
-                            .help("New project")
-                            .accessibilityIdentifier("sidebarNewProject")
-                    }
                 }
             }
         }
         .safeAreaInset(edge: .bottom, alignment: .leading) {
-            HStack {
-                SidebarSettingsButton(selected: store.selectedSection == "settings") { store.selectedSection = "settings" }
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            SidebarFooter(
+                canAddProject: store.workspace != nil,
+                settingsSelected: store.selectedSection == "settings",
+                onNewProject: { addingProject = true },
+                onSettings: { store.selectedSection = "settings" }
+            )
         }
         .navigationSplitViewColumnWidth(min:200,ideal:230,max:300)
         .sheet(item:$editingProject) { ProjectEditor(store:store,project:$0) }
         .sheet(isPresented:$addingProject) { ProjectEditor(store:store,project:nil) }
+    }
+}
+
+private struct SidebarFooter: View {
+    let canAddProject: Bool
+    let settingsSelected: Bool
+    let onNewProject: () -> Void
+    let onSettings: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button(action: onNewProject) {
+                Label("New project", systemImage: "folder.badge.plus")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .disabled(!canAddProject)
+            .help("Create a project")
+            .accessibilityIdentifier("sidebarNewProject")
+
+            HStack {
+                SidebarSettingsButton(selected: settingsSelected, onSelect: onSettings)
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
     }
 }
 #endif
