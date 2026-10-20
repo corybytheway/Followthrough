@@ -257,7 +257,14 @@ final class FollowthroughMacUITests: XCTestCase {
 
         for page in ["Tasks", "Release QA", "Settings"] {
             app.activate()
-            app.buttons[page].firstMatch.click()
+            if page == "Release QA" || page == "Local Studio" {
+                app.buttons["sidebar_projects"].click()
+                let project = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", page)).firstMatch
+                XCTAssertTrue(project.waitForExistence(timeout: 5), app.debugDescription)
+                project.click()
+            } else {
+                app.buttons[page].firstMatch.click()
+            }
             let pageTitle = app.windows.firstMatch.title
             XCTAssertFalse(input.exists, "Only Today has an inline capture editor.")
             app.activate()
@@ -288,7 +295,14 @@ final class FollowthroughMacUITests: XCTestCase {
         var draft = ""
         for page in ["Tasks", "Local Studio"] {
             app.activate()
-            app.buttons[page].firstMatch.click()
+            if page == "Release QA" || page == "Local Studio" {
+                app.buttons["sidebar_projects"].click()
+                let project = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", page)).firstMatch
+                XCTAssertTrue(project.waitForExistence(timeout: 5), app.debugDescription)
+                project.click()
+            } else {
+                app.buttons[page].firstMatch.click()
+            }
             let pageTitle = app.windows.firstMatch.title
             for useShortcut in [true, false] {
                 app.activate()
@@ -503,8 +517,9 @@ final class FollowthroughMacUITests: XCTestCase {
         XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout:30), app.debugDescription)
         record(app,"Mac Today launch")
         XCTAssertTrue(app.buttons["Tasks"].firstMatch.exists, app.debugDescription)
-        XCTAssertTrue(app.buttons["Local Studio"].firstMatch.exists, app.debugDescription)
-        XCTAssertFalse(app.buttons["Projects"].exists, "Projects already live in the Mac sidebar.")
+        XCTAssertTrue(app.buttons["sidebar_projects"].exists, app.debugDescription)
+        XCTAssertFalse(app.buttons["sidebarNewProject"].exists, "Project creation belongs to the Projects toolbar.")
+        XCTAssertTrue(app.buttons["floatingNewTask"].isHittable)
         XCTAssertTrue(app.buttons["Settings"].firstMatch.exists, app.debugDescription)
     }
 
@@ -531,7 +546,10 @@ final class FollowthroughMacUITests: XCTestCase {
         app.buttons["Tasks"].firstMatch.click()
         XCTAssertTrue(app.staticTexts["Your tasks"].waitForExistence(timeout:5))
         record(app,"Mac Tasks")
-        app.buttons["Local Studio"].firstMatch.click()
+        app.buttons["sidebar_projects"].click()
+        let project = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Local Studio")).firstMatch
+        XCTAssertTrue(project.waitForExistence(timeout: 5), app.debugDescription)
+        project.click()
         XCTAssertTrue(app.staticTexts["Local Studio"].firstMatch.waitForExistence(timeout:5))
         record(app,"Mac Project tasks")
         app.buttons["Settings"].firstMatch.click()
