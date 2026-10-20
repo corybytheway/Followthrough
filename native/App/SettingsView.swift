@@ -284,28 +284,21 @@ private struct WorkDayPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Work days")
-            HStack(spacing: 2) {
+            HStack(spacing: 0) {
                 ForEach(0..<7) { day in
                     Button {
                         if selection.contains(day) { selection.removeAll { $0 == day } }
                         else { selection = (selection + [day]).sorted() }
                     } label: {
-                        Text(Calendar.current.veryShortStandaloneWeekdaySymbols[day])
-                            .font(.callout.weight(.medium))
+                        Text(Calendar.current.shortStandaloneWeekdaySymbols[day])
+                            .font(.system(size: 13, weight: .semibold))
                             .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            #if os(iOS)
+                            .minimumScaleFactor(0.8)
                             .frame(width: 40, height: 40)
-                            .foregroundStyle(selection.contains(day) ? Color.followMint : .secondary)
-                            .background(selection.contains(day) ? Color.followNavy : Color(uiColor: .tertiarySystemFill), in: Circle())
-                            .frame(minWidth: 44, maxWidth: .infinity, minHeight: 44, maxHeight: 44)
+                            .foregroundStyle(selection.contains(day) ? Color.workDaySelectedText : Color.workDayOffText)
+                            .background(selection.contains(day) ? Color.workDaySelectedFill : Color.workDayOffFill, in: Circle())
+                            .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
-                            #else
-                            .frame(minWidth: 44, maxWidth: .infinity, minHeight: 44, maxHeight: 44)
-                            .foregroundStyle(selection.contains(day) ? Color.followAccent : .primary)
-                            .background(selection.contains(day) ? Color.followAccent.opacity(0.15) : .clear, in: Capsule())
-                            .contentShape(Capsule())
-                            #endif
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Calendar.current.weekdaySymbols[day])
@@ -314,7 +307,7 @@ private struct WorkDayPicker: View {
                     .accessibilityIdentifier("workDay_\(day)")
                 }
             }
-            .frame(maxWidth: 400, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 4)
     }

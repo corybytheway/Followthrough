@@ -19,6 +19,14 @@ import AppIntents
         .defaultSize(width: 1180, height: 820)
         .windowResizability(.contentMinSize)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    store.dismissCaptureFocus()
+                    store.selectSection("settings")
+                }
+                .keyboardShortcut(",", modifiers: .command)
+                .disabled(store.presentationWorkspace == nil || store.selectedTask != nil)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Capture a task") { store.focusCapture() }.keyboardShortcut("n")
                 Button("Sync workspace") { Task { await store.sync() } }.keyboardShortcut("r")
@@ -73,6 +81,9 @@ struct RootView: View {
                     }
                     // Keep the workspace readable even when the sidebar is widened.
                     .frame(minWidth: 580)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        MacFloatingTaskAction(store: store)
+                    }
                 }
                 #else
                 IOSWorkspaceNavigation(store: store)
@@ -95,7 +106,7 @@ struct ConnectionView: View {
         VStack(alignment: .leading, spacing: 24) {
             Image(systemName:"bolt.fill").font(.system(size:32, weight:.bold)).foregroundStyle(Color.followMint)
                 .frame(width:64,height:64).background(Color.followNavy,in:RoundedRectangle(cornerRadius:18))
-            Text("Make room for\nyour work").font(.system(size:40,weight:.bold,design:.rounded))
+            Text("Your tasks.\nPlanned for you.").font(.system(size:40,weight:.bold,design:.rounded))
             Text("Your projects, your calendar, and one clear next step.").foregroundStyle(.secondary)
             #if os(macOS)
             MacCaptureShortcutLesson()
@@ -118,60 +129,66 @@ struct ConnectionView: View {
 #if os(macOS)
 struct SidebarView: View {
     @Bindable var store: WorkspaceStore
-    @State private var editingProject: FTProject?
-    @State private var addingProject = false
-    private let sections = [("today","Today","bolt.fill"),("tasks","Tasks","checklist")]
+    private let sections = [("today", "Today", "bolt.fill"), ("tasks", "Tasks", "checklist"), ("projects", "Projects", "folder")]
+
     var body: some View {
         List {
-            ForEach(sections,id:\.0) { section in
-                Button { store.selectSection(section.0) } label: { Label(section.1,systemImage:section.2).frame(maxWidth:.infinity,alignment:.leading).padding(.vertical,7).contentShape(Rectangle()) }
-                    .buttonStyle(.plain).listRowBackground(store.selectedSection == section.0 ? Color.followBlue.opacity(0.12) : Color.clear)
-            }
-            if let workspace = store.workspace {
-                Section {
-                    ForEach(workspace.projectsAlphabetically) { project in
-                        Button { store.selectedSection = project.id } label: {
-                            Label {
-                                Text(project.name).foregroundStyle(.primary)
-                            } icon: {
-                                ProjectFolderIcon(color:project.color)
-                            }
-                            .frame(maxWidth:.infinity,alignment:.leading)
-                            .padding(.vertical,4)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .listRowBackground(store.selectedSection == project.id ? Color.followBlue.opacity(0.12) : Color.clear)
-                        .accessibilityIdentifier("sidebarProject_\(project.id)")
-                        .contextMenu {
-                            Button("Edit project",systemImage:"pencil") { editingProject = project }
-                        }
-                    }
-                } header: {
-                    HStack {
-                        Text("Projects")
-                        Spacer()
-                        Button("New project",systemImage:"plus") { addingProject = true }
-                            .labelStyle(.iconOnly)
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.primary)
-                            .help("New project")
-                            .accessibilityIdentifier("sidebarNewProject")
-                    }
+            ForEach(sections, id: \.0) { section in
+                Button { store.selectSection(section.0) } label: {
+                    Label(section.1, systemImage: section.2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 7)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .listRowBackground(isSelected(section.0) ? Color.followBlue.opacity(0.12) : Color.clear)
+                .accessibilityIdentifier("sidebar_\(section.0)")
             }
         }
         .safeAreaInset(edge: .bottom, alignment: .leading) {
             HStack {
-                SidebarSettingsButton(selected: store.selectedSection == "settings") { store.selectedSection = "settings" }
+                SidebarSettingsButton(selected: store.selectedSection == "settings") { store.selectSection("settings") }
                 Spacer()
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
         }
-        .navigationSplitViewColumnWidth(min:200,ideal:230,max:300)
-        .sheet(item:$editingProject) { ProjectEditor(store:store,project:$0) }
-        .sheet(isPresented:$addingProject) { ProjectEditor(store:store,project:nil) }
+        .navigationSplitViewColumnWidth(min: 160, ideal: 170, max: 180)
+    }
+
+    private func isSelected(_ section: String) -> Bool {
+        if section == "projects" {
+            return store.selectedSection == "projects" || store.workspace?.project(store.selectedSection) != nil
+        }
+        return store.selectedSection == section
+    }
+}
+
+private struct MacFloatingTaskAction: View {
+    let store: WorkspaceStore
+
+    var body: some View {
+        HStack {
+            Spacer()
+            Button { store.focusCapture() } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Color.followNavy)
+                    .frame(width: 44, height: 44)
+                    .background(Color.followMint, in: Circle())
+                    .shadow(color: .black.opacity(0.30), radius: 16, x: 0, y: 4)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!store.connected)
+            .help("New task (⌘N)")
+            .accessibilityLabel("New task")
+            .accessibilityIdentifier("floatingNewTask")
+        }
+        .padding(20)
+        .opacity(store.captureFocused ? 0 : 1)
+        .allowsHitTesting(!store.captureFocused)
+        .accessibilityHidden(store.captureFocused)
     }
 }
 #endif
@@ -191,6 +208,8 @@ struct WorkspaceSection: View {
                         .accessibilityHidden(section != "today")
                     if section == "settings" {
                         SettingsView(store: store, settings: workspace.settings)
+                    } else if section == "projects" {
+                        ProjectsView(store: store, projects: workspace.projectsAlphabetically)
                     } else if section != "today" {
                         TasksView(store: store, workspace: workspace, projectId: section == "tasks" ? nil : section)
                     }
@@ -805,6 +824,13 @@ struct TasksView: View {
         }
         .toolbar {
             #if os(macOS)
+            if projectId != nil {
+                ToolbarItem(placement: .navigation) {
+                    Button("Projects", systemImage: "chevron.left") { store.selectSection("projects") }
+                        .help("Back to projects")
+                        .accessibilityIdentifier("backToProjects")
+                }
+            }
             MacTaskToolbar(text: $search, actionsWidth: 72) {
                 Button("New task", systemImage: "plus") { store.focusCapture() }
                     .disabled(!store.connected)
@@ -916,7 +942,11 @@ private enum ProjectLayout: String {
 struct ProjectsView: View {
     @Bindable var store: WorkspaceStore
     let projects: [FTProject]
+    #if os(macOS)
+    @AppStorage("followthrough.mac.projects.layout") private var layout: ProjectLayout = .list
+    #else
     @AppStorage("followthrough.projects.layout") private var layout: ProjectLayout = .grid
+    #endif
     @State private var editing: FTProject?
     @State private var adding = false
     @State private var taskProject: FTProject?
@@ -927,10 +957,10 @@ struct ProjectsView: View {
             if projects.isEmpty {
                 ContentUnavailableView("No projects yet",systemImage:"folder",description:Text("Create a project to keep related tasks together."))
             } else if layout == .grid {
-                ProjectGrid(projects:projects,onSelect:{ taskProject = $0 },onEdit:{ editing = $0 },onDelete:requestDelete)
+                ProjectGrid(projects:projects,onSelect:openProject,onEdit:{ editing = $0 },onDelete:requestDelete)
             } else {
                 List(projects) { project in
-                    Button { taskProject = project } label: {
+                    Button { openProject(project) } label: {
                         ProjectListRow(project:project)
                     }
                     .buttonStyle(.plain)
@@ -959,10 +989,19 @@ struct ProjectsView: View {
             }
         }
         .toolbar {
+            #if os(macOS)
+            ToolbarItem(placement: .primaryAction) {
+                Button("New project", systemImage: "plus") { adding = true }
+                    .help("New project")
+                    .accessibilityIdentifier("newProject")
+            }
+            #endif
             ToolbarItem(placement:.primaryAction) {
                 Menu {
+                    #if !os(macOS)
                     Button("New project",systemImage:"folder.badge.plus") { adding = true }
                         .accessibilityIdentifier("newProject")
+                    #endif
                     Picker("Project view",selection:$layout) {
                         Label("Grid",systemImage:"square.grid.2x2").tag(ProjectLayout.grid)
                         Label("List",systemImage:"list.bullet").tag(ProjectLayout.list)
@@ -991,6 +1030,14 @@ struct ProjectsView: View {
             }
         }
     }
+    private func openProject(_ project: FTProject) {
+        #if os(macOS)
+        store.selectSection(project.id)
+        #else
+        taskProject = project
+        #endif
+    }
+
     private func requestDelete(_ project: FTProject) {
         deletingProject = project
         confirmDelete = true
@@ -1672,7 +1719,7 @@ private struct MenuBarCaptureComposer: View {
             .accessibilityIdentifier("menuBarCaptureProgress")
         } else {
             HStack(alignment: .center, spacing: 8) {
-                TextField("New task…", text: $text, axis: .vertical)
+                TextField("New task… (⌃⌥F)", text: $text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.body)
                     .lineLimit(1...4)
