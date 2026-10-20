@@ -341,21 +341,9 @@ struct CaptureCard: View {
                     .font(.system(size: 19, weight: .semibold))
                 Spacer(minLength: 8)
                 #if os(macOS)
-                if focusedPresentation {
-                    Button { store.dismissCaptureFocus() } label: {
-                        Image(systemName: "xmark").font(.system(size: 16, weight: .medium))
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.75))
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityLabel("Close capture")
-                } else {
-                    // Reserve the same header space without an idle control.
-                    Color.clear.frame(width: 44, height: 44)
-                        .accessibilityHidden(true)
-                }
+                // Keep the header height stable when capture gains focus.
+                Color.clear.frame(width: 44, height: 44)
+                    .accessibilityHidden(true)
                 #endif
             }
             if focusedPresentation, let receipt = store.captureReceipt {
@@ -416,6 +404,10 @@ struct CaptureCard: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("captureCard")
         #if os(macOS)
+        .accessibilityValue(focusedPresentation ? "Focused" : "Idle")
+        .onExitCommand {
+            if focusedPresentation { store.dismissCaptureFocus() }
+        }
         .defaultFocus($inputFocused, focusedPresentation && store.captureReceipt == nil)
         #endif
         .onChange(of: inputFocused) { _, focused in
