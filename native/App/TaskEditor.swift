@@ -217,7 +217,7 @@ private struct TaskIdentityFields: View {
                     .font(.title3.weight(.semibold))
                     .lineLimit(1...4)
             }
-            EditorField(title: "Project") {
+            EditorField(title: "Project", nativeControl: true) {
                 Picker("Project", selection: $draft.projectId) {
                     Text("No project").tag(nil as String?)
                     ForEach(projects) { Text($0.name).tag(Optional($0.id)) }
@@ -238,14 +238,14 @@ private struct TaskPlanningFields: View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Planning").font(.headline)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible())], spacing: 18) {
-                MinuteField(title: "Estimated time", value: $draft.estimateMinutes)
-                MinuteField(title: "Time remaining", value: $draft.remainingMinutes)
-                EditorField(title: "Priority") {
+                DurationField(title: "Estimated time", value: $draft.estimateMinutes)
+                DurationField(title: "Time remaining", value: $draft.remainingMinutes)
+                EditorField(title: "Priority", nativeControl: true) {
                     Picker("Priority", selection: $draft.priority) {
                         ForEach(Priority.allCases) { Text($0.title).tag($0) }
                     }.labelsHidden().accessibilityLabel("Priority")
                 }
-                EditorField(title: "Status") {
+                EditorField(title: "Status", nativeControl: true) {
                     Picker("Status", selection: $draft.status) {
                         Text("Ready").tag("ready")
                         Text("Waiting").tag("waiting")
@@ -258,8 +258,16 @@ private struct TaskPlanningFields: View {
                 OptionalDayField(title: "Deadline", value: $draft.dueDate)
                 OptionalDayField(title: "Start on or after", value: $draft.notBefore)
             }
-            Toggle("Allow multiple work sessions", isOn: $draft.splittable).tint(.followMint)
-                .toggleStyle(.switch)
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Split task into shorter calendar events if needed", isOn: $draft.splittable)
+                    .tint(.followMint)
+                    .toggleStyle(.switch)
+                    .accessibilityHint("If the whole task can't fit in one opening, Followthrough schedules parts of it where available.")
+                Text("If the whole task can't fit in one opening, Followthrough schedules parts of it where available.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(20)
         .background(Color.card, in: RoundedRectangle(cornerRadius: 16))
@@ -268,39 +276,52 @@ private struct TaskPlanningFields: View {
 
 private struct EditorField<Content: View>: View {
     let title: String
+    var nativeControl = false
     @ViewBuilder var content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
-            content
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textFieldStyle(.plain)
-                .tint(.primary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.fieldSurface, in: RoundedRectangle(cornerRadius: 9))
-                .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(.primary.opacity(0.08), lineWidth: 1) }
+            #if os(macOS)
+            if nativeControl {
+                content
+                    .controlSize(.large)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                fieldContent
+            }
+            #else
+            fieldContent
+            #endif
         }
+    }
+
+    private var fieldContent: some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textFieldStyle(.plain)
+            .tint(.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.fieldSurface, in: RoundedRectangle(cornerRadius: 9))
+            .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(.primary.opacity(0.08), lineWidth: 1) }
     }
 }
 
-private struct MinuteField: View {
+private struct DurationField: View {
     let title: String
     @Binding var value: Int
 
     var body: some View {
-        EditorField(title: title) {
-            HStack(spacing: 8) {
-                TextField(title, value: $value, format: .number)
-                    .labelsHidden()
-                    .accessibilityLabel(title)
-                    .monospacedDigit()
-                    #if os(iOS)
-                    .keyboardType(.numberPad)
-                    #endif
-                Text("min").foregroundStyle(.secondary).fixedSize()
+        EditorField(title: title, nativeControl: true) {
+            Picker(title, selection: $value) {
+                ForEach(FTTask.durationOptions(current: value), id: \.self) { minutes in
+                    Text(FTTask.duration(minutes)).tag(minutes)
+                }
             }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .accessibilityLabel(title)
         }
     }
 }
@@ -435,7 +456,7 @@ struct OptionalDayField: View {
     let title: String
     @Binding var value: String?
     var body: some View {
-        EditorField(title: title) {
+        EditorField(title: title, nativeControl: true) {
             HStack {
                 if value == nil {
                     Button("Set date") { value = formatted(.now) }

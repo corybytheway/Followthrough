@@ -62,6 +62,7 @@ import {
   suggestProjectShortName,
   COLORS,
   minutesLabel,
+  taskDurationOptions,
   type Project,
   type Settings,
   type Snapshot,
@@ -1607,34 +1608,40 @@ function TaskEditor({
       </Field>
       <div className="field-row">
         <Field
-          label="Estimated minutes"
+          label="Estimated time"
           hint={
             initial.estimateProvisional
               ? 'Temporary estimate. Saving confirms this duration.'
               : undefined
           }
         >
-          <Input
-            type="number"
-            min={1}
-            max={60000}
+          <NativeSelect
             required
             value={estimate}
             onChange={(e) => {
               setEstimate(Number(e.target.value));
               if (!initial.id) setRemaining(Number(e.target.value));
             }}
-          />
+          >
+            {taskDurationOptions(estimate).map((minutes) => (
+              <option value={minutes} key={minutes}>
+                {minutesLabel(minutes)}
+              </option>
+            ))}
+          </NativeSelect>
         </Field>
-        <Field label="Minutes remaining">
-          <Input
-            type="number"
-            min={1}
-            max={60000}
+        <Field label="Time remaining">
+          <NativeSelect
             required
             value={remaining}
             onChange={(e) => setRemaining(Number(e.target.value))}
-          />
+          >
+            {taskDurationOptions(remaining).map((minutes) => (
+              <option value={minutes} key={minutes}>
+                {minutesLabel(minutes)}
+              </option>
+            ))}
+          </NativeSelect>
         </Field>
       </div>
       <div className="field-row">
@@ -1682,13 +1689,22 @@ function TaskEditor({
           />
         </Field>
       </div>
-      <div className="check-field">
-        <Checkbox
-          id="multiple-sessions"
-          checked={splittable}
-          onCheckedChange={setSplittable}
-        />
-        <label htmlFor="multiple-sessions">Allow multiple work sessions</label>
+      <div className="field">
+        <div className="check-field">
+          <Checkbox
+            id="multiple-sessions"
+            checked={splittable}
+            onCheckedChange={setSplittable}
+            aria-describedby="multiple-sessions-hint"
+          />
+          <label htmlFor="multiple-sessions">
+            Split task into shorter calendar events if needed
+          </label>
+        </div>
+        <small id="multiple-sessions-hint">
+          If the whole task can't fit in one opening, Followthrough schedules
+          parts of it where available.
+        </small>
       </div>
       <div className="editor-section">
         <div className="section-heading">

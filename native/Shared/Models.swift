@@ -118,9 +118,20 @@ struct FTTask: Codable, Identifiable, Hashable, Sendable {
         return name
     }
     var remainingLabel: String { Self.duration(remainingMinutes) }
+    static let durationPresets = [15, 30, 45, 60, 120, 180, 240, 360, 480, 1440, 2880, 4320, 10080]
+    static func durationOptions(current: Int) -> [Int] {
+        Array(Set(durationPresets + [current])).sorted()
+    }
     static func duration(_ minutes: Int) -> String {
-        let hours = minutes / 60, rest = minutes % 60
-        return hours > 0 ? "\(hours)h" + (rest > 0 ? " \(rest)m" : "") : "\(rest)m"
+        guard minutes > 0 else { return "\(minutes)m" }
+        var remaining = minutes
+        var parts: [String] = []
+        for (size, unit) in [(10080, "w"), (1440, "d"), (60, "h"), (1, "m")] {
+            let count = remaining / size
+            if count > 0 { parts.append("\(count)\(unit)") }
+            remaining %= size
+        }
+        return parts.joined(separator: " ")
     }
 }
 struct FTBlock: Codable, Identifiable, Hashable, Sendable {

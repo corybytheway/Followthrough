@@ -226,8 +226,28 @@ export function newAccountWorkspace(): Workspace {
     },
   };
 }
+export const TASK_DURATION_PRESETS = [
+  15, 30, 45, 60, 120, 180, 240, 360, 480, 1440, 2880, 4320, 10080,
+];
+
+export function taskDurationOptions(current: number): number[] {
+  return [...new Set([...TASK_DURATION_PRESETS, current])].sort(
+    (a, b) => a - b,
+  );
+}
+
 export function minutesLabel(minutes: number): string {
-  return minutes >= 60
-    ? `${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${minutes % 60}m` : ''}`
-    : `${minutes}m`;
+  if (minutes <= 0) return `${minutes}m`;
+  const parts: string[] = [];
+  for (const [size, unit] of [
+    [10080, 'w'],
+    [1440, 'd'],
+    [60, 'h'],
+    [1, 'm'],
+  ] as const) {
+    const count = Math.floor(minutes / size);
+    if (count) parts.push(`${count}${unit}`);
+    minutes %= size;
+  }
+  return parts.join(' ');
 }
