@@ -15,7 +15,10 @@ struct TaskEditor: View {
     init(store: WorkspaceStore, task: FTTask) {
         self.store = store
         self.task = task
-        _draft = State(initialValue: task)
+        var initialDraft = task
+        initialDraft.estimateMinutes = FTTask.durationPreset(task.estimateMinutes)
+        initialDraft.remainingMinutes = FTTask.durationPreset(task.remainingMinutes)
+        _draft = State(initialValue: initialDraft)
     }
 
     var body: some View {
@@ -33,10 +36,13 @@ struct TaskEditor: View {
                     if let handoffError { Text(handoffError).foregroundStyle(.red) }
                     TaskIdentityFields(draft: $draft, projects: store.workspace?.projectsAlphabetically ?? [])
                     TaskSecondaryActions(
-                        canAddTime: draft.estimateMinutes <= 59940 && draft.remainingMinutes <= 59940,
+                        canAddTime: draft.estimateMinutes < 10080 && draft.remainingMinutes < 10080,
                         onPostpone: { if store.postpone(task, nextWeek: false) { dismiss() } },
                         onNextWeek: { if store.postpone(task, nextWeek: true) { dismiss() } },
-                        onAddTime: { draft.estimateMinutes += 60; draft.remainingMinutes += 60 }
+                        onAddTime: {
+                            draft.estimateMinutes = FTTask.durationPreset(draft.estimateMinutes + 60)
+                            draft.remainingMinutes = FTTask.durationPreset(draft.remainingMinutes + 60)
+                        }
                     )
                     TaskPlanningFields(draft: $draft, canFinish: !hasOpenPrerequisites)
                     if !draft.steps.isEmpty { SuggestedStepsSection(steps: $draft.steps) }
@@ -318,7 +324,7 @@ private struct DurationField: View {
     var body: some View {
         EditorField(title: title, nativeControl: true) {
             Picker(title, selection: $value) {
-                ForEach(FTTask.durationOptions(current: value), id: \.self) { minutes in
+                ForEach(FTTask.durationPresets, id: \.self) { minutes in
                     Text(FTTask.duration(minutes)).tag(minutes)
                 }
             }
@@ -369,12 +375,12 @@ private struct TaskSecondaryActions: View {
                 HStack(spacing: 10) {
                     Button("Postpone 1 day", action: onPostpone)
                     Button("Push to next week", action: onNextWeek)
-                    Button("Add 1 hour", action: onAddTime).disabled(!canAddTime)
+                    Button("Add time", action: onAddTime).disabled(!canAddTime)
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     Button("Postpone 1 day", action: onPostpone)
                     Button("Push to next week", action: onNextWeek)
-                    Button("Add 1 hour", action: onAddTime).disabled(!canAddTime)
+                    Button("Add time", action: onAddTime).disabled(!canAddTime)
                 }
             }
             .buttonStyle(.bordered)

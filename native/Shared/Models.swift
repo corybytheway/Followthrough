@@ -119,8 +119,8 @@ struct FTTask: Codable, Identifiable, Hashable, Sendable {
     }
     var remainingLabel: String { Self.duration(remainingMinutes) }
     static let durationPresets = [15, 30, 45, 60, 120, 180, 240, 360, 480, 1440, 2880, 4320, 10080]
-    static func durationOptions(current: Int) -> [Int] {
-        Array(Set(durationPresets + [current])).sorted()
+    static func durationPreset(_ minutes: Int) -> Int {
+        durationPresets.first(where: { $0 >= minutes }) ?? durationPresets[durationPresets.count - 1]
     }
     static func duration(_ minutes: Int) -> String {
         guard minutes > 0 else { return "\(minutes)m" }

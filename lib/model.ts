@@ -230,9 +230,10 @@ export const TASK_DURATION_PRESETS = [
   15, 30, 45, 60, 120, 180, 240, 360, 480, 1440, 2880, 4320, 10080,
 ];
 
-export function taskDurationOptions(current: number): number[] {
-  return [...new Set([...TASK_DURATION_PRESETS, current])].sort(
-    (a, b) => a - b,
+export function taskDurationPreset(minutes: number): number {
+  return (
+    TASK_DURATION_PRESETS.find((preset) => preset >= minutes) ??
+    TASK_DURATION_PRESETS[TASK_DURATION_PRESETS.length - 1]
   );
 }
 

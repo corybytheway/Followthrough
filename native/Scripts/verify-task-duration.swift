@@ -10,17 +10,21 @@ struct VerifyTaskDuration {
         ])
         precondition(FTTask.durationPresets[9] == 24 * 60)
         precondition(FTTask.durationPresets[12] == 7 * 24 * 60)
-        for current in [1, 75, 90, 1800, 60000] {
-            let options = FTTask.durationOptions(current: current)
-            precondition(options.contains(current))
-            precondition(FTTask.durationPresets.allSatisfy(options.contains))
-            precondition(options.count == FTTask.durationPresets.count + 1)
+        for (minutes, expected) in [(1, 15), (15, 15), (16, 30), (46, 60),
+            (75, 120), (90, 120), (241, 360), (361, 480), (481, 1440),
+            (1800, 2880), (4321, 10080), (10080, 10080), (10155, 10080), (60000, 10080)] {
+            precondition(FTTask.durationPreset(minutes) == expected)
         }
-        precondition(FTTask.durationOptions(current: 60) == FTTask.durationPresets)
+        for minutes in 1...60000 {
+            let rounded = FTTask.durationPreset(minutes)
+            precondition(FTTask.durationPresets.contains(rounded))
+            precondition(FTTask.durationPreset(rounded) == rounded)
+            precondition(minutes > 10080 ? rounded == 10080 : rounded >= minutes)
+        }
         precondition(FTTask.duration(1800) == "1d 6h")
         precondition(FTTask.duration(10155) == "1w 1h 15m")
         precondition(FTTask.duration(60000) == "5w 6d 16h")
         precondition(FTTask.duration(0) == "0m")
-        print("PASS: duration presets, units, and existing values on macOS and iOS")
+        print("PASS: duration rounding, one-week cap, and exact labels on macOS and iOS")
     }
 }

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   minutesLabel,
   TASK_DURATION_PRESETS,
-  taskDurationOptions,
+  taskDurationPreset,
 } from '../lib/model';
 
 void test('task duration presets use minute values with human-readable units', () => {
@@ -27,16 +27,34 @@ void test('task duration presets use minute values with human-readable units', (
   assert.equal(TASK_DURATION_PRESETS[12], 7 * 24 * 60);
 });
 
-void test('existing estimates and elapsed remaining time survive outside the presets', () => {
-  for (const current of [1, 75, 90, 1800, 60000]) {
-    const options = taskDurationOptions(current);
-    assert.ok(options.includes(current));
-    assert.ok(
-      TASK_DURATION_PRESETS.every((preset) => options.includes(preset)),
-    );
-    assert.equal(options.length, TASK_DURATION_PRESETS.length + 1);
+void test('editor durations round upward to a preset, capped at one week', () => {
+  for (const [minutes, expected] of [
+    [1, 15],
+    [15, 15],
+    [16, 30],
+    [46, 60],
+    [75, 120],
+    [90, 120],
+    [241, 360],
+    [361, 480],
+    [481, 1440],
+    [1800, 2880],
+    [4321, 10080],
+    [10080, 10080],
+    [10155, 10080],
+    [60000, 10080],
+  ]) {
+    assert.equal(taskDurationPreset(minutes), expected);
   }
-  assert.deepEqual(taskDurationOptions(60), TASK_DURATION_PRESETS);
+  for (let minutes = 1; minutes <= 60000; minutes++) {
+    const rounded = taskDurationPreset(minutes);
+    assert.ok(TASK_DURATION_PRESETS.includes(rounded));
+    assert.equal(taskDurationPreset(rounded), rounded);
+    assert.ok(minutes > 10080 ? rounded === 10080 : rounded >= minutes);
+  }
+});
+
+void test('duration labels remain exact outside the editor', () => {
   assert.equal(minutesLabel(1800), '1d 6h');
   assert.equal(minutesLabel(10155), '1w 1h 15m');
   assert.equal(minutesLabel(60000), '5w 6d 16h');

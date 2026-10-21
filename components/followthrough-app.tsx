@@ -62,7 +62,8 @@ import {
   suggestProjectShortName,
   COLORS,
   minutesLabel,
-  taskDurationOptions,
+  TASK_DURATION_PRESETS,
+  taskDurationPreset,
   type Project,
   type Settings,
   type Snapshot,
@@ -1369,9 +1370,13 @@ function TaskEditor({
     [projectId, setProjectId] = useState(initial.projectId || ''),
     [notes, setNotes] = useState(initial.notes || ''),
     [steps, setSteps] = useState(initial.steps || []);
-  const [estimate, setEstimate] = useState(initial.estimateMinutes || 30),
+  const [estimate, setEstimate] = useState(
+      taskDurationPreset(initial.estimateMinutes || 30),
+    ),
     [remaining, setRemaining] = useState(
-      initial.remainingMinutes || initial.estimateMinutes || 30,
+      taskDurationPreset(
+        initial.remainingMinutes || initial.estimateMinutes || 30,
+      ),
     ),
     [priority, setPriority] = useState(initial.priority || 'medium'),
     [status, setStatus] = useState(initial.status || 'ready'),
@@ -1623,7 +1628,7 @@ function TaskEditor({
               if (!initial.id) setRemaining(Number(e.target.value));
             }}
           >
-            {taskDurationOptions(estimate).map((minutes) => (
+            {TASK_DURATION_PRESETS.map((minutes) => (
               <option value={minutes} key={minutes}>
                 {minutesLabel(minutes)}
               </option>
@@ -1636,7 +1641,7 @@ function TaskEditor({
             value={remaining}
             onChange={(e) => setRemaining(Number(e.target.value))}
           >
-            {taskDurationOptions(remaining).map((minutes) => (
+            {TASK_DURATION_PRESETS.map((minutes) => (
               <option value={minutes} key={minutes}>
                 {minutesLabel(minutes)}
               </option>
@@ -2120,7 +2125,17 @@ function SettingsPanel({
             >
               <input
                 type="checkbox"
-                aria-label={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][i]}
+                aria-label={
+                  [
+                    'Sunday',
+                    'Monday',
+                    'Tuesday',
+                    'Wednesday',
+                    'Thursday',
+                    'Friday',
+                    'Saturday',
+                  ][i]
+                }
                 checked={settings.workDays.includes(i)}
                 onChange={(e) =>
                   update(
