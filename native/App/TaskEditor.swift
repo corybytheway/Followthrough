@@ -285,6 +285,9 @@ private struct EditorField<Content: View>: View {
             #if os(macOS)
             if nativeControl {
                 content
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.roundedRectangle(radius: 8))
+                    .tint(.primary)
                     .controlSize(.large)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -303,8 +306,8 @@ private struct EditorField<Content: View>: View {
             .tint(.primary)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color.fieldSurface, in: RoundedRectangle(cornerRadius: 9))
-            .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(.primary.opacity(0.08), lineWidth: 1) }
+            .background(Color.fieldSurface, in: RoundedRectangle(cornerRadius: 8))
+            .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(.primary.opacity(0.08), lineWidth: 1) }
     }
 }
 
@@ -462,13 +465,23 @@ struct OptionalDayField: View {
                     Button("Set date") { value = formatted(.now) }
                         .buttonStyle(.plain).foregroundStyle(.primary)
                     Spacer()
+                    #if !os(macOS)
                     Image(systemName: "calendar").foregroundStyle(.secondary)
+                    #endif
                 } else {
                     DatePicker(title, selection: Binding(get: { parsed }, set: { value = formatted($0) }), displayedComponents: .date)
                         .labelsHidden().accessibilityLabel(title)
+                        #if os(macOS)
+                        .fixedSize()
+                        #endif
+                    #if !os(macOS)
                     Spacer(minLength: 4)
+                    #endif
                     Button { value = nil } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Clear \(title)")
+                    #if os(macOS)
+                    Spacer(minLength: 0)
+                    #endif
                 }
             }
             .frame(minHeight: 20)
