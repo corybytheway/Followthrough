@@ -479,6 +479,9 @@ struct OptionalDayField: View {
                     #endif
                     Button { value = nil } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Clear \(title)")
+                        #if os(macOS)
+                        .padding(.leading, 8)
+                        #endif
                     #if os(macOS)
                     Spacer(minLength: 0)
                     #endif
