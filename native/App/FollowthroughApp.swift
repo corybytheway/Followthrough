@@ -33,7 +33,23 @@ import AppIntents
                 Button("Sync workspace") { Task { await store.sync() } }.keyboardShortcut("r")
             }
             CommandMenu("Navigate") {
-                Button("Today") { store.showToday() }
+                Button("Today") {
+                    store.dismissCaptureFocus()
+                    store.showToday()
+                }
+                    .keyboardShortcut("1", modifiers: .command)
+                Button("Tasks") {
+                    store.dismissCaptureFocus()
+                    store.selectSection("tasks")
+                }
+                    .keyboardShortcut("2", modifiers: .command)
+                Button("Projects") {
+                    store.dismissCaptureFocus()
+                    store.selectSection("projects")
+                }
+                    .keyboardShortcut("3", modifiers: .command)
+                Divider()
+                Button("Scroll to Today") { store.showToday() }
                     .keyboardShortcut("t", modifiers: .command)
             }
         }

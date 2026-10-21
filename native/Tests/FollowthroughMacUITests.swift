@@ -331,6 +331,46 @@ final class FollowthroughMacUITests: XCTestCase {
         }
     }
 
+    @MainActor func testNumberedNavigationShortcuts() throws {
+        continueAfterFailure = false
+        let fixtureURL = URL(fileURLWithPath: "/tmp/ft-macos-navigation-fixture.json")
+        guard let data = try? Data(contentsOf: fixtureURL),
+              let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let server = fixture["server"] as? String,
+              ["127.0.0.1", "localhost"].contains(URL(string: server)?.host ?? ""),
+              let session = fixture["session"] as? [String: Any] else {
+            throw XCTSkip("Requires the isolated loopback navigation fixture.")
+        }
+        let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", server]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = try JSONSerialization.data(withJSONObject: session).base64EncodedString()
+        app.launchEnvironment["FOLLOWTHROUGH_LOCAL_STORAGE"] = "numbered-navigation-shortcuts"
+        app.launch()
+        app.activate()
+        XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout: 25), app.debugDescription)
+
+        for _ in 0..<2 {
+            app.textFields["captureInput"].click()
+            app.typeKey("2", modifierFlags: .command)
+            XCTAssertTrue(app.menuButtons["tasksFilter"].waitForExistence(timeout: 5), app.debugDescription)
+            XCTAssertTrue(app.textFields["captureInput"].waitForNonExistence(timeout: 5))
+            record(app, "Command-2 opens Tasks")
+            app.typeKey("3", modifierFlags: .command)
+            let project = app.descendants(matching: .any)["openProject_navigation-project"].firstMatch
+            XCTAssertTrue(project.waitForExistence(timeout: 5), app.debugDescription)
+            record(app, "Command-3 opens Projects")
+            project.click()
+            XCTAssertTrue(app.menuButtons["projectSettings"].waitForExistence(timeout: 5))
+            app.typeKey("1", modifierFlags: .command)
+            XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout: 5), app.debugDescription)
+            record(app, "Command-1 opens Today")
+        }
+        app.typeKey("2", modifierFlags: .command)
+        XCTAssertTrue(app.menuButtons["tasksFilter"].waitForExistence(timeout: 5))
+        app.typeKey("t", modifierFlags: .command)
+        XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout: 5), "Command-T remains available")
+    }
+
     @MainActor func testCommandTShowsTodayAndScrollsToTop() throws {
         continueAfterFailure = false
         let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-tab-reselection-ios-fixture.json")
