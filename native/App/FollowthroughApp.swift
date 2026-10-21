@@ -17,7 +17,7 @@ import AppIntents
                 .environment(captureShortcut)
                 .background { MacCaptureShortcutHost(store: store, shortcut: captureShortcut, menuBar: menuBarCapture) }
         }
-        .defaultSize(width: 1180, height: 820)
+        .defaultSize(width: 1280, height: 700)
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .appSettings) {
