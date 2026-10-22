@@ -101,6 +101,9 @@ export async function DELETE(request: Request) {
         env.DB.prepare('DELETE FROM email_connections WHERE owner_id = ?').bind(
           owner,
         ),
+        env.DB.prepare('DELETE FROM email_capture_receipts WHERE owner_id = ?').bind(
+          owner,
+        ),
         env.DB.prepare('DELETE FROM ai_usage WHERE owner_id = ?').bind(owner),
         env.DB.prepare('DELETE FROM codex_jobs WHERE owner_id = ?').bind(owner),
         env.DB.prepare('DELETE FROM codex_devices WHERE owner_id = ?').bind(

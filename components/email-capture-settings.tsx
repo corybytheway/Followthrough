@@ -120,7 +120,8 @@ export default function EmailCaptureSettings() {
       <p>
         Forward an email to this address. Followthrough uses its subject and
         message as the original input, then creates and schedules every
-        independent task it finds.
+        independent task it finds. We’ll email the sender a confirmation with
+        links to the saved tasks.
       </p>
       {status.connected ? (
         <>
