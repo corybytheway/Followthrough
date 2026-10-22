@@ -1823,7 +1823,12 @@ struct MenuBarContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let task = nextTask {
-                MenuBarTaskSummary(title: task.title, minutes: task.remainingMinutes)
+                let project = store.presentationWorkspace?.projects.first { $0.id == task.projectId }
+                MenuBarTaskSummary(
+                    title: task.displayTitle(project: project, scopedProjectID: task.projectId),
+                    projectName: project?.name,
+                    minutes: task.remainingMinutes
+                )
                 MenuBarTaskActions(
                     completed: store.completionStatus(for: task) == "done",
                     canComplete: store.canComplete(task) && !openingHandoff,
@@ -1978,10 +1983,16 @@ private struct MenuBarCaptureComposer: View {
 
 private struct MenuBarTaskSummary: View {
     let title: String
+    let projectName: String?
     let minutes: Int
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("Up next:").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            if let projectName {
+                Text("Up next for \(projectName):")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            } else {
+                Text("Up next:").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            }
             Text(title).font(.system(size: 16, weight: .semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
