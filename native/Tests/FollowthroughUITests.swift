@@ -1135,7 +1135,7 @@ final class FollowthroughUITests: XCTestCase {
                 XCTAssertEqual(frame.height, now.height, accuracy: 0.5, name + " height " + stage)
             }
         }
-        func addTime() {
+        func addTime(expectedLabel: String) {
             row.tap()
             XCTAssertTrue(app.navigationBars["Task details"].waitForExistence(timeout: 5))
             let add = app.buttons["taskAddTime"]
@@ -1144,12 +1144,12 @@ final class FollowthroughUITests: XCTestCase {
                 app.swipeUp()
             }
             XCTAssertTrue(add.isHittable)
-            XCTAssertEqual(add.label, "Add time")
+            XCTAssertEqual(add.label, expectedLabel)
             add.tap()
             app.buttons["saveTask"].tap()
             XCTAssertTrue(row.waitForExistence(timeout: 5))
         }
-        addTime()
+        addTime(expectedLabel: "Add time → 1h total")
         let progress = app.descendants(matching: .any)["workspaceSavingProgress"].firstMatch
         XCTAssertTrue(progress.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["workspaceSavingProgress"].exists)
@@ -1160,11 +1160,11 @@ final class FollowthroughUITests: XCTestCase {
         stationary("saved")
         let saved = try await workspace()
         let savedTask = try XCTUnwrap((saved["tasks"] as? [[String: Any]])?.first { $0["id"] as? String == id })
-        XCTAssertEqual(savedTask["estimateMinutes"] as? Int, 120)
-        XCTAssertEqual(savedTask["remainingMinutes"] as? Int, 120)
+        XCTAssertEqual(savedTask["estimateMinutes"] as? Int, 60)
+        XCTAssertEqual(savedTask["remainingMinutes"] as? Int, 60)
         record("Search status 03 saved toolbar empty")
         _ = try await workspace(["action": "qa_search_status", "delayMs": 1000, "failures": 99])
-        addTime()
+        addTime(expectedLabel: "Add time → 2h total")
         let warning = app.buttons["workspaceSaveStatus"]
         XCTAssertTrue(warning.waitForExistence(timeout: 12))
         XCTAssertEqual(warning.label, "Sync needs attention")
@@ -1185,8 +1185,8 @@ final class FollowthroughUITests: XCTestCase {
         stationary("retry saved")
         let retried = try await workspace()
         let retriedTask = try XCTUnwrap((retried["tasks"] as? [[String: Any]])?.first { $0["id"] as? String == id })
-        XCTAssertEqual(retriedTask["estimateMinutes"] as? Int, 180)
-        XCTAssertEqual(retriedTask["remainingMinutes"] as? Int, 180)
+        XCTAssertEqual(retriedTask["estimateMinutes"] as? Int, 120)
+        XCTAssertEqual(retriedTask["remainingMinutes"] as? Int, 120)
         let fixture = try await workspace(["action": "qa_search_status", "delayMs": 0, "failures": 0, "refreshDelayMs": 5000])
         let attempts = try XCTUnwrap(fixture["attempts"] as? [[String: Any]])
         let failed = try XCTUnwrap(attempts.first { $0["outcome"] as? String == "503 before commit" })
@@ -1240,7 +1240,7 @@ final class FollowthroughUITests: XCTestCase {
         }
         let state = try await workspace()
         guard let task = (state["tasks"] as? [[String: Any]])?.first(where: { $0["id"] as? String == id }), task["deletedAt"] as? String == nil, task["title"] as? String == title else { throw XCTSkip("The recorded fixture is no longer active.") }
-        XCTAssertEqual(task["estimateMinutes"] as? Int, 180)
+        XCTAssertEqual(task["estimateMinutes"] as? Int, 120)
         _ = try await workspace(["action": "qa_search_status", "taskId": id, "delayMs": 0, "failures": 0, "refreshDelayMs": 10000])
         try launchAuthenticated()
         tapTab("Tasks")
@@ -1272,7 +1272,7 @@ final class FollowthroughUITests: XCTestCase {
         record("Search status 08 dark original-input highlight")
         app.buttons["Close"].tap()
         _ = try await workspace(["action": "delete_task", "id": id])
-        let proof: [String: Any] = ["taskId": id, "taskEstimateAfterBothSaves": 180, "attempts": attempts, "backgroundRefreshObserved": true, "filterFrameBeforeAndDuring": NSCoder.string(for: before)]
+        let proof: [String: Any] = ["taskId": id, "taskEstimateAfterBothSaves": 120, "attempts": attempts, "backgroundRefreshObserved": true, "filterFrameBeforeAndDuring": NSCoder.string(for: before)]
         try JSONSerialization.data(withJSONObject: proof, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: "/tmp/followthrough-xctest-evidence/search-status-readback.json"))
     }
 

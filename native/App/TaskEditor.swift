@@ -7,6 +7,8 @@ struct TaskEditor: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var draft: FTTask
+    @State private var estimateOptions: [Int]
+    @State private var remainingOptions: [Int]
     @State private var confirmDelete = false
     @State private var confirmDiscard = false
     @State private var handoffError: String?
@@ -16,9 +18,17 @@ struct TaskEditor: View {
         self.store = store
         self.task = task
         var initialDraft = task
-        initialDraft.estimateMinutes = FTTask.durationPreset(task.estimateMinutes)
-        initialDraft.remainingMinutes = FTTask.durationPreset(task.remainingMinutes)
+        let durations = FTTask.editorDurations(estimate: task.estimateMinutes, remaining: task.remainingMinutes)
+        initialDraft.estimateMinutes = durations.estimate
+        initialDraft.remainingMinutes = durations.remaining
         _draft = State(initialValue: initialDraft)
+        _estimateOptions = State(initialValue: FTTask.durationOptions([durations.estimate]))
+        _remainingOptions = State(initialValue: FTTask.durationOptions([durations.remaining]))
+    }
+
+    private var nextDurations: (estimate: Int, remaining: Int)? {
+        guard draft.active else { return nil }
+        return FTTask.addedTime(estimate: draft.estimateMinutes, remaining: draft.remainingMinutes)
     }
 
     var body: some View {
@@ -36,15 +46,18 @@ struct TaskEditor: View {
                     if let handoffError { Text(handoffError).foregroundStyle(.red) }
                     TaskIdentityFields(draft: $draft, projects: store.workspace?.projectsAlphabetically ?? [])
                     TaskSecondaryActions(
-                        canAddTime: draft.estimateMinutes < 10080 && draft.remainingMinutes < 10080,
+                        nextEstimate: nextDurations?.estimate,
                         onPostpone: { if store.postpone(task, nextWeek: false) { dismiss() } },
                         onNextWeek: { if store.postpone(task, nextWeek: true) { dismiss() } },
                         onAddTime: {
-                            draft.estimateMinutes = FTTask.durationPreset(draft.estimateMinutes + 60)
-                            draft.remainingMinutes = FTTask.durationPreset(draft.remainingMinutes + 60)
+                            guard let durations = nextDurations else { return }
+                            draft.estimateMinutes = durations.estimate
+                            draft.remainingMinutes = durations.remaining
+                            estimateOptions = FTTask.durationOptions(estimateOptions + [durations.estimate])
+                            remainingOptions = FTTask.durationOptions(remainingOptions + [durations.remaining])
                         }
                     )
-                    TaskPlanningFields(draft: $draft, canFinish: !hasOpenPrerequisites)
+                    TaskPlanningFields(draft: $draft, estimateOptions: estimateOptions, remainingOptions: remainingOptions, canFinish: !hasOpenPrerequisites)
                     if !draft.steps.isEmpty { SuggestedStepsSection(steps: $draft.steps) }
                     TaskNotesField(notes: $draft.notes)
                     TaskPrerequisitesSection(
@@ -238,14 +251,16 @@ private struct TaskIdentityFields: View {
 
 private struct TaskPlanningFields: View {
     @Binding var draft: FTTask
+    let estimateOptions: [Int]
+    let remainingOptions: [Int]
     let canFinish: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Planning").font(.headline)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible())], spacing: 18) {
-                DurationField(title: "Estimated time", value: $draft.estimateMinutes)
-                DurationField(title: "Time remaining", value: $draft.remainingMinutes)
+                DurationField(title: "Estimated time", options: estimateOptions, value: $draft.estimateMinutes)
+                DurationField(title: "Time remaining", options: remainingOptions, value: $draft.remainingMinutes)
                 EditorField(title: "Priority", nativeControl: true) {
                     Picker("Priority", selection: $draft.priority) {
                         ForEach(Priority.allCases) { Text($0.title).tag($0) }
@@ -260,6 +275,9 @@ private struct TaskPlanningFields: View {
                     }.labelsHidden().accessibilityLabel("Status")
                 }
             }
+            Text("1 day = 8 hours · 1 week = 40 hours")
+                .font(.callout)
+                .foregroundStyle(.secondary)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 16)], spacing: 18) {
                 OptionalDayField(title: "Deadline", value: $draft.dueDate)
                 OptionalDayField(title: "Start on or after", value: $draft.notBefore)
@@ -319,12 +337,13 @@ private struct EditorField<Content: View>: View {
 
 private struct DurationField: View {
     let title: String
+    let options: [Int]
     @Binding var value: Int
 
     var body: some View {
         EditorField(title: title, nativeControl: true) {
             Picker(title, selection: $value) {
-                ForEach(FTTask.durationPresets, id: \.self) { minutes in
+                ForEach(options, id: \.self) { minutes in
                     Text(FTTask.duration(minutes)).tag(minutes)
                 }
             }
@@ -364,7 +383,7 @@ private struct SuggestedStepsSection: View {
 }
 
 private struct TaskSecondaryActions: View {
-    let canAddTime: Bool
+    let nextEstimate: Int?
     let onPostpone: () -> Void
     let onNextWeek: () -> Void
     let onAddTime: () -> Void
@@ -375,14 +394,12 @@ private struct TaskSecondaryActions: View {
                 HStack(spacing: 10) {
                     Button("Postpone 1 day", action: onPostpone)
                     Button("Push to next week", action: onNextWeek)
-                    Button("Add time", action: onAddTime).disabled(!canAddTime)
-                        .accessibilityIdentifier("taskAddTime")
+                    addTimeButton
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     Button("Postpone 1 day", action: onPostpone)
                     Button("Push to next week", action: onNextWeek)
-                    Button("Add time", action: onAddTime).disabled(!canAddTime)
-                        .accessibilityIdentifier("taskAddTime")
+                    addTimeButton
                 }
             }
             .buttonStyle(.bordered)
@@ -390,6 +407,18 @@ private struct TaskSecondaryActions: View {
             .tint(.primary)
             .controlSize(.large)
         }
+    }
+
+    private var addTimeButton: some View {
+        Button(action: onAddTime) {
+            if let nextEstimate {
+                Text("Add time → \(FTTask.duration(nextEstimate)) total")
+            } else {
+                Text("Add time")
+            }
+        }
+        .disabled(nextEstimate == nil)
+        .accessibilityIdentifier("taskAddTime")
     }
 }
 

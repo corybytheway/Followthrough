@@ -85,8 +85,9 @@ export async function POST(request: Request) {
       mutation = { action: 'complete_task', id: task.id };
       message = 'Task completed.';
     } else if (action === 'add_more_time') {
-      mutation = addMoreTimeMutation(task);
-      message = `Added 1 hour. This task now has ${minutesLabel(task.remainingMinutes + 60)} remaining.`;
+      const update = addMoreTimeMutation(task);
+      mutation = update;
+      message = `Added ${minutesLabel(update.task.estimateMinutes - task.estimateMinutes)}. This task now has ${minutesLabel(update.task.remainingMinutes)} remaining.`;
     } else if (action === 'delete') {
       mutation = { action: 'delete_task', id: task.id };
       message = 'Task moved to Trash.';

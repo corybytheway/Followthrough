@@ -15,12 +15,15 @@ import {
 } from '../lib/calendar-actions';
 import { actionTaskId } from '../lib/calendar-action-owner';
 import { dueCalendarOwners } from '../lib/calendar-background-owners';
-import { calendarActionToken, decodeCalendarActionToken } from '../lib/calendar-action-token';
+import {
+  calendarActionToken,
+  decodeCalendarActionToken,
+} from '../lib/calendar-action-token';
 import { initialWorkspace } from '../lib/model';
 import { applyAction } from '../lib/actions';
 import { plan } from '../lib/scheduler';
 
-void test('adding an hour turns a 15-minute task into 75 minutes and replans around appointments', () => {
+void test('graduated Add time turns a 15-minute task into an hour and replans around appointments', () => {
   const workspace = applyAction(initialWorkspace(), {
     action: 'create_task',
     task: {
@@ -33,44 +36,76 @@ void test('adding an hour turns a 15-minute task into 75 minutes and replans aro
   }).workspace;
   const task = workspace.tasks[0];
   task.updatedAt = '2026-10-08T12:00:00.000Z';
-  workspace.busy = [{
-    id: 'appointment', title: 'Meeting', source: 'google',
-    start: '2026-10-09T14:30:00.000Z', end: '2026-10-09T15:30:00.000Z',
-  }];
+  workspace.busy = [
+    {
+      id: 'appointment',
+      title: 'Meeting',
+      source: 'google',
+      start: '2026-10-09T14:30:00.000Z',
+      end: '2026-10-09T15:30:00.000Z',
+    },
+  ];
   const now = Date.parse('2026-10-09T14:00:00.000Z');
   workspace.blocks = plan(workspace, now).blocks;
   const mutation = addMoreTimeMutation(task);
   const updated = applyAction(workspace, mutation).workspace;
-  assert.equal(updated.tasks[0].estimateMinutes, 75);
-  assert.equal(updated.tasks[0].remainingMinutes, 75);
+  assert.equal(updated.tasks[0].estimateMinutes, 60);
+  assert.equal(updated.tasks[0].remainingMinutes, 60);
   assert.equal(updated.tasks[0].id, task.id);
   assert.equal(updated.tasks[0].source, task.source);
   assert.equal(updated.tasks[0].priority, 'high');
   assert.deepEqual(updated.tasks[0].steps, task.steps);
   const blocks = plan(updated, now).blocks;
-  assert.equal(blocks.reduce((total, block) => total + (Date.parse(block.end) - Date.parse(block.start)) / 60000, 0), 75);
-  assert.ok(blocks.every((block) => Date.parse(block.end) <= Date.parse(workspace.busy[0].start) || Date.parse(block.start) >= Date.parse(workspace.busy[0].end)));
+  assert.equal(
+    blocks.reduce(
+      (total, block) =>
+        total + (Date.parse(block.end) - Date.parse(block.start)) / 60000,
+      0,
+    ),
+    60,
+  );
+  assert.ok(
+    blocks.every(
+      (block) =>
+        Date.parse(block.end) <= Date.parse(workspace.busy[0].start) ||
+        Date.parse(block.start) >= Date.parse(workspace.busy[0].end),
+    ),
+  );
   assert.throws(() => applyAction(updated, mutation), { status: 409 });
   assert.equal(workspace.tasks[0].remainingMinutes, 15);
 });
 
-void test('adding an hour preserves logged progress and does not reopen completed, archived, or deleted tasks', () => {
+void test('graduated Add time preserves logged progress and does not reopen completed, archived, or deleted tasks', () => {
   const workspace = applyAction(initialWorkspace(), {
     action: 'create_task',
-    task: { title: 'Edit the video', estimateMinutes: 120, remainingMinutes: 30 },
+    task: {
+      title: 'Edit the video',
+      estimateMinutes: 120,
+      remainingMinutes: 30,
+    },
   }).workspace;
   const task = workspace.tasks[0];
-  const updated = applyAction(workspace, addMoreTimeMutation(task)).workspace.tasks[0];
-  assert.equal(updated.estimateMinutes, 180);
-  assert.equal(updated.remainingMinutes, 90);
+  const updated = applyAction(workspace, addMoreTimeMutation(task)).workspace
+    .tasks[0];
+  assert.equal(updated.estimateMinutes, 240);
+  assert.equal(updated.remainingMinutes, 150);
   assert.equal(updated.estimateMinutes - updated.remainingMinutes, 90);
   const waiting = { ...task, status: 'waiting' as const };
-  assert.equal(addMoreTimeMutation(waiting).task.remainingMinutes, 90);
+  assert.equal(addMoreTimeMutation(waiting).task.remainingMinutes, 150);
   for (const status of ['done', 'archived'] as const)
-    assert.throws(() => addMoreTimeMutation({ ...task, status }), /Reopen this task/);
-  assert.throws(() => addMoreTimeMutation({ ...task, deletedAt: task.updatedAt }), /Reopen this task/);
+    assert.throws(
+      () => addMoreTimeMutation({ ...task, status }),
+      /Reopen this task/,
+    );
+  assert.throws(
+    () => addMoreTimeMutation({ ...task, deletedAt: task.updatedAt }),
+    /Reopen this task/,
+  );
   task.estimateMinutes = 60000;
-  assert.throws(() => applyAction(workspace, addMoreTimeMutation(task)), /Estimated minutes/);
+  assert.throws(
+    () => applyAction(workspace, addMoreTimeMutation(task)),
+    /maximum duration/,
+  );
   assert.equal(task.estimateMinutes, 60000);
 });
 

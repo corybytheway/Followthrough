@@ -62,8 +62,9 @@ import {
   suggestProjectShortName,
   COLORS,
   minutesLabel,
-  TASK_DURATION_PRESETS,
-  taskDurationPreset,
+  taskDurationOptions,
+  taskEditorDurations,
+  addedTaskTime,
   type Project,
   type Settings,
   type Snapshot,
@@ -1366,18 +1367,18 @@ function TaskEditor({
   onRestore: () => Promise<void>;
 }) {
   const [saveId] = useState(() => crypto.randomUUID());
+  const [initialDurations] = useState(() =>
+    taskEditorDurations(
+      initial.estimateMinutes || 30,
+      initial.remainingMinutes || initial.estimateMinutes || 30,
+    ),
+  );
   const [title, setTitle] = useState(initial.title || ''),
     [projectId, setProjectId] = useState(initial.projectId || ''),
     [notes, setNotes] = useState(initial.notes || ''),
     [steps, setSteps] = useState(initial.steps || []);
-  const [estimate, setEstimate] = useState(
-      taskDurationPreset(initial.estimateMinutes || 30),
-    ),
-    [remaining, setRemaining] = useState(
-      taskDurationPreset(
-        initial.remainingMinutes || initial.estimateMinutes || 30,
-      ),
-    ),
+  const [estimate, setEstimate] = useState(initialDurations.estimateMinutes),
+    [remaining, setRemaining] = useState(initialDurations.remainingMinutes),
     [priority, setPriority] = useState(initial.priority || 'medium'),
     [status, setStatus] = useState(initial.status || 'ready'),
     [due, setDue] = useState(initial.dueDate || ''),
@@ -1385,6 +1386,13 @@ function TaskEditor({
     [splittable, setSplittable] = useState(initial.splittable !== false),
     [blockers, setBlockers] = useState(initial.blockers || []),
     [localError, setLocalError] = useState('');
+  const [estimateOptions, setEstimateOptions] = useState(() =>
+    taskDurationOptions(initialDurations.estimateMinutes),
+  );
+  const [remainingOptions, setRemainingOptions] = useState(() =>
+    taskDurationOptions(initialDurations.remainingMinutes),
+  );
+  const nextDurations = addedTaskTime(estimate, remaining);
   const [expectedUpdatedAt] = useState(initial.updatedAt);
   const prerequisiteGroups = taskPrerequisiteGroups(
     state.tasks,
@@ -1611,6 +1619,28 @@ function TaskEditor({
           ))}
         </NativeSelect>
       </Field>
+      {initial.id && status !== 'done' && status !== 'archived' && (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving || !nextDurations}
+          onClick={() => {
+            if (!nextDurations) return;
+            setEstimate(nextDurations.estimateMinutes);
+            setRemaining(nextDurations.remainingMinutes);
+            setEstimateOptions((options) =>
+              taskDurationOptions(...options, nextDurations.estimateMinutes),
+            );
+            setRemainingOptions((options) =>
+              taskDurationOptions(...options, nextDurations.remainingMinutes),
+            );
+          }}
+        >
+          {nextDurations
+            ? `Add time → ${minutesLabel(nextDurations.estimateMinutes)} total`
+            : 'Add time'}
+        </Button>
+      )}
       <div className="field-row">
         <Field
           label="Estimated time"
@@ -1628,7 +1658,7 @@ function TaskEditor({
               if (!initial.id) setRemaining(Number(e.target.value));
             }}
           >
-            {TASK_DURATION_PRESETS.map((minutes) => (
+            {estimateOptions.map((minutes) => (
               <option value={minutes} key={minutes}>
                 {minutesLabel(minutes)}
               </option>
@@ -1641,7 +1671,7 @@ function TaskEditor({
             value={remaining}
             onChange={(e) => setRemaining(Number(e.target.value))}
           >
-            {TASK_DURATION_PRESETS.map((minutes) => (
+            {remainingOptions.map((minutes) => (
               <option value={minutes} key={minutes}>
                 {minutesLabel(minutes)}
               </option>
@@ -1649,6 +1679,7 @@ function TaskEditor({
           </NativeSelect>
         </Field>
       </div>
+      <p className="duration-help">1 day = 8 hours · 1 week = 40 hours</p>
       <div className="field-row">
         <Field label="Priority">
           <NativeSelect

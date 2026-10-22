@@ -118,15 +118,37 @@ struct FTTask: Codable, Identifiable, Hashable, Sendable {
         return name
     }
     var remainingLabel: String { Self.duration(remainingMinutes) }
-    static let durationPresets = [15, 30, 45, 60, 120, 180, 240, 360, 480, 1440, 2880, 4320, 10080]
+    static let workdayMinutes = 8 * 60
+    static let workweekMinutes = 5 * workdayMinutes
+    static let maxTaskMinutes = 60000
+    static let durationPresets = [15, 30, 45, 60, 120, 180, 240, 360, workdayMinutes,
+        2 * workdayMinutes, 3 * workdayMinutes, workweekMinutes]
     static func durationPreset(_ minutes: Int) -> Int {
-        durationPresets.first(where: { $0 >= minutes }) ?? durationPresets[durationPresets.count - 1]
+        if minutes <= workdayMinutes { return durationPresets.first(where: { $0 >= minutes })! }
+        return min(maxTaskMinutes, ((minutes + 239) / 240) * 240)
+    }
+    static func durationOptions(_ values: [Int]) -> [Int] {
+        Array(Set(durationPresets + values)).sorted()
+    }
+    static func editorDurations(estimate: Int, remaining: Int) -> (estimate: Int, remaining: Int) {
+        // Keep time already worked when rounding an old estimate.
+        let added = min(durationPreset(estimate) - estimate, maxTaskMinutes - remaining)
+        return (estimate + added, remaining + added)
+    }
+    static func addedTime(estimate: Int, remaining: Int) -> (estimate: Int, remaining: Int)? {
+        let normalized = editorDurations(estimate: estimate, remaining: remaining)
+        let estimate = normalized.estimate
+        let remaining = normalized.remaining
+        let nextEstimate = estimate <= workdayMinutes ? durationPreset(max(60, estimate * 2)) : estimate + 240
+        let added = nextEstimate - estimate
+        guard max(estimate, remaining) + added <= maxTaskMinutes else { return nil }
+        return (nextEstimate, remaining + added)
     }
     static func duration(_ minutes: Int) -> String {
         guard minutes > 0 else { return "\(minutes)m" }
         var remaining = minutes
         var parts: [String] = []
-        for (size, unit) in [(10080, "w"), (1440, "d"), (60, "h"), (1, "m")] {
+        for (size, unit) in [(workweekMinutes, "w"), (workdayMinutes, "d"), (60, "h"), (1, "m")] {
             let count = remaining / size
             if count > 0 { parts.append("\(count)\(unit)") }
             remaining %= size
