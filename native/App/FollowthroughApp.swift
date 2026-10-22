@@ -1205,27 +1205,27 @@ struct ProjectsView: View {
         }
         .toolbar {
             if toolbarActive {
-                #if os(macOS)
                 ToolbarItem(placement: .primaryAction) {
                     Button("New project", systemImage: "plus") { adding = true }
                         .help("New project")
                         .accessibilityIdentifier("newProject")
                 }
-                #endif
-                ToolbarItem(placement:.primaryAction) {
-                    Menu {
-                        #if !os(macOS)
-                        Button("New project",systemImage:"folder.badge.plus") { adding = true }
-                            .accessibilityIdentifier("newProject")
-                        #endif
-                        Picker("Project view",selection:$layout) {
-                            Label("Grid",systemImage:"square.grid.2x2").tag(ProjectLayout.grid)
-                            Label("List",systemImage:"list.bullet").tag(ProjectLayout.list)
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        layout = layout == .grid ? .list : .grid
+                    } label: {
+                        Label {
+                            Text("Project view")
+                        } icon: {
+                            Image(systemName: layout == .grid ? "list.bullet" : "square.grid.2x2")
                         }
-                        .accessibilityIdentifier("projectLayoutPicker")
-                    } label: { Label("Project options",systemImage:"ellipsis") }
+                    }
+                    .labelStyle(.iconOnly)
                     .tint(.primary)
-                    .accessibilityIdentifier("projectOptions")
+                    .help(layout == .grid ? Text("Switch to list view") : Text("Switch to grid view"))
+                    .accessibilityValue(layout == .grid ? Text("Grid") : Text("List"))
+                    .accessibilityHint(layout == .grid ? Text("Switches to list view") : Text("Switches to grid view"))
+                    .accessibilityIdentifier("projectLayoutToggle")
                 }
             }
         }
