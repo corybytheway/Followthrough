@@ -135,15 +135,6 @@ struct FTTask: Codable, Identifiable, Hashable, Sendable {
         let added = min(durationPreset(estimate) - estimate, maxTaskMinutes - remaining)
         return (estimate + added, remaining + added)
     }
-    static func addedTime(estimate: Int, remaining: Int) -> (estimate: Int, remaining: Int)? {
-        let normalized = editorDurations(estimate: estimate, remaining: remaining)
-        let estimate = normalized.estimate
-        let remaining = normalized.remaining
-        let nextEstimate = estimate <= workdayMinutes ? durationPreset(max(60, estimate * 2)) : estimate + 240
-        let added = nextEstimate - estimate
-        guard max(estimate, remaining) + added <= maxTaskMinutes else { return nil }
-        return (nextEstimate, remaining + added)
-    }
     static func duration(_ minutes: Int) -> String {
         guard minutes > 0 else { return "\(minutes)m" }
         var remaining = minutes

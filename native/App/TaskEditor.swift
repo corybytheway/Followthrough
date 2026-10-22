@@ -26,11 +26,6 @@ struct TaskEditor: View {
         _remainingOptions = State(initialValue: FTTask.durationOptions([durations.remaining]))
     }
 
-    private var nextDurations: (estimate: Int, remaining: Int)? {
-        guard draft.active else { return nil }
-        return FTTask.addedTime(estimate: draft.estimateMinutes, remaining: draft.remainingMinutes)
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -46,16 +41,8 @@ struct TaskEditor: View {
                     if let handoffError { Text(handoffError).foregroundStyle(.red) }
                     TaskIdentityFields(draft: $draft, projects: store.workspace?.projectsAlphabetically ?? [])
                     TaskSecondaryActions(
-                        nextEstimate: nextDurations?.estimate,
                         onPostpone: { if store.postpone(task, nextWeek: false) { dismiss() } },
-                        onNextWeek: { if store.postpone(task, nextWeek: true) { dismiss() } },
-                        onAddTime: {
-                            guard let durations = nextDurations else { return }
-                            draft.estimateMinutes = durations.estimate
-                            draft.remainingMinutes = durations.remaining
-                            estimateOptions = FTTask.durationOptions(estimateOptions + [durations.estimate])
-                            remainingOptions = FTTask.durationOptions(remainingOptions + [durations.remaining])
-                        }
+                        onNextWeek: { if store.postpone(task, nextWeek: true) { dismiss() } }
                     )
                     TaskPlanningFields(draft: $draft, estimateOptions: estimateOptions, remainingOptions: remainingOptions, canFinish: !hasOpenPrerequisites)
                     if !draft.steps.isEmpty { SuggestedStepsSection(steps: $draft.steps) }
@@ -77,6 +64,7 @@ struct TaskEditor: View {
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .accessibilityIdentifier("taskEditorScroll")
             .background(Color.canvas)
             .navigationTitle("Task details")
             .toolbar {
@@ -361,6 +349,7 @@ private struct TaskNotesField: View {
             TextField("Add a note…", text: $notes, axis: .vertical)
                 .labelsHidden()
                 .accessibilityLabel("Task notes")
+                .accessibilityIdentifier("taskNotes")
                 .lineLimit(3...12)
         }
     }
@@ -383,10 +372,8 @@ private struct SuggestedStepsSection: View {
 }
 
 private struct TaskSecondaryActions: View {
-    let nextEstimate: Int?
     let onPostpone: () -> Void
     let onNextWeek: () -> Void
-    let onAddTime: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Task actions").font(.headline)
@@ -394,12 +381,10 @@ private struct TaskSecondaryActions: View {
                 HStack(spacing: 10) {
                     Button("Postpone 1 day", action: onPostpone)
                     Button("Push to next week", action: onNextWeek)
-                    addTimeButton
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     Button("Postpone 1 day", action: onPostpone)
                     Button("Push to next week", action: onNextWeek)
-                    addTimeButton
                 }
             }
             .buttonStyle(.bordered)
@@ -409,17 +394,6 @@ private struct TaskSecondaryActions: View {
         }
     }
 
-    private var addTimeButton: some View {
-        Button(action: onAddTime) {
-            if let nextEstimate {
-                Text("Add time → \(FTTask.duration(nextEstimate)) total")
-            } else {
-                Text("Add time")
-            }
-        }
-        .disabled(nextEstimate == nil)
-        .accessibilityIdentifier("taskAddTime")
-    }
 }
 
 private struct TaskPrerequisitesSection: View {

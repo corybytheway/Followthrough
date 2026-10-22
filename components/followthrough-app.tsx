@@ -64,7 +64,6 @@ import {
   minutesLabel,
   taskDurationOptions,
   taskEditorDurations,
-  addedTaskTime,
   type Project,
   type Settings,
   type Snapshot,
@@ -1386,13 +1385,12 @@ function TaskEditor({
     [splittable, setSplittable] = useState(initial.splittable !== false),
     [blockers, setBlockers] = useState(initial.blockers || []),
     [localError, setLocalError] = useState('');
-  const [estimateOptions, setEstimateOptions] = useState(() =>
+  const [estimateOptions] = useState(() =>
     taskDurationOptions(initialDurations.estimateMinutes),
   );
-  const [remainingOptions, setRemainingOptions] = useState(() =>
+  const [remainingOptions] = useState(() =>
     taskDurationOptions(initialDurations.remainingMinutes),
   );
-  const nextDurations = addedTaskTime(estimate, remaining);
   const [expectedUpdatedAt] = useState(initial.updatedAt);
   const prerequisiteGroups = taskPrerequisiteGroups(
     state.tasks,
@@ -1619,28 +1617,6 @@ function TaskEditor({
           ))}
         </NativeSelect>
       </Field>
-      {initial.id && status !== 'done' && status !== 'archived' && (
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving || !nextDurations}
-          onClick={() => {
-            if (!nextDurations) return;
-            setEstimate(nextDurations.estimateMinutes);
-            setRemaining(nextDurations.remainingMinutes);
-            setEstimateOptions((options) =>
-              taskDurationOptions(...options, nextDurations.estimateMinutes),
-            );
-            setRemainingOptions((options) =>
-              taskDurationOptions(...options, nextDurations.remainingMinutes),
-            );
-          }}
-        >
-          {nextDurations
-            ? `Add time → ${minutesLabel(nextDurations.estimateMinutes)} total`
-            : 'Add time'}
-        </Button>
-      )}
       <div className="field-row">
         <Field
           label="Estimated time"
