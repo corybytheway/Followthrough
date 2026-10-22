@@ -376,11 +376,13 @@ private struct TaskSecondaryActions: View {
                     Button("Postpone 1 day", action: onPostpone)
                     Button("Push to next week", action: onNextWeek)
                     Button("Add time", action: onAddTime).disabled(!canAddTime)
+                        .accessibilityIdentifier("taskAddTime")
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     Button("Postpone 1 day", action: onPostpone)
                     Button("Push to next week", action: onNextWeek)
                     Button("Add time", action: onAddTime).disabled(!canAddTime)
+                        .accessibilityIdentifier("taskAddTime")
                 }
             }
             .buttonStyle(.bordered)
