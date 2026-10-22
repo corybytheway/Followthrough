@@ -2004,9 +2004,7 @@ private struct MenuBarTaskSummary: View {
 private struct MenuBarTaskDuration: View {
     let minutes: Int
     var body: some View {
-        if minutes >= 60 && minutes % 60 == 0 { Text("\(minutes / 60)hr task") }
-        else if minutes > 60 { Text("\(minutes / 60)hr \(minutes % 60)min task") }
-        else { Text("\(minutes)min task") }
+        Text("\(FTTask.duration(minutes)) task")
     }
 }
 

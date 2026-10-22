@@ -62,6 +62,8 @@ import {
   suggestProjectShortName,
   COLORS,
   minutesLabel,
+  taskDurationOptions,
+  taskEditorDurations,
   type Project,
   type Settings,
   type Snapshot,
@@ -1364,14 +1366,18 @@ function TaskEditor({
   onRestore: () => Promise<void>;
 }) {
   const [saveId] = useState(() => crypto.randomUUID());
+  const [initialDurations] = useState(() =>
+    taskEditorDurations(
+      initial.estimateMinutes || 30,
+      initial.remainingMinutes || initial.estimateMinutes || 30,
+    ),
+  );
   const [title, setTitle] = useState(initial.title || ''),
     [projectId, setProjectId] = useState(initial.projectId || ''),
     [notes, setNotes] = useState(initial.notes || ''),
     [steps, setSteps] = useState(initial.steps || []);
-  const [estimate, setEstimate] = useState(initial.estimateMinutes || 30),
-    [remaining, setRemaining] = useState(
-      initial.remainingMinutes || initial.estimateMinutes || 30,
-    ),
+  const [estimate, setEstimate] = useState(initialDurations.estimateMinutes),
+    [remaining, setRemaining] = useState(initialDurations.remainingMinutes),
     [priority, setPriority] = useState(initial.priority || 'medium'),
     [status, setStatus] = useState(initial.status || 'ready'),
     [due, setDue] = useState(initial.dueDate || ''),
@@ -1379,6 +1385,12 @@ function TaskEditor({
     [splittable, setSplittable] = useState(initial.splittable !== false),
     [blockers, setBlockers] = useState(initial.blockers || []),
     [localError, setLocalError] = useState('');
+  const [estimateOptions] = useState(() =>
+    taskDurationOptions(initialDurations.estimateMinutes),
+  );
+  const [remainingOptions] = useState(() =>
+    taskDurationOptions(initialDurations.remainingMinutes),
+  );
   const [expectedUpdatedAt] = useState(initial.updatedAt);
   const prerequisiteGroups = taskPrerequisiteGroups(
     state.tasks,
@@ -1607,36 +1619,43 @@ function TaskEditor({
       </Field>
       <div className="field-row">
         <Field
-          label="Estimated minutes"
+          label="Estimated time"
           hint={
             initial.estimateProvisional
               ? 'Temporary estimate. Saving confirms this duration.'
               : undefined
           }
         >
-          <Input
-            type="number"
-            min={1}
-            max={60000}
+          <NativeSelect
             required
             value={estimate}
             onChange={(e) => {
               setEstimate(Number(e.target.value));
               if (!initial.id) setRemaining(Number(e.target.value));
             }}
-          />
+          >
+            {estimateOptions.map((minutes) => (
+              <option value={minutes} key={minutes}>
+                {minutesLabel(minutes)}
+              </option>
+            ))}
+          </NativeSelect>
         </Field>
-        <Field label="Minutes remaining">
-          <Input
-            type="number"
-            min={1}
-            max={60000}
+        <Field label="Time remaining">
+          <NativeSelect
             required
             value={remaining}
             onChange={(e) => setRemaining(Number(e.target.value))}
-          />
+          >
+            {remainingOptions.map((minutes) => (
+              <option value={minutes} key={minutes}>
+                {minutesLabel(minutes)}
+              </option>
+            ))}
+          </NativeSelect>
         </Field>
       </div>
+      <p className="duration-help">1 day = 8 hours · 1 week = 40 hours</p>
       <div className="field-row">
         <Field label="Priority">
           <NativeSelect
@@ -1682,13 +1701,22 @@ function TaskEditor({
           />
         </Field>
       </div>
-      <div className="check-field">
-        <Checkbox
-          id="multiple-sessions"
-          checked={splittable}
-          onCheckedChange={setSplittable}
-        />
-        <label htmlFor="multiple-sessions">Allow multiple work sessions</label>
+      <div className="field">
+        <div className="check-field">
+          <Checkbox
+            id="multiple-sessions"
+            checked={splittable}
+            onCheckedChange={setSplittable}
+            aria-describedby="multiple-sessions-hint"
+          />
+          <label htmlFor="multiple-sessions">
+            Split task into shorter calendar events if needed
+          </label>
+        </div>
+        <small id="multiple-sessions-hint">
+          If the whole task can't fit in one opening, Followthrough schedules
+          parts of it where available.
+        </small>
       </div>
       <div className="editor-section">
         <div className="section-heading">
@@ -2104,7 +2132,17 @@ function SettingsPanel({
             >
               <input
                 type="checkbox"
-                aria-label={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][i]}
+                aria-label={
+                  [
+                    'Sunday',
+                    'Monday',
+                    'Tuesday',
+                    'Wednesday',
+                    'Thursday',
+                    'Friday',
+                    'Saturday',
+                  ][i]
+                }
                 checked={settings.workDays.includes(i)}
                 onChange={(e) =>
                   update(

@@ -118,9 +118,33 @@ struct FTTask: Codable, Identifiable, Hashable, Sendable {
         return name
     }
     var remainingLabel: String { Self.duration(remainingMinutes) }
+    static let workdayMinutes = 8 * 60
+    static let workweekMinutes = 5 * workdayMinutes
+    static let maxTaskMinutes = 60000
+    static let durationPresets = [15, 30, 45, 60, 120, 180, 240, 360, workdayMinutes,
+        2 * workdayMinutes, 3 * workdayMinutes, workweekMinutes]
+    static func durationPreset(_ minutes: Int) -> Int {
+        if minutes <= workdayMinutes { return durationPresets.first(where: { $0 >= minutes })! }
+        return min(maxTaskMinutes, ((minutes + 239) / 240) * 240)
+    }
+    static func durationOptions(_ values: [Int]) -> [Int] {
+        Array(Set(durationPresets + values)).sorted()
+    }
+    static func editorDurations(estimate: Int, remaining: Int) -> (estimate: Int, remaining: Int) {
+        // Keep time already worked when rounding an old estimate.
+        let added = min(durationPreset(estimate) - estimate, maxTaskMinutes - remaining)
+        return (estimate + added, remaining + added)
+    }
     static func duration(_ minutes: Int) -> String {
-        let hours = minutes / 60, rest = minutes % 60
-        return hours > 0 ? "\(hours)h" + (rest > 0 ? " \(rest)m" : "") : "\(rest)m"
+        guard minutes > 0 else { return "\(minutes)m" }
+        var remaining = minutes
+        var parts: [String] = []
+        for (size, unit) in [(workweekMinutes, "w"), (workdayMinutes, "d"), (60, "h"), (1, "m")] {
+            let count = remaining / size
+            if count > 0 { parts.append("\(count)\(unit)") }
+            remaining %= size
+        }
+        return parts.joined(separator: " ")
     }
 }
 struct FTBlock: Codable, Identifiable, Hashable, Sendable {

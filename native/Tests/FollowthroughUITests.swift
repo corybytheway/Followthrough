@@ -1135,20 +1135,31 @@ final class FollowthroughUITests: XCTestCase {
                 XCTAssertEqual(frame.height, now.height, accuracy: 0.5, name + " height " + stage)
             }
         }
-        func addHour() {
+        func editNotes(_ text: String) -> String {
             row.tap()
             XCTAssertTrue(app.navigationBars["Task details"].waitForExistence(timeout: 5))
-            let add = app.buttons["Add 1 hour"]
-            for _ in 0..<9 {
-                if add.exists && add.isHittable && add.frame.maxY < app.frame.maxY - 70 { break }
-                app.swipeUp()
+            XCTAssertFalse(app.buttons["taskAddTime"].exists)
+            let notes = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND (elementType == %d OR elementType == %d)", "taskNotes", XCUIElement.ElementType.textField.rawValue, XCUIElement.ElementType.textView.rawValue)).firstMatch
+            let editorScroll = app.scrollViews["taskEditorScroll"]
+            XCTAssertTrue(editorScroll.exists)
+            for _ in 0..<12 {
+                if notes.exists && notes.isHittable { break }
+                if notes.exists && notes.frame.midY < editorScroll.frame.minY {
+                    editorScroll.swipeDown()
+                } else {
+                    editorScroll.swipeUp()
+                }
             }
-            XCTAssertTrue(add.isHittable)
-            add.tap()
+            XCTAssertTrue(notes.isHittable)
+            notes.tap()
+            notes.typeText(text)
+            let edited = notes.value as? String ?? ""
+            XCTAssertTrue(edited.contains(text))
             app.buttons["saveTask"].tap()
             XCTAssertTrue(row.waitForExistence(timeout: 5))
+            return edited.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        addHour()
+        let firstNotes = editNotes("Saved once. ")
         let progress = app.descendants(matching: .any)["workspaceSavingProgress"].firstMatch
         XCTAssertTrue(progress.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["workspaceSavingProgress"].exists)
@@ -1158,10 +1169,13 @@ final class FollowthroughUITests: XCTestCase {
         waitQuiet()
         stationary("saved")
         let saved = try await workspace()
-        XCTAssertEqual((saved["tasks"] as? [[String: Any]])?.first { $0["id"] as? String == id }?["estimateMinutes"] as? Int, 75)
+        let savedTask = try XCTUnwrap((saved["tasks"] as? [[String: Any]])?.first { $0["id"] as? String == id })
+        XCTAssertEqual(savedTask["estimateMinutes"] as? Int, 15)
+        XCTAssertEqual(savedTask["remainingMinutes"] as? Int, 15)
+        XCTAssertEqual(savedTask["notes"] as? String, firstNotes)
         record("Search status 03 saved toolbar empty")
         _ = try await workspace(["action": "qa_search_status", "delayMs": 1000, "failures": 99])
-        addHour()
+        let secondNotes = editNotes("Saved twice. ")
         let warning = app.buttons["workspaceSaveStatus"]
         XCTAssertTrue(warning.waitForExistence(timeout: 12))
         XCTAssertEqual(warning.label, "Sync needs attention")
@@ -1181,7 +1195,10 @@ final class FollowthroughUITests: XCTestCase {
         waitQuiet()
         stationary("retry saved")
         let retried = try await workspace()
-        XCTAssertEqual((retried["tasks"] as? [[String: Any]])?.first { $0["id"] as? String == id }?["estimateMinutes"] as? Int, 135)
+        let retriedTask = try XCTUnwrap((retried["tasks"] as? [[String: Any]])?.first { $0["id"] as? String == id })
+        XCTAssertEqual(retriedTask["estimateMinutes"] as? Int, 15)
+        XCTAssertEqual(retriedTask["remainingMinutes"] as? Int, 15)
+        XCTAssertEqual(retriedTask["notes"] as? String, secondNotes)
         let fixture = try await workspace(["action": "qa_search_status", "delayMs": 0, "failures": 0, "refreshDelayMs": 5000])
         let attempts = try XCTUnwrap(fixture["attempts"] as? [[String: Any]])
         let failed = try XCTUnwrap(attempts.first { $0["outcome"] as? String == "503 before commit" })
@@ -1235,7 +1252,7 @@ final class FollowthroughUITests: XCTestCase {
         }
         let state = try await workspace()
         guard let task = (state["tasks"] as? [[String: Any]])?.first(where: { $0["id"] as? String == id }), task["deletedAt"] as? String == nil, task["title"] as? String == title else { throw XCTSkip("The recorded fixture is no longer active.") }
-        XCTAssertEqual(task["estimateMinutes"] as? Int, 135)
+        XCTAssertEqual(task["estimateMinutes"] as? Int, 15)
         _ = try await workspace(["action": "qa_search_status", "taskId": id, "delayMs": 0, "failures": 0, "refreshDelayMs": 10000])
         try launchAuthenticated()
         tapTab("Tasks")
@@ -1267,7 +1284,7 @@ final class FollowthroughUITests: XCTestCase {
         record("Search status 08 dark original-input highlight")
         app.buttons["Close"].tap()
         _ = try await workspace(["action": "delete_task", "id": id])
-        let proof: [String: Any] = ["taskId": id, "taskEstimateAfterBothSaves": 135, "attempts": attempts, "backgroundRefreshObserved": true, "filterFrameBeforeAndDuring": NSCoder.string(for: before)]
+        let proof: [String: Any] = ["taskId": id, "taskEstimateAfterBothSaves": 15, "attempts": attempts, "backgroundRefreshObserved": true, "filterFrameBeforeAndDuring": NSCoder.string(for: before)]
         try JSONSerialization.data(withJSONObject: proof, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: "/tmp/followthrough-xctest-evidence/search-status-readback.json"))
     }
 

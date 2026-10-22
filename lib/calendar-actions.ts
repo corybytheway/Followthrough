@@ -1,5 +1,5 @@
 // Created by Cory McCabe
-import type { Task, Workspace } from './model';
+import { addedTaskTime, type Task, type Workspace } from './model';
 import { hmac } from './calendar-security';
 import { localDay, nextWorkDay } from './scheduler';
 import { InputError } from './validation';
@@ -23,12 +23,14 @@ export type CalendarTaskAction = (typeof CALENDAR_TASK_ACTIONS)[number];
 export function addMoreTimeMutation(task: Task) {
   if (task.deletedAt || task.status === 'done' || task.status === 'archived')
     throw new InputError('Reopen this task before adding more time.');
+  const durations = addedTaskTime(task.estimateMinutes, task.remainingMinutes);
+  if (!durations)
+    throw new InputError('This task has reached the maximum duration.');
   return {
     action: 'update_task',
     id: task.id,
     task: {
-      estimateMinutes: task.estimateMinutes + 60,
-      remainingMinutes: task.remainingMinutes + 60,
+      ...durations,
       expectedUpdatedAt: task.updatedAt,
     },
   };

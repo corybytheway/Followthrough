@@ -748,6 +748,12 @@ p {
   color: var(--subtle);
   line-height: 1.5;
 }
+.duration-help {
+  margin: -8px 0 0;
+  color: var(--subtle);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
