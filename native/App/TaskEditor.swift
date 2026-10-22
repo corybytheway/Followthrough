@@ -279,9 +279,6 @@ private struct TaskPlanningFields: View {
                     }.labelsHidden().accessibilityLabel("Status")
                 }
             }
-            Text("1 day = 8 hours · 1 week = 40 hours")
-                .font(.callout)
-                .foregroundStyle(.secondary)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 16)], spacing: 18) {
                 OptionalDayField(title: "Deadline", value: $draft.dueDate)
                 OptionalDayField(title: "Start on or after", value: $draft.notBefore)
