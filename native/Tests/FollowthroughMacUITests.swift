@@ -371,6 +371,104 @@ final class FollowthroughMacUITests: XCTestCase {
         XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout: 5), "Command-T remains available")
     }
 
+    @MainActor func testTaskPageRetainsScrollAndSearchAcrossNavigation() throws {
+        continueAfterFailure = false
+        let fixtureURL = URL(fileURLWithPath: "/tmp/ft-macos-page-state/fixture.json")
+        guard let data = try? Data(contentsOf: fixtureURL),
+              let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let server = fixture["server"] as? String,
+              ["127.0.0.1", "localhost"].contains(URL(string: server)?.host ?? ""),
+              let session = fixture["session"] as? [String: Any] else {
+            throw XCTSkip("Start native/Scripts/serve-page-state-fixture.py first.")
+        }
+        let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", server]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = try JSONSerialization.data(withJSONObject: session).base64EncodedString()
+        app.launchEnvironment["FOLLOWTHROUGH_LOCAL_STORAGE"] = "page-state-regression"
+        app.launch()
+        app.activate()
+        XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout: 25))
+        app.typeKey("2", modifierFlags: .command)
+        XCTAssertTrue(app.menuButtons["tasksFilter"].waitForExistence(timeout: 5))
+        let taskScroll = app.scrollViews.containing(.any, identifier: "completeTask_state-task-00").firstMatch
+        XCTAssertTrue(taskScroll.waitForExistence(timeout: 10), app.debugDescription)
+        taskScroll.scroll(byDeltaX: 0, deltaY: -800)
+        let visibleRows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "completeTask_state-task-"))
+            .allElementsBoundByIndex.filter { $0.isHittable }
+        let anchor = try XCTUnwrap(visibleRows.first)
+        XCTAssertNotEqual(anchor.identifier, "completeTask_state-task-00", "The list must be scrolled before navigation.")
+        let originalY = anchor.frame.minY
+
+        for destination in ["1", "3", "1", "3"] {
+            app.typeKey(destination, modifierFlags: .command)
+            XCTAssertTrue(app.menuButtons["tasksFilter"].waitForNonExistence(timeout: 5))
+            app.typeKey("2", modifierFlags: .command)
+            XCTAssertTrue(app.menuButtons["tasksFilter"].waitForExistence(timeout: 5))
+            let retained = NSPredicate { _, _ in anchor.isHittable && abs(anchor.frame.minY - originalY) < 4 }
+            XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: retained, evaluatedWith: nil)], timeout: 5), .completed)
+            XCTAssertFalse(app.menuButtons["projectOptions"].exists)
+        }
+        record(app, "Tasks retains scroll after Today and Projects")
+
+        app.typeKey("f", modifierFlags: .command)
+        let search = app.textFields["taskSearchField"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.typeText("State task 1")
+        app.typeKey("3", modifierFlags: .command)
+        XCTAssertTrue(search.waitForNonExistence(timeout: 5))
+        app.typeKey("2", modifierFlags: .command)
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        XCTAssertEqual(search.value as? String, "State task 1")
+        record(app, "Tasks retains search after Projects")
+    }
+
+    @MainActor func testRetainedTaskPageReceivesBackgroundSync() async throws {
+        continueAfterFailure = false
+        let fixtureURL = URL(fileURLWithPath: "/tmp/ft-macos-page-state/fixture.json")
+        guard let data = try? Data(contentsOf: fixtureURL),
+              let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let server = fixture["server"] as? String,
+              ["127.0.0.1", "localhost"].contains(URL(string: server)?.host ?? ""),
+              let session = fixture["session"] as? [String: Any],
+              let statePath = fixture["statePath"] as? String,
+              let requestsPath = fixture["requestsPath"] as? String,
+              statePath == "/tmp/ft-macos-page-state/workspace.json",
+              requestsPath == "/tmp/ft-macos-page-state/requests.jsonl" else {
+            throw XCTSkip("Start native/Scripts/serve-page-state-fixture.py first.")
+        }
+        let app = XCUIApplication(bundleIdentifier: "dev.ethosapps.followthrough.local")
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", server]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = try JSONSerialization.data(withJSONObject: session).base64EncodedString()
+        app.launchEnvironment["FOLLOWTHROUGH_LOCAL_STORAGE"] = "page-state-background-sync"
+        app.launch()
+        app.activate()
+        XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout: 25))
+        app.typeKey("3", modifierFlags: .command)
+        XCTAssertTrue(app.menuButtons["projectOptions"].waitForExistence(timeout: 5))
+        func workspaceReads() -> Int {
+            ((try? String(contentsOfFile: requestsPath, encoding: .utf8)) ?? "")
+                .components(separatedBy: "\n").filter { $0.contains("/api/native/workspace") }.count
+        }
+        let readsBefore = workspaceReads()
+        let marker = "Background refresh marker " + UUID().uuidString
+        var request = URLRequest(url: try XCTUnwrap(URL(string: server + "/__fixture/rename-first-task")))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["title": marker])
+        let (_, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 204)
+        let nextSync = NSPredicate { _, _ in workspaceReads() > readsBefore }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: nextSync, evaluatedWith: nil)], timeout: 30), .completed)
+        app.typeKey("2", modifierFlags: .command)
+        app.typeKey("f", modifierFlags: .command)
+        let search = app.textFields["taskSearchField"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.typeText(marker)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", marker))
+            .firstMatch.waitForExistence(timeout: 5))
+        record(app, "Retained Tasks receives background workspace sync")
+    }
+
     @MainActor func testCommandTShowsTodayAndScrollsToTop() throws {
         continueAfterFailure = false
         let fixtureURL = URL(fileURLWithPath: "/tmp/followthrough-tab-reselection-ios-fixture.json")
