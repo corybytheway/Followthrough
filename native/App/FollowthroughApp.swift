@@ -35,17 +35,17 @@ import AppIntents
             CommandMenu("Navigate") {
                 Button("Today") {
                     store.dismissCaptureFocus()
-                    store.showToday()
+                    store.selectedSection = "today"
                 }
                     .keyboardShortcut("1", modifiers: .command)
                 Button("Tasks") {
                     store.dismissCaptureFocus()
-                    store.selectSection("tasks")
+                    store.selectedSection = "tasks"
                 }
                     .keyboardShortcut("2", modifiers: .command)
                 Button("Projects") {
                     store.dismissCaptureFocus()
-                    store.selectSection("projects")
+                    store.selectedSection = "projects"
                 }
                     .keyboardShortcut("3", modifiers: .command)
                 Divider()
@@ -92,10 +92,7 @@ struct RootView: View {
                         .disabled(store.captureFocused)
                         .accessibilityHidden(store.captureFocused)
                 } detail: {
-                    NavigationStack {
-                        WorkspaceSection(store: store, section: store.selectedSection)
-                            .toolbar { WorkspaceSaveToolbar(store: store) }
-                    }
+                    WorkspaceSection(store: store, section: store.selectedSection)
                     // Keep the workspace readable even when the sidebar is widened.
                     .frame(minWidth: 580)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -238,19 +235,29 @@ struct WorkspaceSection: View {
         VStack(spacing:0) {
             if let workspace = store.presentationWorkspace {
                 #if os(macOS)
-                // Keep Today's scroll view alive so navigation reveals it
-                // before a shortcut requests its scroll-to-top animation.
+                // Keep each main page and its navigation container alive.
+                // Switching pages must not recreate their scroll views or filters.
                 ZStack {
-                    TodayView(store: store, workspace: workspace)
-                        .opacity(section == "today" ? 1 : 0)
-                        .allowsHitTesting(section == "today")
-                        .accessibilityHidden(section != "today")
-                    if section == "settings" {
-                        SettingsView(store: store, settings: workspace.settings)
-                    } else if section == "projects" {
+                    MacWorkspacePage(store: store, active: section == "today") {
+                        TodayView(store: store, workspace: workspace)
+                    }
+                    MacWorkspacePage(store: store, active: section == "tasks") {
+                        TasksView(store: store, workspace: workspace, projectId: nil)
+                    }
+                    MacWorkspacePage(store: store, active: section == "projects") {
                         ProjectsView(store: store, projects: workspace.projectsAlphabetically)
-                    } else if section != "today" {
-                        TasksView(store: store, workspace: workspace, projectId: section == "tasks" ? nil : section)
+                    }
+                    if section == "settings" {
+                        MacWorkspacePage(store: store, active: true) {
+                            SettingsView(store: store, settings: workspace.settings)
+                                .toolbar {
+                                    ToolbarItem { Button { store.focusCapture() } label: { Label("New task", systemImage: "plus") }.disabled(!store.connected).accessibilityIdentifier("newTask") }
+                                }
+                        }
+                    } else if !["today", "tasks", "projects"].contains(section) {
+                        MacWorkspacePage(store: store, active: true) {
+                            TasksView(store: store, workspace: workspace, projectId: section)
+                        }
                     }
                 }
                 #else
@@ -265,15 +272,26 @@ struct WorkspaceSection: View {
                 #endif
             } else { ProgressView("Opening your workspace…").frame(maxWidth:.infinity,maxHeight:.infinity) }
         }
-        .toolbar {
-            #if os(macOS)
-            if section == "settings" {
-                ToolbarItem { Button { store.focusCapture() } label: { Label("New task",systemImage:"plus") }.disabled(!store.connected).accessibilityIdentifier("newTask") }
-            }
-            #endif
-        }
     }
 }
+#if os(macOS)
+private struct MacWorkspacePage<Content: View>: View {
+    let store: WorkspaceStore
+    let active: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        NavigationStack {
+            content.toolbar {
+                if active { WorkspaceSaveToolbar(store: store) }
+            }
+        }
+        .opacity(active ? 1 : 0)
+        .allowsHitTesting(active)
+        .accessibilityHidden(!active)
+    }
+}
+#endif
 struct WorkspaceSaveToolbar: ToolbarContent {
     let store: WorkspaceStore
 
@@ -953,6 +971,13 @@ struct TasksView: View {
     @Bindable var store: WorkspaceStore
     let workspace: Workspace
     let projectId: String?
+    private var toolbarActive: Bool {
+        #if os(macOS)
+        store.selectedSection == (projectId ?? "tasks")
+        #else
+        true
+        #endif
+    }
     @State private var search = ""
     @State private var includeCompleted = false
     @State private var editingProject: FTProject?
@@ -1004,44 +1029,46 @@ struct TasksView: View {
             refreshTasks()
         }
         .toolbar {
-            #if os(macOS)
-            if projectId != nil {
-                ToolbarItem(placement: .navigation) {
-                    Button("Projects", systemImage: "chevron.left") { store.selectSection("projects") }
-                        .help("Back to projects")
-                        .accessibilityIdentifier("backToProjects")
+            if toolbarActive {
+                #if os(macOS)
+                if projectId != nil {
+                    ToolbarItem(placement: .navigation) {
+                        Button("Projects", systemImage: "chevron.left") { store.selectSection("projects") }
+                            .help("Back to projects")
+                            .accessibilityIdentifier("backToProjects")
+                    }
                 }
-            }
-            MacTaskToolbar(text: $search, actionsWidth: 72) {
-                Button("New task", systemImage: "plus") { store.focusCapture() }
-                    .disabled(!store.connected)
-                    .frame(width: 32, height: 30)
-                    .contentShape(Rectangle())
-                    .help("New task")
-                    .accessibilityIdentifier("newTask")
-                if let project = workspace.project(projectId) {
-                    ProjectTaskSettingsMenu(includeCompleted: $includeCompleted, searching: searching) { editingProject = project }
+                MacTaskToolbar(text: $search, actionsWidth: 72) {
+                    Button("New task", systemImage: "plus") { store.focusCapture() }
+                        .disabled(!store.connected)
                         .frame(width: 32, height: 30)
-                } else {
-                    TaskListFilterMenu(includeCompleted: $includeCompleted, projectFilter: $projectFilter,
-                                       projectIsFiltered: projectIsFiltered, allowsProjectSelection: projectId == nil,
-                                       projects: workspace.projectsAlphabetically)
-                        .disabled(searching)
-                        .frame(width: 32, height: 30)
+                        .contentShape(Rectangle())
+                        .help("New task")
+                        .accessibilityIdentifier("newTask")
+                    if let project = workspace.project(projectId) {
+                        ProjectTaskSettingsMenu(includeCompleted: $includeCompleted, searching: searching) { editingProject = project }
+                            .frame(width: 32, height: 30)
+                    } else {
+                        TaskListFilterMenu(includeCompleted: $includeCompleted, projectFilter: $projectFilter,
+                                           projectIsFiltered: projectIsFiltered, allowsProjectSelection: projectId == nil,
+                                           projects: workspace.projectsAlphabetically)
+                            .disabled(searching)
+                            .frame(width: 32, height: 30)
+                    }
                 }
-            }
-            #else
-            ToolbarItem(placement: .primaryAction) {
-                if let project = workspace.project(projectId) {
-                    ProjectTaskSettingsMenu(includeCompleted: $includeCompleted, searching: searching) { editingProject = project }
-                } else {
-                    TaskListFilterMenu(includeCompleted: $includeCompleted, projectFilter: $projectFilter,
-                                       projectIsFiltered: projectIsFiltered, allowsProjectSelection: projectId == nil,
-                                       projects: workspace.projectsAlphabetically)
-                        .disabled(searching)
+                #else
+                ToolbarItem(placement: .primaryAction) {
+                    if let project = workspace.project(projectId) {
+                        ProjectTaskSettingsMenu(includeCompleted: $includeCompleted, searching: searching) { editingProject = project }
+                    } else {
+                        TaskListFilterMenu(includeCompleted: $includeCompleted, projectFilter: $projectFilter,
+                                           projectIsFiltered: projectIsFiltered, allowsProjectSelection: projectId == nil,
+                                           projects: workspace.projectsAlphabetically)
+                            .disabled(searching)
+                    }
                 }
+                #endif
             }
-            #endif
         }
         .sheet(item:$editingProject) { ProjectEditor(store:store,project:$0) }
         .modifier(SectionScrollToTop(store: store, section: "tasks", anchor: projectId == nil ? visibleTasks.first?.id : nil))
@@ -1123,6 +1150,13 @@ private enum ProjectLayout: String {
 struct ProjectsView: View {
     @Bindable var store: WorkspaceStore
     let projects: [FTProject]
+    private var toolbarActive: Bool {
+        #if os(macOS)
+        store.selectedSection == "projects"
+        #else
+        true
+        #endif
+    }
     #if os(macOS)
     @AppStorage("followthrough.mac.projects.layout") private var layout: ProjectLayout = .list
     #else
@@ -1170,27 +1204,29 @@ struct ProjectsView: View {
             }
         }
         .toolbar {
-            #if os(macOS)
-            ToolbarItem(placement: .primaryAction) {
-                Button("New project", systemImage: "plus") { adding = true }
-                    .help("New project")
-                    .accessibilityIdentifier("newProject")
-            }
-            #endif
-            ToolbarItem(placement:.primaryAction) {
-                Menu {
-                    #if !os(macOS)
-                    Button("New project",systemImage:"folder.badge.plus") { adding = true }
+            if toolbarActive {
+                #if os(macOS)
+                ToolbarItem(placement: .primaryAction) {
+                    Button("New project", systemImage: "plus") { adding = true }
+                        .help("New project")
                         .accessibilityIdentifier("newProject")
-                    #endif
-                    Picker("Project view",selection:$layout) {
-                        Label("Grid",systemImage:"square.grid.2x2").tag(ProjectLayout.grid)
-                        Label("List",systemImage:"list.bullet").tag(ProjectLayout.list)
-                    }
-                    .accessibilityIdentifier("projectLayoutPicker")
-                } label: { Label("Project options",systemImage:"ellipsis") }
-                .tint(.primary)
-                .accessibilityIdentifier("projectOptions")
+                }
+                #endif
+                ToolbarItem(placement:.primaryAction) {
+                    Menu {
+                        #if !os(macOS)
+                        Button("New project",systemImage:"folder.badge.plus") { adding = true }
+                            .accessibilityIdentifier("newProject")
+                        #endif
+                        Picker("Project view",selection:$layout) {
+                            Label("Grid",systemImage:"square.grid.2x2").tag(ProjectLayout.grid)
+                            Label("List",systemImage:"list.bullet").tag(ProjectLayout.list)
+                        }
+                        .accessibilityIdentifier("projectLayoutPicker")
+                    } label: { Label("Project options",systemImage:"ellipsis") }
+                    .tint(.primary)
+                    .accessibilityIdentifier("projectOptions")
+                }
             }
         }
         .sheet(item:$editing) { ProjectEditor(store:store,project:$0) }
