@@ -1655,7 +1655,6 @@ function TaskEditor({
           </NativeSelect>
         </Field>
       </div>
-      <p className="duration-help">1 day = 8 hours · 1 week = 40 hours</p>
       <div className="field-row">
         <Field label="Priority">
           <NativeSelect
