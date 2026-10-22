@@ -179,27 +179,43 @@ private struct TaskPrimaryActions: View {
     let onHandoff: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Button(action: onComplete) {
-                Label(completed ? "Reopen task" : "Mark complete", systemImage: "checkmark.circle")
-                    .frame(maxWidth: .infinity)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                completeButton
+                handoffButton
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.roundedRectangle(radius: 9))
-            .tint(.primary)
-            .disabled(!canComplete)
-            .accessibilityHint(!canComplete && !completed ? "Blocked by unfinished tasks. Complete those tasks first." : "")
-            Button(action: onHandoff) {
-                HStack(spacing: 8) {
-                    if openingHandoff { ProgressView().controlSize(.small) }
-                    Label(openingHandoff ? "Opening…" : "Do this for me", systemImage: "sparkles")
-                }.frame(maxWidth: .infinity)
+
+            VStack(alignment: .leading, spacing: 12) {
+                completeButton
+                handoffButton
             }
-            .buttonStyle(FollowthroughActionButtonStyle(fill: .followViolet, foreground: .white))
-            .disabled(!active || openingHandoff)
-            .accessibilityIdentifier("taskHandoff")
         }
         .controlSize(.large)
+    }
+
+    private var completeButton: some View {
+        Button(action: onComplete) {
+            Label(completed ? "Reopen task" : "Mark complete", systemImage: "checkmark.circle")
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(FollowthroughActionButtonStyle(fill: .primary.opacity(0.12), foreground: .primary))
+        .disabled(!canComplete)
+        .accessibilityHint(!canComplete && !completed ? "Blocked by unfinished tasks. Complete those tasks first." : "")
+    }
+
+    private var handoffButton: some View {
+        Button(action: onHandoff) {
+            HStack(spacing: 8) {
+                if openingHandoff { ProgressView().controlSize(.small) }
+                Label(openingHandoff ? "Opening…" : "Do this for me", systemImage: "sparkles")
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(FollowthroughActionButtonStyle(fill: .followViolet, foreground: .white))
+        .disabled(!active || openingHandoff)
+        .accessibilityIdentifier("taskHandoff")
     }
 }
 
