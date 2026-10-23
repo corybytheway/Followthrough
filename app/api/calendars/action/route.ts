@@ -14,7 +14,7 @@ import { decodeCalendarActionToken } from '@/lib/calendar-action-token';
 import { syncCalendars } from '@/lib/calendar-sync';
 import { calendarConfig } from '@/lib/calendar-store';
 import { readWorkspace, mutate } from '@/lib/store';
-import { minutesLabel } from '@/lib/model';
+import { minutesLabel } from '@/lib/task-duration';
 import { jsonBody } from '@/lib/http';
 import { InputError, object, text } from '@/lib/validation';
 import { codexHandoff } from '@/lib/codex-handoff';
