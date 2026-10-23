@@ -154,10 +154,22 @@ export async function retrieveResendEmail(emailId: string, apiKey: string) {
       `Resend could not retrieve email content (${response.status}).`,
     );
   const body = object(await response.json());
+  const headers: Record<string, string> = {};
+  if (
+    body.headers &&
+    typeof body.headers === 'object' &&
+    !Array.isArray(body.headers)
+  ) {
+    for (const [name, value] of Object.entries(body.headers)) {
+      if (typeof value === 'string') headers[name.toLowerCase()] = value;
+    }
+  }
   return {
     from: text(body.from, 'Email sender', 500, true),
     subject: text(body.subject || '(no subject)', 'Email subject', 1000, true),
     text: typeof body.text === 'string' ? body.text : null,
     html: typeof body.html === 'string' ? body.html : null,
+    headers,
+    messageId: typeof body.message_id === 'string' ? body.message_id : null,
   };
 }
