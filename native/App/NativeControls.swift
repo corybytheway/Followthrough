@@ -238,6 +238,7 @@ struct FollowthroughActionButtonStyle: ButtonStyle {
 import AppKit
 
 struct MacTaskToolbar<Actions: View>: ToolbarContent {
+    let store: WorkspaceStore
     @Binding var text: String
     let actionsWidth: CGFloat
     @ViewBuilder let actions: Actions
@@ -245,18 +246,19 @@ struct MacTaskToolbar<Actions: View>: ToolbarContent {
     var body: some ToolbarContent {
         if #available(macOS 26, *) {
             ToolbarItem(placement: .primaryAction) {
-                MacTaskToolbarGroup(text: $text, actionsWidth: actionsWidth, actions: actions)
+                MacTaskToolbarGroup(store: store, text: $text, actionsWidth: actionsWidth, actions: actions)
             }
             .sharedBackgroundVisibility(.hidden)
         } else {
             ToolbarItem(placement: .primaryAction) {
-                MacTaskToolbarGroup(text: $text, actionsWidth: actionsWidth, actions: actions)
+                MacTaskToolbarGroup(store: store, text: $text, actionsWidth: actionsWidth, actions: actions)
             }
         }
     }
 }
 
 private struct MacTaskToolbarGroup<Actions: View>: View {
+    let store: WorkspaceStore
     @Binding var text: String
     let actionsWidth: CGFloat
     let actions: Actions
@@ -267,6 +269,7 @@ private struct MacTaskToolbarGroup<Actions: View>: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            WorkspaceSaveStatus(store: store)
             HStack(spacing: 0) { actions }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.plain)
@@ -278,7 +281,9 @@ private struct MacTaskToolbarGroup<Actions: View>: View {
         }
         // AppKit sees one constant size. Only this SwiftUI layout animates,
         // keeping toolbar reflow out of the hover transition.
-        .frame(width: actionsWidth + 8 + 196, height: 32, alignment: .trailing)
+        // Keep status beside the visible actions, inside the search reservation.
+        .frame(width: 28 + 8 + actionsWidth + 8 + 196, height: 32, alignment: .trailing)
+        .accessibilityElement(children: .contain)
         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: phase)
     }
 }

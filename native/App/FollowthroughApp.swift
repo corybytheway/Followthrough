@@ -246,7 +246,7 @@ struct WorkspaceSection: View {
                     MacWorkspacePage(store: store, active: section == "today") {
                         TodayView(store: store, workspace: workspace)
                     }
-                    MacWorkspacePage(store: store, active: section == "tasks") {
+                    MacWorkspacePage(store: store, active: section == "tasks", showsSaveStatus: false) {
                         TasksView(store: store, workspace: workspace, projectId: nil)
                     }
                     MacWorkspacePage(store: store, active: section == "projects") {
@@ -260,7 +260,7 @@ struct WorkspaceSection: View {
                                 }
                         }
                     } else if !["today", "tasks", "projects"].contains(section) {
-                        MacWorkspacePage(store: store, active: true) {
+                        MacWorkspacePage(store: store, active: true, showsSaveStatus: false) {
                             TasksView(store: store, workspace: workspace, projectId: section)
                         }
                     }
@@ -283,12 +283,13 @@ struct WorkspaceSection: View {
 private struct MacWorkspacePage<Content: View>: View {
     let store: WorkspaceStore
     let active: Bool
+    var showsSaveStatus = true
     @ViewBuilder let content: Content
 
     var body: some View {
         NavigationStack {
             content.toolbar {
-                if active { WorkspaceSaveToolbar(store: store) }
+                if active && showsSaveStatus { WorkspaceSaveToolbar(store: store) }
             }
         }
         .opacity(active ? 1 : 0)
@@ -315,9 +316,11 @@ struct WorkspaceSaveStatus: View {
     @State private var showingDetails = false
 
     private var saving: Bool { store.connected && store.syncing && !store.pending.isEmpty && !store.blockedMutation }
-    private var needsAttention: Bool {
-        store.error != nil || store.suggestionSyncError != nil || store.blockedMutation || !store.connected || (!store.pending.isEmpty && !saving)
+    private var workspaceNeedsAttention: Bool {
+        store.error != nil || store.blockedMutation || !store.connected || (!store.pending.isEmpty && !saving)
     }
+    private var needsAttention: Bool { workspaceNeedsAttention || store.suggestionSyncError != nil }
+    private var attentionLabel: LocalizedStringKey { workspaceNeedsAttention ? "Sync needs attention" : "Task suggestions need attention" }
 
     private var statusSize: CGFloat {
         #if os(iOS)
@@ -341,10 +344,10 @@ struct WorkspaceSaveStatus: View {
                         .frame(width: statusSize, height: statusSize).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Sync needs attention")
+                .accessibilityLabel(attentionLabel)
                 .accessibilityHint("Show details and retry options")
                 .accessibilityIdentifier("workspaceSaveStatus")
-                .help("Sync needs attention")
+                .help(Text(attentionLabel))
             }
         }
         // A transparent, fixed toolbar slot prevents saving transitions from
@@ -363,10 +366,18 @@ private struct WorkspaceSaveDetails: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if let error = store.error ?? store.suggestionSyncError {
+            if let error = store.error {
                 Label(store.blockedMutation ? "Review saved changes" : "Could not sync", systemImage: "exclamationmark.icloud")
                     .font(.headline)
                 Text(error).font(.callout).foregroundStyle(Color.secondary)
+            } else if let error = store.suggestionSyncError {
+                Label("Task suggestions need attention", systemImage: "lightbulb")
+                    .font(.headline)
+                Text(error).font(.callout).foregroundStyle(Color.secondary)
+                if store.connected && store.pending.isEmpty {
+                    Label("All task changes saved", systemImage: "checkmark.icloud")
+                        .font(.callout).foregroundStyle(Color.secondary)
+                }
             } else if !store.pending.isEmpty {
                 Label(store.syncing ? "Saving changes…" : "Saved on this device", systemImage: "icloud.and.arrow.up")
                     .font(.headline)
@@ -381,9 +392,12 @@ private struct WorkspaceSaveDetails: View {
             if !store.connected {
                 Button("Reconnect") { store.connect() }
                     .disabled(store.authorizing)
-            } else if store.error != nil || store.suggestionSyncError != nil || !store.pending.isEmpty || store.blockedMutation {
+            } else if store.error != nil || !store.pending.isEmpty || store.blockedMutation {
                 Button("Retry") { store.retry() }
                     .disabled(store.syncing)
+            } else if store.suggestionSyncError != nil {
+                Button("Retry suggestions") { Task { await store.refreshSuggestions(check: true, force: true) } }
+                    .disabled(store.syncing || store.updatingSuggestions)
             }
             if store.reviewableTaskConflict != nil {
                 Button("Review saved task") { store.reviewSavedTask() }
@@ -1043,7 +1057,7 @@ struct TasksView: View {
                             .accessibilityIdentifier("backToProjects")
                     }
                 }
-                MacTaskToolbar(text: $search, actionsWidth: 72) {
+                MacTaskToolbar(store: store, text: $search, actionsWidth: 72) {
                     Button("New task", systemImage: "plus") { store.focusCapture() }
                         .disabled(!store.connected)
                         .frame(width: 32, height: 30)
