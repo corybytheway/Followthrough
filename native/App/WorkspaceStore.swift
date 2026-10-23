@@ -6,6 +6,7 @@ import WidgetKit
 import Security
 
 @MainActor @Observable final class WorkspaceStore: NSObject {
+    static let shared = WorkspaceStore()
     var workspace: Workspace?
     var suggestions: SuggestionResponse?
     var suggestionsError: String?
@@ -46,8 +47,11 @@ import Security
     @ObservationIgnored private var authState = ""
     @ObservationIgnored private var authorizationServer: String?
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var loaded = false
     @ObservationIgnored private var refreshTask: Task<NativeSession, Error>?
     @ObservationIgnored private var syncRequested = false
+    @ObservationIgnored private var acceptedWatchActions: [String] = []
+    @ObservationIgnored private var shortcutCaptureCounts: [String: Int] = [:]
     @ObservationIgnored private var pendingTaskID: String?
     @ObservationIgnored private var lastSuggestionRevision: Int?
     @ObservationIgnored private var suggestionRefreshTask: Task<SuggestionResponse, Error>?
@@ -102,6 +106,12 @@ import Security
     }
     func start() async {
         guard !started else { return }; started = true
+        loadStoredWorkspace()
+        await sync()
+        synchronizeDeviceTimeZone()
+    }
+    private func loadStoredWorkspace() {
+        guard !loaded else { return }; loaded = true
         NativeSyncLog.record(SharedStorage.extensionsAvailable ? "storage_app_group" : "storage_app_private")
         if let data = Keychain.load(server), let saved = try? JSONDecoder().decode(NativeSession.self, from: data) { session = saved; connected = true }
         #if DEBUG && (os(macOS) || targetEnvironment(simulator))
@@ -116,14 +126,53 @@ import Security
         if session != nil {
             try? SharedStorage.bind(identity)
             if let data = try? Data(contentsOf: cacheURL), let cache = try? JSONDecoder().decode(CachedWorkspace.self, from: data), cache.identity == identity { workspace = cache.workspace }
-            if let data = try? Data(contentsOf: queueURL), let queue = try? JSONDecoder().decode(CachedOutbox.self, from: data), queue.identity == identity { pending = queue.operations }
+            if let data = try? Data(contentsOf: queueURL), let queue = try? JSONDecoder().decode(CachedOutbox.self, from: data), queue.identity == identity {
+                pending = queue.operations
+                acceptedWatchActions = queue.acceptedWatchActions ?? []
+            }
             openPendingTask()
             NativeSyncLog.record("outbox_loaded", count: pending.count)
         }
-        await sync()
-        synchronizeDeviceTimeZone()
+        publishWatchWorkspace()
     }
     private var identity: String { server + ":" + (session?.ownerId ?? "") }
+    var watchWorkspaceID: String? {
+        guard session != nil else { return nil }
+        return SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+    func prepareWatchConnection() {
+        loadStoredWorkspace()
+        // A Watch refresh also fetches a fresh plan when there are no queued
+        // changes and the phone app has not been opened in the foreground.
+        if connected { Task { await sync() } }
+    }
+    var watchPlan: WatchPlanSnapshot? {
+        guard let workspaceID = watchWorkspaceID, let workspace else { return nil }
+        let blocks = workspace.blocks.filter { $0.endDate > .now }.sorted { $0.startDate < $1.startDate }
+        let upcoming = blocks.compactMap { block -> WatchPlanBlock? in
+            guard let task = workspace.tasks.first(where: { $0.id == block.taskId }), task.active else { return nil }
+            return WatchPlanBlock(task: watchTask(task, in: workspace), start: block.startDate, end: block.endDate)
+        }
+        return WatchPlanSnapshot.bounded(workspaceID: workspaceID,
+            updatedAt: lastSynced ?? Date.iso(workspace.plannedAt ?? "") ?? .now,
+            blocks: upcoming, tasks: workspace.tasksForList(includeCompleted: false).map { watchTask($0, in: workspace) })
+    }
+    private func watchTask(_ task: FTTask, in workspace: Workspace) -> WatchPlanTask {
+        let project = workspace.project(task.projectId)
+        return WatchPlanTask(id: task.id, title: String(task.title.prefix(300)),
+            project: project.map { String($0.label.prefix(80)) },
+            remainingMinutes: task.remainingMinutes, updatedAt: task.updatedAt,
+            canComplete: !workspace.hasUnfinishedPrerequisites(for: task),
+            projectName: project.map { String($0.name.prefix(200)) }, projectColor: project?.color,
+            estimateMinutes: task.estimateMinutes, priority: WatchTaskPriority(rawValue: task.priority.rawValue),
+            dueDate: task.dueDate, status: task.status)
+    }
+
+    private func publishWatchWorkspace() {
+        #if os(iOS)
+        PhoneWatchCaptureRelay.shared.publishWorkspace()
+        #endif
+    }
     private var suggestionCacheURL: URL { SharedStorage.directory.appendingPathComponent("suggestions.sealed") }
     private var suggestionCacheKey: SymmetricKey? {
         session.map { SymmetricKey(data: SHA256.hash(data: Data($0.refreshToken.utf8))) }
@@ -279,6 +328,7 @@ import Security
         try Keychain.save(JSONEncoder().encode(value), account: server)
         session = value; connected = true
         try SharedStorage.bind(identity)
+        publishWatchWorkspace()
     }
     private func access(forceRefresh: Bool = false) async throws -> String {
         guard var value = session else { throw APIError.response(401, "Connect your workspace first.") }
@@ -375,6 +425,12 @@ import Security
                             throw APIError.response(0, storageError ?? "Could not save synchronization progress on this device.")
                         }
                         NativeSyncLog.record("mutation_saved", count: pending.count)
+                        #if os(iOS)
+                        if captured != nil { PhoneWatchCaptureRelay.shared.captureSaved(requestID: operation.id) }
+                        #endif
+                        if let captured, shortcutCaptureCounts[operation.id] != nil {
+                            shortcutCaptureCounts[operation.id] = captured.count
+                        }
                         if let captured, captureReceipt?.id == operation.id {
                             captureReceipt?.phase = .saved(captured)
                             if captureText == captureReceipt?.source { captureText = "" }
@@ -449,6 +505,119 @@ import Security
         captureText = source
         captureReceipt = CaptureReceipt(id: operation.id, source: source, phase: .queued(nil))
         return true
+    }
+    /// Shortcuts supplies input and owns its UI; share the app's durable queue.
+    func captureFromShortcut(_ source: String) async throws -> Int? {
+        let source = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !source.isEmpty, source.utf16.count <= 8000 else {
+            throw APIError.response(400, "Enter a task with up to 8,000 characters.")
+        }
+        loadStoredWorkspace()
+        guard session != nil else {
+            throw APIError.response(401, "Open Followthrough and sign in before using this shortcut.")
+        }
+        let operation = PendingMutation(endpoint: "api/native/inbox", body: ["source": .string(source)], title: source)
+        shortcutCaptureCounts[operation.id] = -1
+        defer { shortcutCaptureCounts.removeValue(forKey: operation.id) }
+        guard enqueue(operation) else {
+            throw APIError.response(0, error ?? "Could not save your request on this device.")
+        }
+        // Return as soon as this request is confirmed, without waiting for
+        // unrelated workspace refreshes or altering the user's open draft.
+        for _ in 0..<200 {
+            if let count = shortcutCaptureCounts[operation.id], count >= 0 { return count }
+            try await Task.sleep(for: .milliseconds(100))
+            if !syncing { break }
+        }
+        if let count = shortcutCaptureCounts[operation.id], count >= 0 { return count }
+        if blockedMutation, pending.first?.id == operation.id {
+            throw APIError.response(400, error ?? "This request needs review. It is saved on this device.")
+        }
+        return nil
+    }
+    /// A Watch acknowledgment transfers responsibility only after a durable save.
+    func captureFromWatch(_ request: WatchCaptureRequest) throws {
+        loadStoredWorkspace()
+        guard session != nil else { throw WatchCaptureError.connectPhone }
+        guard request.workspaceID == watchWorkspaceID else { throw WatchCaptureError.accountChanged }
+        if let action = request.taskAction {
+            try acceptWatchAction(request, action: action)
+            return
+        }
+        if let existing = pending.first(where: { $0.id == request.id }) {
+            guard existing.endpoint == "api/native/inbox",
+                  case .string(let source)? = existing.body["source"], source == request.source else {
+                throw WatchCaptureError.invalidRequest
+            }
+            Task { await sync() }
+            return
+        }
+        let group = "capture_" + SHA256.hash(data: Data(((session?.ownerId ?? "") + ":" + request.id).utf8)).map { String(format: "%02x", $0) }.joined()
+        if workspace?.tasks.contains(where: { $0.captureGroupId == group }) == true { return }
+        let operation = PendingMutation(id: request.id, endpoint: "api/native/inbox", body: ["source": .string(request.source)], title: request.source)
+        guard enqueue(operation) else { throw APIError.response(0, error ?? "Could not save your request on this iPhone.") }
+    }
+
+    func watchCaptureResult(for request: WatchCaptureRequest) -> WatchCaptureResult? {
+        guard request.taskAction == nil, request.workspaceID == watchWorkspaceID,
+              !pending.contains(where: { $0.id == request.id }), let workspace else { return nil }
+        let group = "capture_" + SHA256.hash(data: Data(((session?.ownerId ?? "") + ":" + request.id).utf8)).map { String(format: "%02x", $0) }.joined()
+        guard let tasks = MutationResult(state: workspace, result: nil).confirmedCapture(group: group) else { return nil }
+        return WatchCaptureResult(id: request.id, workspaceID: request.workspaceID,
+            tasks: tasks.prefix(16).map { watchTask($0, in: workspace) }, totalTaskCount: tasks.count)
+    }
+
+    func watchCaptureFailure(for request: WatchCaptureRequest) -> String? {
+        guard blockedMutation, pending.first?.id == request.id else { return nil }
+        return error ?? "This capture needs attention in Followthrough on your iPhone. Your request is saved."
+    }
+
+    private func acceptWatchAction(_ request: WatchCaptureRequest, action: WatchTaskAction) throws {
+        if acceptedWatchActions.contains(request.id) { Task { await sync() }; return }
+        if let operation = pending.first(where: { $0.id == request.id }) {
+            guard operation.endpoint == "api/native/workspace", case .string(let id) = operation.body["id"], id == action.taskID else {
+                throw WatchCaptureError.invalidRequest
+            }
+            let previous = acceptedWatchActions
+            acceptedWatchActions = Array((previous + [request.id]).suffix(2048))
+            guard persist() else { acceptedWatchActions = previous; throw WatchCaptureError.storage }
+            Task { await sync() }
+            return
+        }
+        // The server retains request IDs after saving, so transport retries can
+        // never add time twice. A refreshed snapshot also rejects stale actions.
+        guard let workspace, let task = workspace.tasks.first(where: { $0.id == action.taskID }), task.active else {
+            throw WatchTaskActionError.unavailable
+        }
+        guard task.updatedAt == action.updatedAt else { throw WatchTaskActionError.stale }
+        var fields: [String: JSONValue] = ["expectedUpdatedAt": .string(action.updatedAt)]
+        switch action.kind {
+        case .complete:
+            guard !workspace.hasUnfinishedPrerequisites(for: task) else { throw WatchTaskActionError.blocked }
+            fields["status"] = .string("done")
+        case .addTime:
+            let time = try WatchTaskActionPolicy.addedTime(estimate: task.estimateMinutes, remaining: task.remainingMinutes)
+            fields["estimateMinutes"] = .number(Double(time.estimate))
+            fields["remainingMinutes"] = .number(Double(time.remaining))
+        case .postpone, .nextWeek:
+            guard task.status == "ready" else { throw WatchTaskActionError.unavailable }
+            let nextBlock = workspace.blocks.filter { $0.taskId == task.id && $0.endDate > .now }.sorted { $0.startDate < $1.startDate }.first
+            let until = try WatchTaskActionPolicy.postpone(from: nextBlock?.startDate ?? .now,
+                timeZone: workspace.settings.timeZone, workDays: workspace.settings.workDays, dueDate: task.dueDate,
+                nextWeek: action.kind == .nextWeek)
+            fields["notBefore"] = .string(until)
+        case .trash: break
+        }
+        let body: [String: JSONValue] = action.kind == .trash
+            ? ["action": .string("delete_task"), "id": .string(task.id), "expectedUpdatedAt": .string(action.updatedAt)]
+            : ["action": .string("update_task"), "id": .string(task.id), "task": .object(fields)]
+        let operation = PendingMutation(id: request.id, endpoint: "api/native/workspace", body: body, title: task.title, baseTask: task)
+        let previous = acceptedWatchActions
+        acceptedWatchActions = Array((previous + [request.id]).suffix(2048))
+        guard enqueue(operation) else {
+            acceptedWatchActions = previous
+            throw APIError.response(0, error ?? "Could not save this action on your iPhone.")
+        }
     }
     @discardableResult func mutate(action: String, title: String, fields: [String: JSONValue] = [:]) -> Bool {
         var body = fields; body["action"] = .string(action)
@@ -556,7 +725,7 @@ import Security
             // retain the session so disconnection cannot falsely report revocation.
             if (error as? APIError)?.status != 401 { self.error = "Connect to the server to disconnect this device securely. " + error.localizedDescription; return }
         }
-        Keychain.remove(server); session = nil; connected = false; clearLocalData(); updateWidget()
+        Keychain.remove(server); session = nil; connected = false; clearLocalData(); updateWidget(); publishWatchWorkspace()
     }
     private func clearLocalData() {
         suggestions = nil; suggestionsError = nil; suggestionsConnected = false
@@ -564,6 +733,7 @@ import Security
         lastSuggestionRevision = nil
         try? FileManager.default.removeItem(at: suggestionCacheURL)
         workspace = nil; pending = []; error = nil; blockedMutation = false; completionFeedback = [:]
+        acceptedWatchActions = []
         selectedSection = "today"; selectedTask = nil; taskConflict = nil; captureFocused = false; captureText = ""; captureReceipt = nil
         pendingTaskID = nil
         syncRequested = false
@@ -574,7 +744,7 @@ import Security
         guard session != nil else { return false }
         do {
             // Commit the outbox first. Never acknowledge offline capture on a failed write.
-            try JSONEncoder().encode(CachedOutbox(identity:identity,operations:pending)).write(to:queueURL,options:.atomic)
+            try JSONEncoder().encode(CachedOutbox(identity:identity,operations:pending,acceptedWatchActions:acceptedWatchActions)).write(to:queueURL,options:.atomic)
         } catch { storageError = "Could not save on this device: " + error.localizedDescription; self.error = storageError; return false }
         do {
             if let workspace { try JSONEncoder().encode(CachedWorkspace(identity:identity,workspace:workspace)).write(to:cacheURL,options:.atomic) }
@@ -597,6 +767,7 @@ import Security
         let next = workspace?.todayTasks.first
         SharedStorage.savePreview(.init(title:next?.title ?? (connected ? "That’s it for today!" : "Open Followthrough"),taskId:next?.id,project:workspace?.project(next?.projectId)?.name,remaining:next?.remainingLabel,updatedAt:.now))
         WidgetCenter.shared.reloadAllTimelines()
+        publishWatchWorkspace()
     }
     func calendars() async throws -> NativeCalendarStatus { try await authorized("api/native/calendars") }
     func saveCalendars(_ fields: [String: JSONValue]) async throws -> NativeCalendarStatus {
@@ -644,4 +815,3 @@ extension WorkspaceStore: ASWebAuthenticationPresentationContextProviding {
 }
 extension String { var urlSafe: String { replacingOccurrences(of:"+",with:"-").replacingOccurrences(of:"/",with:"_").replacingOccurrences(of:"=",with:"") } }
 private struct CachedWorkspace: Codable { var identity: String; var workspace: Workspace }
-private struct CachedOutbox: Codable { var identity: String; var operations: [PendingMutation] }

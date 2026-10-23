@@ -3,7 +3,12 @@ import SwiftUI
 import AppIntents
 
 @main struct FollowthroughApp: App {
-    @State private var store = WorkspaceStore()
+    @State private var store = WorkspaceStore.shared
+    init() {
+        #if os(iOS)
+        _ = PhoneWatchCaptureRelay.shared
+        #endif
+    }
     #if os(macOS)
     @NSApplicationDelegateAdaptor(FollowthroughMacAppDelegate.self) private var appDelegate
     @State private var captureShortcut = MacCaptureShortcut()

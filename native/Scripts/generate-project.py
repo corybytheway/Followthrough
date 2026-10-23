@@ -19,6 +19,9 @@ appinfo={**base,'CFBundlePackageType':'APPL','CFBundleDisplayName':'$(FOLLOWTHRO
 plist('App.plist',appinfo)
 plist('Widget.plist',{**base,'CFBundlePackageType':'XPC!','NSExtension':{'NSExtensionPointIdentifier':'com.apple.widgetkit-extension'}})
 plist('Share.plist',{**base,'CFBundlePackageType':'XPC!','NSExtension':{'NSExtensionPointIdentifier':'com.apple.share-services','NSExtensionPrincipalClass':'$(PRODUCT_MODULE_NAME).ShareViewController','NSExtensionAttributes':{'NSExtensionActivationRule':{'NSExtensionActivationSupportsText':True,'NSExtensionActivationSupportsWebURLWithMaxCount':1}}}})
+plist('Watch.plist',{**{key:value for key,value in base.items() if key!='FollowthroughAppGroup'},'FollowthroughWatchAppGroup':'$(FOLLOWTHROUGH_APP_GROUP)','CFBundlePackageType':'APPL','WKApplication':True,'WKCompanionAppBundleIdentifier':'$(FOLLOWTHROUGH_COMPANION_BUNDLE_IDENTIFIER)','WKRunsIndependentlyOfCompanionApp':False,'CFBundleURLTypes':[{'CFBundleURLName':'Followthrough Watch','CFBundleURLSchemes':['followthrough']}]})
+plist('WatchWidget.plist',{**{key:value for key,value in base.items() if key!='FollowthroughAppGroup'},'FollowthroughWatchAppGroup':'$(FOLLOWTHROUGH_APP_GROUP)','CFBundlePackageType':'XPC!','NSExtension':{'NSExtensionPointIdentifier':'com.apple.widgetkit-extension'}})
+plist('Watch.entitlements',{'com.apple.security.application-groups':['$(FOLLOWTHROUGH_APP_GROUP)']})
 plist('App.entitlements',{'com.apple.security.app-sandbox':True,'com.apple.security.network.client':True,'com.apple.security.personal-information.calendars':True,'com.apple.security.application-groups':['6G252Y8692.dev.ethosapps.followthrough.local']})
 plist('Extension.entitlements',{'com.apple.security.app-sandbox':True,'com.apple.security.application-groups':['6G252Y8692.dev.ethosapps.followthrough.local']})
 plist('AppMacRelease.entitlements',{'com.apple.security.app-sandbox':True,'com.apple.security.network.client':True,'com.apple.security.personal-information.calendars':True,'com.apple.security.application-groups':['$(FOLLOWTHROUGH_APP_GROUP)']})
@@ -30,6 +33,7 @@ plist('ExtensionIOSDevice.entitlements',{'com.apple.security.application-groups'
 allfiles=sorted(set([str(p.relative_to(root)) for p in root.glob('*/*.swift')]+['Tests/FollowthroughUITests.swift']))
 refs={f:add('file'+f,'PBXFileReference',lastKnownFileType='sourcecode.swift',path=f,sourceTree='<group>') for f in allfiles}
 refs['Assets.xcassets']=add('assets','PBXFileReference',lastKnownFileType='folder.assetcatalog',path='Assets.xcassets',sourceTree='<group>')
+refs['WatchAssets.xcassets']=add('watchassets','PBXFileReference',lastKnownFileType='folder.assetcatalog',path='WatchAssets.xcassets',sourceTree='<group>')
 refs['Config/PrivacyInfo.xcprivacy']=add('privacy','PBXFileReference',lastKnownFileType='text.xml',path='Config/PrivacyInfo.xcprivacy',sourceTree='<group>')
 productrefs=[]; targets=[]
 project_id=ident('project')
@@ -41,7 +45,7 @@ def configs(key,settings,release=None):
         if name == 'Release': config.update(release or {})
         ids.append(add(key+name,'XCBuildConfiguration',name=name,buildSettings=config))
     return add(key+'list','XCConfigurationList',buildConfigurations=ids,defaultConfigurationIsVisible=0,defaultConfigurationName='Debug')
-def target(name,platform,kind,files,extensions=[]):
+def target(name,platform,kind,files,extensions=[],watch=None):
     ext=kind!='app'; bundle='dev.ethosapps.followthrough.local'+('.'+kind if ext else '')
     product=add(name+'product','PBXFileReference',explicitFileType='wrapper.app-extension' if ext else 'wrapper.application',path=('Followthrough Local' if not ext else name)+('.appex' if ext else '.app'),sourceTree='BUILT_PRODUCTS_DIR')
     productrefs.append(product)
@@ -56,6 +60,11 @@ def target(name,platform,kind,files,extensions=[]):
             proxy=add(name+'proxy'+ename,'PBXContainerItemProxy',containerPortal=project_id,proxyType=1,remoteGlobalIDString=ident(ename),remoteInfo=ename)
             deps.append(add(name+'dep'+ename,'PBXTargetDependency',target=ident(ename),targetProxy=proxy))
         phases.append(add(name+'embed','PBXCopyFilesBuildPhase',buildActionMask=2147483647,dstPath='',dstSubfolderSpec=13,files=embeds,name='Embed Extensions',runOnlyForDeploymentPostprocessing=0))
+    if watch:
+        build=add(name+'embed'+watch,'PBXBuildFile',fileRef=ident(watch+'product'),settings={'ATTRIBUTES':['RemoveHeadersOnCopy']})
+        proxy=add(name+'proxy'+watch,'PBXContainerItemProxy',containerPortal=project_id,proxyType=1,remoteGlobalIDString=ident(watch),remoteInfo=watch)
+        deps.append(add(name+'dep'+watch,'PBXTargetDependency',target=ident(watch),targetProxy=proxy))
+        phases.append(add(name+'embedwatch','PBXCopyFilesBuildPhase',buildActionMask=2147483647,dstPath='$(CONTENTS_FOLDER_PATH)/Watch',dstSubfolderSpec=16,files=[build],name='Embed Watch Content',runOnlyForDeploymentPostprocessing=0))
     settings={**common,'PRODUCT_NAME':'Followthrough Local' if not ext else name,'PRODUCT_MODULE_NAME':name.replace('-','_'),'PRODUCT_BUNDLE_IDENTIFIER':bundle,'SDKROOT':'macosx' if platform=='mac' else 'iphoneos','SUPPORTED_PLATFORMS':'macosx' if platform=='mac' else 'iphoneos iphonesimulator','TARGETED_DEVICE_FAMILY':'1,2','INFOPLIST_FILE':'Config/'+('App.plist' if not ext else 'Widget.plist' if kind=='widgets' else 'Share.plist'),'CODE_SIGN_ENTITLEMENTS':'Config/'+(('App.entitlements' if not ext else 'Extension.entitlements') if platform=='mac' else ('AppIOS.entitlements' if not ext else 'ExtensionIOS.entitlements')),'LD_RUNPATH_SEARCH_PATHS':['$(inherited)','@executable_path/../Frameworks' if platform=='mac' else '@executable_path/Frameworks'], 'SKIP_INSTALL':'YES' if ext else 'NO','APPLICATION_EXTENSION_API_ONLY':'YES' if ext else 'NO'}
     settings['FOLLOWTHROUGH_DISPLAY_NAME']='Followthrough Local'
     settings['FOLLOWTHROUGH_APP_GROUP']='6G252Y8692.dev.ethosapps.followthrough.local' if platform=='mac' else 'group.dev.ethosapps.followthrough.local'
@@ -88,8 +97,30 @@ target('FollowthroughWidgetsMac','mac','widgets',widget)
 target('FollowthroughWidgetsIOS','ios','widgets',widget)
 target('FollowthroughShare','ios','share',model+['Share/ShareViewController.swift'])
 app=[f for f in allfiles if f.startswith('App/') or f.startswith('Shared/')]
+watchname='FollowthroughWatch'
+watchproduct=add(watchname+'product','PBXFileReference',explicitFileType='wrapper.application',path='Followthrough Watch.app',sourceTree='BUILT_PRODUCTS_DIR')
+productrefs.append(watchproduct)
+watchfiles=[f for f in allfiles if f.startswith('Watch/')]+['Shared/CaptureIntent.swift','Shared/WatchCapture.swift','Shared/WatchPlan.swift','Shared/WatchCaptureComplicationView.swift']
+watchbuilds=[add(watchname+f,'PBXBuildFile',fileRef=refs[f]) for f in watchfiles]
+watchsettings={**common,'PRODUCT_NAME':'Followthrough Watch','PRODUCT_MODULE_NAME':watchname,'PRODUCT_BUNDLE_IDENTIFIER':'dev.ethosapps.followthrough.local.watchkitapp','SDKROOT':'watchos','SUPPORTED_PLATFORMS':'watchos watchsimulator','WATCHOS_DEPLOYMENT_TARGET':'11.0','TARGETED_DEVICE_FAMILY':'4','INFOPLIST_FILE':'Config/Watch.plist','FOLLOWTHROUGH_COMPANION_BUNDLE_IDENTIFIER':'dev.ethosapps.followthrough.local','CODE_SIGN_STYLE':'Automatic','CODE_SIGN_IDENTITY':'Apple Development','DEVELOPMENT_TEAM':'6G252Y8692','SKIP_INSTALL':'YES','ASSETCATALOG_COMPILER_APPICON_NAME':'AppIcon','LD_RUNPATH_SEARCH_PATHS':['$(inherited)','@executable_path/Frameworks'],'PRODUCT_BUNDLE_IDENTIFIER[sdk=watchos*]':'com.ethos.followthrough.watchkitapp','FOLLOWTHROUGH_COMPANION_BUNDLE_IDENTIFIER[sdk=watchos*]':'com.ethos.followthrough'}
+watchrelease={'PRODUCT_BUNDLE_IDENTIFIER':'com.ethos.followthrough.watchkitapp','FOLLOWTHROUGH_COMPANION_BUNDLE_IDENTIFIER':'com.ethos.followthrough'}
+watchsettings.update({'CODE_SIGN_ENTITLEMENTS':'Config/Watch.entitlements','FOLLOWTHROUGH_APP_GROUP':'group.dev.ethosapps.followthrough.local.watch','FOLLOWTHROUGH_APP_GROUP[sdk=watchos*]':'group.com.ethos.followthrough'})
+watchrelease['FOLLOWTHROUGH_APP_GROUP']='group.com.ethos.followthrough'
+watchwidget='FollowthroughWatchWidgets'
+watchwidgetproduct=add(watchwidget+'product','PBXFileReference',explicitFileType='wrapper.app-extension',path=watchwidget+'.appex',sourceTree='BUILT_PRODUCTS_DIR')
+productrefs.append(watchwidgetproduct)
+watchwidgetfiles=['WatchWidgets/FollowthroughWatchWidgets.swift','Shared/WatchPlan.swift','Shared/WatchCapture.swift','Shared/WatchCaptureComplicationView.swift']
+watchwidgetsettings={**watchsettings,'PRODUCT_NAME':watchwidget,'PRODUCT_MODULE_NAME':watchwidget,'PRODUCT_BUNDLE_IDENTIFIER':'dev.ethosapps.followthrough.local.watchkitapp.widgets','PRODUCT_BUNDLE_IDENTIFIER[sdk=watchos*]':'com.ethos.followthrough.watchkitapp.widgets','INFOPLIST_FILE':'Config/WatchWidget.plist','APPLICATION_EXTENSION_API_ONLY':'YES'}
+watchwidgetsettings.pop('ASSETCATALOG_COMPILER_APPICON_NAME',None)
+watchwidgetphases=[add(watchwidget+'sources','PBXSourcesBuildPhase',buildActionMask=2147483647,files=[add(watchwidget+f,'PBXBuildFile',fileRef=refs[f]) for f in watchwidgetfiles],runOnlyForDeploymentPostprocessing=0),add(watchwidget+'frameworks','PBXFrameworksBuildPhase',buildActionMask=2147483647,files=[],runOnlyForDeploymentPostprocessing=0),add(watchwidget+'resources','PBXResourcesBuildPhase',buildActionMask=2147483647,files=[],runOnlyForDeploymentPostprocessing=0)]
+targets.append(add(watchwidget,'PBXNativeTarget',name=watchwidget,productName=watchwidget,productReference=watchwidgetproduct,productType='com.apple.product-type.app-extension',buildConfigurationList=configs(watchwidget,watchwidgetsettings,{'PRODUCT_BUNDLE_IDENTIFIER':'com.ethos.followthrough.watchkitapp.widgets','FOLLOWTHROUGH_APP_GROUP':'group.com.ethos.followthrough'}),buildPhases=watchwidgetphases,buildRules=[],dependencies=[]))
+watchphases=[add(watchname+'sources','PBXSourcesBuildPhase',buildActionMask=2147483647,files=watchbuilds,runOnlyForDeploymentPostprocessing=0),add(watchname+'frameworks','PBXFrameworksBuildPhase',buildActionMask=2147483647,files=[],runOnlyForDeploymentPostprocessing=0),add(watchname+'resources','PBXResourcesBuildPhase',buildActionMask=2147483647,files=[add(watchname+'assets','PBXBuildFile',fileRef=refs['WatchAssets.xcassets'])],runOnlyForDeploymentPostprocessing=0)]
+watchwidgetproxy=add(watchname+'proxy'+watchwidget,'PBXContainerItemProxy',containerPortal=project_id,proxyType=1,remoteGlobalIDString=ident(watchwidget),remoteInfo=watchwidget)
+watchwidgetdep=add(watchname+'dep'+watchwidget,'PBXTargetDependency',target=ident(watchwidget),targetProxy=watchwidgetproxy)
+watchphases.append(add(watchname+'embedwidgets','PBXCopyFilesBuildPhase',buildActionMask=2147483647,dstPath='',dstSubfolderSpec=13,files=[add(watchname+'embed'+watchwidget,'PBXBuildFile',fileRef=watchwidgetproduct,settings={'ATTRIBUTES':['RemoveHeadersOnCopy']})],name='Embed Watch Complications',runOnlyForDeploymentPostprocessing=0))
+targets.append(add(watchname,'PBXNativeTarget',name=watchname,productName=watchname,productReference=watchproduct,productType='com.apple.product-type.application',buildConfigurationList=configs(watchname,watchsettings,watchrelease),buildPhases=watchphases,buildRules=[],dependencies=[watchwidgetdep]))
 target('FollowthroughMac','mac','app',app,['FollowthroughWidgetsMac'])
-target('FollowthroughIOS','ios','app',app,['FollowthroughWidgetsIOS','FollowthroughShare'])
+target('FollowthroughIOS','ios','app',app,['FollowthroughWidgetsIOS','FollowthroughShare'],watch=watchname)
 for testname, tested, sdk in [('FollowthroughUITests','FollowthroughIOS','iphoneos'),('FollowthroughMacUITests','FollowthroughMac','macosx')]:
     testproduct=add(testname+'product','PBXFileReference',explicitFileType='wrapper.cfbundle',path=testname+'.xctest',sourceTree='BUILT_PRODUCTS_DIR')
     productrefs.append(testproduct)
@@ -113,3 +144,7 @@ for name in ['FollowthroughMac','FollowthroughIOS']:
     (schemes/(name+'.xcscheme')).write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="2700" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{ref}</BuildActionEntry></BuildActionEntries></BuildAction>{testaction}<LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0">{ref}</BuildableProductRunnable></LaunchAction><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>''')
 print('Generated',p)
+
+watchref=f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{ident(watchname)}" BuildableName="Followthrough Watch.app" BlueprintName="{watchname}" ReferencedContainer="container:Followthrough.xcodeproj"/>'
+(schemes/(watchname+'.xcscheme')).write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
+<Scheme LastUpgradeVersion="2700" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{watchref}</BuildActionEntry></BuildActionEntries></BuildAction><LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0">{watchref}</BuildableProductRunnable></LaunchAction><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>''')

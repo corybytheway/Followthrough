@@ -3,159 +3,108 @@
 import { useEffect, useState } from 'react';
 import { Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 
 export default function ShortcutSettings() {
-  const [available, setAvailable] = useState(false);
-  const [connected, setConnected] = useState(false);
-  const [connection, setConnection] = useState('');
+  const [legacyConnected, setLegacyConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+
   useEffect(() => {
     let active = true;
     void fetch('/api/shortcuts/connection', { cache: 'no-store' })
       .then(async (response) => {
-        const result = (await response.json()) as {
-          available?: boolean;
-          connected?: boolean;
-          connection?: string;
-          error?: string;
-        };
-        if (!response.ok)
-          throw new Error(result.error || 'Could not load shortcut settings.');
-        if (active) {
-          setAvailable(result.available === true);
-          setConnected(result.connected === true);
-        }
+        if (!response.ok) return;
+        const result = (await response.json()) as { connected?: boolean };
+        if (active) setLegacyConnected(result.connected === true);
       })
-      .catch((error) => {
-        if (active) setMessage(error.message);
+      .catch(() => {
+        // Native App Shortcuts do not depend on the older connection service.
       });
     return () => {
       active = false;
     };
   }, []);
-  async function change(action: 'connect' | 'disconnect') {
+
+  async function disconnectLegacyShortcut() {
     setBusy(true);
     setMessage('');
-    setConnection('');
     try {
       const response = await fetch('/api/shortcuts/connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action: 'disconnect' }),
       });
-      const result = (await response.json()) as {
-        available?: boolean;
-        connected?: boolean;
-        connection?: string;
-        error?: string;
-      };
+      const result = (await response.json()) as { error?: string };
       if (!response.ok)
-        throw new Error(
-          result.error || 'Could not update the shortcut connection.',
-        );
-      setConnected(action === 'connect');
-      setConnection(result.connection || '');
-      if (action === 'disconnect') setMessage('Shortcut disconnected.');
+        throw new Error(result.error || 'Could not disconnect the shortcut.');
+      setLegacyConnected(false);
+      setMessage('Older shortcut disconnected.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not connect.');
+      setMessage(error instanceof Error ? error.message : 'Could not disconnect.');
     } finally {
       setBusy(false);
     }
   }
+
   return (
     <div className="settings-card">
       <Smartphone />
-      <h2>iPhone Action button</h2>
+      <h2>Apple Shortcuts</h2>
       <p>
-        Talk or type a request. The shortcut saves it directly and confirms when
-        it is saved.
+        Talk or type a task from anywhere with Apple Shortcuts. Install
+        Followthrough on your iPhone and sign in, then add the shortcut once.
       </p>
       <p>
-        Requests become Ready and are planned automatically, even without a
-        deadline. Until AI capture is connected, the planner uses a temporary
-        30-minute estimate.
+        <a href="/shortcuts/Followthrough%20Talk%20or%20Type.shortcut" download>
+          Add Followthrough Talk or Type
+        </a>
       </p>
-      <h3>Connect your shortcut</h3>
-      <ol>
-        <li>
-          <a href="/shortcuts/Followthrough%20Task.shortcut?v=7" download>
-            Install Followthrough Task
-          </a>{' '}
-          and tap Add Shortcut. This version has no setup questions during
-          installation. Replace the older shortcut if asked.
-        </li>
-        <li>
-          Copy your connection code below. In Shortcuts, touch and hold
-          Followthrough Task and choose Edit. Replace {'{}'} in the first Text
-          action with the entire code, then tap Done. You only do this once.
-        </li>
-        <li>
-          On your iPhone, choose Settings → Action Button → Shortcut →
-          Followthrough Task.
-        </li>
-      </ol>
-      <Button
-        disabled={busy || !available}
-        onClick={() => void change('connect')}
-      >
-        {busy
-          ? 'Connecting…'
-          : connected
-            ? 'Replace connection code'
-            : 'Create connection code'}
-      </Button>
-      {connected && !connection && (
-        <p>
-          Already saving tasks? Keep your installed shortcut. Replacing this
-          code disconnects it until you update its first Text action.
-        </p>
-      )}
-      {connection && (
-        <>
-          <label className="field" htmlFor="shortcut-connection-code">
-            <span>Private connection code</span>
-            <Textarea
-              id="shortcut-connection-code"
-              readOnly
-              aria-label="Private connection code"
-              value={connection}
-              rows={3}
-            />
-          </label>
+      <p>
+        Choose Talk to dictate or Type to write. Apple Shortcuts handles your
+        input and permissions, then saves to the account signed into Followthrough
+        without opening the app.
+      </p>
+      <p>
+        To build your own workflow, find Followthrough’s Capture a task action in
+        Shortcuts and pass it the text you want to save. This action is included
+        with the app.
+      </p>
+      <h3>Use your Action button</h3>
+      <p>
+        On a supported iPhone, open Settings → Action Button → Shortcut. Choose
+        Followthrough Talk or Type.
+      </p>
+      <p>You can also say “Siri, capture a task in Followthrough.”</p>
+      <h3>Use your Apple Watch</h3>
+      <p>
+        Open Followthrough on your paired Watch, tap the mint plus, then Done
+        to save. Apple’s text entry lets you dictate or type. Requests wait on
+        your Watch when your iPhone is unavailable and sync through the account
+        signed into your iPhone.
+      </p>
+      <p>
+        Add the Capture a task bolt or Up next complication to your watch face.
+        Up next shows your current or next scheduled task and opens its actions.
+      </p>
+      <p>
+        If you prefer Shortcuts, turn on Show on Apple Watch in the shortcut’s
+        Details to use the same background save action.
+      </p>
+      {legacyConnected && (
+        <details>
+          <summary>Older shortcuts</summary>
+          <p>
+            Your previously connected shortcut can keep working. Disconnect it
+            when you no longer use it.
+          </p>
           <Button
-            variant="outline"
-            onClick={() =>
-              void navigator.clipboard
-                .writeText(connection)
-                .then(() =>
-                  setMessage(
-                    'Copied. Edit Followthrough Task and replace the first Text action with this code.',
-                  ),
-                )
-                .catch(() => setMessage('Select and copy the code above.'))
-            }
+            variant="ghost"
+            disabled={busy}
+            onClick={() => void disconnectLegacyShortcut()}
           >
-            Copy connection code
+            {busy ? 'Disconnecting…' : 'Disconnect older shortcut'}
           </Button>
-          <small>
-            This code is shown once. Keep it private; it lets your shortcut add
-            tasks.
-          </small>
-        </>
-      )}
-      {connected && (
-        <Button
-          variant="ghost"
-          disabled={busy}
-          onClick={() => void change('disconnect')}
-        >
-          Disconnect shortcut
-        </Button>
-      )}
-      {!available && !message && (
-        <small>Shortcut connections are being configured.</small>
+        </details>
       )}
       {message && <output>{message}</output>}
     </div>

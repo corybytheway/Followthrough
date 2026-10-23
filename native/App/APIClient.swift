@@ -107,5 +107,12 @@ enum NativeSyncLog {
         let previous = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         let lines = (previous.split(separator: "\n").suffix(149).map(String.init) + [line]).joined(separator: "\n") + "\n"
         try? Data(lines.utf8).write(to: url, options: .atomic)
+        #if DEBUG && os(iOS)
+        // A normal app-owned cache lets device tools read these content-free
+        // diagnostics without accessing the shared workspace or its outbox.
+        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? Data(lines.utf8).write(to: directory.appendingPathComponent("native-sync-status.log"), options: .atomic)
+        #endif
     }
 }

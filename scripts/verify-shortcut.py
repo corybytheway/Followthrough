@@ -62,18 +62,34 @@ for index, action in enumerate(actions):
                 groups.pop()
 assert not groups
 
-assert by_name['Private connection'][0] == 0
-assert by_name['Private connection'][1]['WFTextActionText'] == '{}', 'The distributed template must remain unpaired'
-assert by_name['Task text'][0] < by_name['Capture request'][0] < by_name['Request ID'][0] < by_name['Save response'][0]
-assert by_name['Save response'][1]['WFHTTPBodyType'] == 'JSON'
-assert by_name['Save response'][1]['WFHTTPMethod'] == 'POST'
-assert by_name['Capture request'][1]['WFHTTPMethod'] == 'GET'
-for name in ['Capture request', 'Save response']:
-    request = by_name[name][1]
-    assert 'WFInput' not in request, 'HTTP actions require WFURL, not WFInput'
-    assert request['WFURL']['WFSerializationType'] == 'WFTextTokenString'
-    assert request['WFURL']['Value']['string'] == 'https://followthrough.site/api/shortcuts/capture'
-print('PASS: secret-free direct capture; no import questions, browser actions, or file/If setup; variables resolve; task input precedes the nonce and authenticated save; both HTTP addresses are populated.')
+native_identifier = 'com.ethos.followthrough.CaptureTaskIntent'
+if actions[-1]['WFWorkflowActionIdentifier'] == native_identifier:
+    assert 'Watch' in workflow['WFWorkflowTypes'], 'The workflow must be enabled for Watch'
+    assert {a['WFWorkflowActionIdentifier'] for a in actions} == {
+        'is.workflow.actions.comment', 'is.workflow.actions.choosefrommenu',
+        'is.workflow.actions.dictatetext', 'is.workflow.actions.ask', native_identifier,
+    }, 'Native capture uses only Apple input actions and the app save action'
+    save = actions[-1]['WFWorkflowActionParameters']
+    assert save['AppIntentDescriptor']['AppIntentIdentifier'] == 'CaptureTaskIntent'
+    assert save['AppIntentDescriptor']['BundleIdentifier'] == 'com.ethos.followthrough'
+    assert save['request']['Value']['attachmentsByRange']['{0, 1}']['OutputUUID'] == by_name['Task text'][1]['UUID']
+    assert by_name['Typed task'][1]['WFInputType'] == 'Text'
+    assert by_name['Dictated task'][1]['WFDictateTextStopListening'] == 'On Tap'
+    assert actions[1]['WFWorkflowActionParameters']['WFMenuItems'] == ['Talk', 'Type']
+    print('PASS: native Talk/Type input; Apple-owned dictation and text entry; one app save action receives the menu output; Watch enabled; no credentials, web requests, or launch actions.')
+else:
+    assert by_name['Private connection'][0] == 0
+    assert by_name['Private connection'][1]['WFTextActionText'] == '{}', 'The distributed template must remain unpaired'
+    assert by_name['Task text'][0] < by_name['Capture request'][0] < by_name['Request ID'][0] < by_name['Save response'][0]
+    assert by_name['Save response'][1]['WFHTTPBodyType'] == 'JSON'
+    assert by_name['Save response'][1]['WFHTTPMethod'] == 'POST'
+    assert by_name['Capture request'][1]['WFHTTPMethod'] == 'GET'
+    for name in ['Capture request', 'Save response']:
+        request = by_name[name][1]
+        assert 'WFInput' not in request, 'HTTP actions require WFURL, not WFInput'
+        assert request['WFURL']['WFSerializationType'] == 'WFTextTokenString'
+        assert request['WFURL']['Value']['string'] == 'https://followthrough.site/api/shortcuts/capture'
+    print('PASS: secret-free direct capture; no import questions, browser actions, or file/If setup; variables resolve; task input precedes the nonce and authenticated save; both HTTP addresses are populated.')
 
 if args.signed_artifact:
     archive = args.signed_artifact.read_bytes()
