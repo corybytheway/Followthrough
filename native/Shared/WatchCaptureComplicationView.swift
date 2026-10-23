@@ -1,4 +1,5 @@
 // Created by Cory McCabe
+#if !os(macOS)
 import SwiftUI
 import WidgetKit
 
@@ -37,3 +38,4 @@ struct WatchCaptureComplicationArtwork: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
+#endif
