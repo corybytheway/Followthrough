@@ -179,19 +179,23 @@ private struct WatchCapturePage: View {
         GeometryReader { geometry in
             ZStack {
                 Color.black.ignoresSafeArea()
-                if isSaving {
-                    WatchCapturePlus(diameter: min(140, geometry.size.width * 0.56), isSaving: true)
-                        .accessibilityLabel("Saving task")
-                        .accessibilityIdentifier("watchCaptureProgress")
-                } else {
-                    Button(action: openInput) {
-                        WatchCapturePlus(diameter: min(140, geometry.size.width * 0.56))
+                Group {
+                    if isSaving {
+                        WatchCapturePlus(diameter: min(140, geometry.size.width * 0.56), isSaving: true)
+                            .accessibilityLabel("Saving task")
+                            .accessibilityIdentifier("watchCaptureProgress")
+                    } else {
+                        Button(action: openInput) {
+                            WatchCapturePlus(diameter: min(140, geometry.size.width * 0.56))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(hasDraft ? Text("Resume input") : Text("Add task"))
+                        .accessibilityHint("Opens Apple’s keyboard. Done saves your task.")
+                        .accessibilityIdentifier("watchNewCapture")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(hasDraft ? Text("Resume input") : Text("Add task"))
-                    .accessibilityHint("Opens Apple’s keyboard. Done saves your task.")
-                    .accessibilityIdentifier("watchNewCapture")
                 }
+                // Center on the display despite the page's unequal vertical safe areas.
+                .offset(y: (geometry.safeAreaInsets.bottom - geometry.safeAreaInsets.top) / 2)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .bottom) {
