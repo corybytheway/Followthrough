@@ -12,7 +12,7 @@ function syncFollowthrough() {
     if (!gateway || !key)
       throw new Error('Configure Followthrough Script Properties first.');
     const response = UrlFetchApp.fetch(
-      'https://followthrough.corybytheway.chatgpt.site/api/calendars/background',
+      'https://followthrough.link/api/calendars/background',
       {
         method: 'post',
         contentType: 'application/json',
@@ -60,7 +60,7 @@ function refreshFollowthroughSuggestions() {
   const gateway = properties.getProperty('SITES_GATEWAY_TOKEN');
   const key = properties.getProperty('SCHEDULER_KEY');
   if (!gateway || !key) return;
-  const response = UrlFetchApp.fetch('https://followthrough.corybytheway.chatgpt.site/api/suggestions/background', {
+  const response = UrlFetchApp.fetch('https://followthrough.link/api/suggestions/background', {
     method:'post', contentType:'application/json', payload:'{}',
     headers:{'OAI-Sites-Authorization':'Bearer '+gateway,'x-followthrough-scheduler-key':key},
     followRedirects:false, muteHttpExceptions:true,
@@ -149,7 +149,7 @@ function doPost(event) {
     const key = properties.getProperty('SCHEDULER_KEY');
     if (!gateway || !key) throw new Error('Followthrough is not configured.');
     const response = UrlFetchApp.fetch(
-      'https://followthrough.corybytheway.chatgpt.site/api/calendars/action',
+      'https://followthrough.link/api/calendars/action',
       {
         method: 'post',
         contentType: 'application/json',
@@ -207,7 +207,7 @@ function relayEmailWebhook_(event) {
     throw new Error('Followthrough email relay is not configured.');
 
   const response = UrlFetchApp.fetch(
-    'https://followthrough.corybytheway.chatgpt.site/api/email/capture',
+    'https://followthrough.link/api/email/capture',
     {
       method: 'post',
       contentType: 'application/json',

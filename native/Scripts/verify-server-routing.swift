@@ -8,9 +8,9 @@ import Foundation
         print("PASS: " + description)
     }
     static func main() throws {
-        let live = "https://followthrough.site"
-        let relay = "https://actions.followthrough.site"
-        let servers = [live, live + "/", "https://followthrough.corymccabe.com",
+        let live = "https://followthrough.link"
+        let relay = "https://actions.followthrough.link"
+        let servers = [live, live + "/", "https://followthrough.site", "https://followthrough.site/", "https://followthrough.site:443/", "https://followthrough.corymccabe.com",
                        "https://followthrough.corymccabe.com/", "https://followthrough.corybytheway.chatgpt.site",
                        "https://followthrough.corybytheway.chatgpt.site:443/"]
         for server in servers {
@@ -23,13 +23,13 @@ import Foundation
             }
         }
         for server in ["http://localhost:4318", "http://127.0.0.1:4319", "https://example.com",
-                       "https://followthrough.site.example.com", "https://followthrough.site:8443",
+                       "https://followthrough.link.example.com", "https://followthrough.link:8443", "https://followthrough.site.example.com", "https://followthrough.site:8443",
                        "https://followthrough.corymccabe.com:8443"] {
             let api = try APIClient(server: server)
             try expect("Custom and local servers stay isolated: \(server)", api.baseURL.absoluteString == server)
             try expect("Custom and local APIs avoid live relay", api.url(for: "api/native/workspace").absoluteString == server + "/api/native/workspace")
         }
-        for server in ["http://followthrough.site", "https://user:password@followthrough.site",
+        for server in ["http://followthrough.link", "https://user:password@followthrough.link", "http://followthrough.site", "https://user:password@followthrough.site",
                        live + "/other", live + "?server=other", live + "#other"] {
             do {
                 _ = try APIClient(server: server)

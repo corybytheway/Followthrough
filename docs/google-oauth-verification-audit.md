@@ -1,5 +1,8 @@
 # Google OAuth verification audit
 
+October 29 follow-up: the historical audit below predates the active Google review, saved video, .link migration, replacement recording, and the reviewer reply sent October 29. Use [the current submission packet](google-verification-submission.md) and [recording evidence](google-verification-demo.md) for current state. No Google approval or security-assessment completion is claimed.
+
+
 Created by Cory McCabe. Checked October 19, 2026.
 
 ## Why users see a warning

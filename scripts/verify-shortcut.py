@@ -88,7 +88,7 @@ else:
         request = by_name[name][1]
         assert 'WFInput' not in request, 'HTTP actions require WFURL, not WFInput'
         assert request['WFURL']['WFSerializationType'] == 'WFTextTokenString'
-        assert request['WFURL']['Value']['string'] == 'https://followthrough.site/api/shortcuts/capture'
+        assert request['WFURL']['Value']['string'] == 'https://followthrough.link/api/shortcuts/capture'
     print('PASS: secret-free direct capture; no import questions, browser actions, or file/If setup; variables resolve; task input precedes the nonce and authenticated save; both HTTP addresses are populated.')
 
 if args.signed_artifact:

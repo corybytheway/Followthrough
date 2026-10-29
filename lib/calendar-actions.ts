@@ -74,7 +74,7 @@ export function calendarActionUrl(value: string): string {
       url.hostname === 'script.google.com' &&
       /^\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url.pathname),
     isFollowthroughRelay =
-      ['actions.followthrough.site', 'followthrough-actions.corybytheway.chatgpt.site', 'follow.corymccabe.com'].includes(url.hostname) &&
+      ['actions.followthrough.link', 'actions.followthrough.site', 'followthrough-actions.corybytheway.chatgpt.site', 'follow.corymccabe.com'].includes(url.hostname) &&
       url.pathname === '/action';
   if (
     url.protocol !== 'https:' ||

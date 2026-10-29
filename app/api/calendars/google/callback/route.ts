@@ -56,7 +56,13 @@ export async function GET(request: Request) {
       const tokens = await googleToken({
         client_id: credentials.google.clientId,
         client_secret: credentials.google.clientSecret,
-        redirect_uri: callbackUrl(),
+        // Keep an in-flight authorization bound to the callback it started
+        // with, even when the canonical domain changes before it returns.
+        redirect_uri: oauth.redirectUri || (
+          ['followthrough.site', 'followthrough.corymccabe.com', 'followthrough.corybytheway.chatgpt.site'].includes(new URL(request.url).hostname)
+            ? new URL('/api/calendars/google/callback', request.url).href
+            : callbackUrl()
+        ),
         code,
         code_verifier: oauth.verifier,
         grant_type: 'authorization_code',

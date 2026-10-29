@@ -1,38 +1,44 @@
 # Google verification demo recording
 
-Created by Cory McCabe. Prepared October 19, 2026.
+Created by Cory McCabe. Updated October 29, 2026.
+## October 29 delivery
 
-## Recording inputs and plan
+The replacement is published **Unlisted**: https://youtu.be/68kxyoq5do8 (**9:31**, 1080p, revised natural neural narration). English (United States) captions are published. The URL was saved in the existing Google Data Access review; the console confirmed **Data access changes saved!** No scopes or justifications were changed. After the owner explicitly authorized sending the prepared reply, it was **sent October 29, 2026**, from hello@ethosapps.dev in the existing Google review thread. Spark history entry 328 reports success, and thread 84307 contains sent message 84763. Google approval remains pending.
 
-- Confirmed mailbox: hello@ethosapps.dev. Cory authorized its use in the unlisted demo. Sign in and handle any password, MFA, or Google consent prompts personally. Do not provide passwords in chat.
-- Confirmed YouTube destination: @ethosapps, channel UC-V0-wU9HjcB655dElVKM4Q, signed in under hello@ethosapps.dev. Upload the finished video as Unlisted.
-- Use the existing product, as requested by Cory. Keep the owner-pilot gate intact. Frame the recording around Ethos and clearly identified sample content; exclude or redact unrelated accounts, private tasks and calendar details before upload. Do not move the real task-calendar destination to make the video.
-- Before the final submission, decide how Google's reviewers will enter the invite-only app. Prepare a limited test identity/access process; never put production passwords, API keys, refresh tokens, or mailbox contents in the form.
+The final local file is `outputs/google-verification/2026-10-28/Followthrough-Google-OAuth-Demo-Natural-Voice-2026-10-29.mp4`, with its matching `.srt`, `narration-natural.md`, `edit-manifest-natural.json`, and `delivery.json`. The original computer-voice export is superseded.
 
-## Recording plan
 
-Aim for a clear 5–7 minute recording in English. Show real app behavior, not a local fixture or prototype. Keep the browser address bar visible when it shows the OAuth client ID; hide credentials, codes, unrelated tabs and private information. If a Google unverified-app prompt appears, Cory must handle it and it should remain visible in the recording as part of the real test flow. Do not imply that approval already exists.
+## Replacement recording
 
-| Segment | Show | Explain |
-| --- | --- | --- |
-| 0:00–0:40 | Public homepage and public privacy policy on actions.followthrough.site | Followthrough turns input into tasks and schedules work; Gmail suggestions are optional. Point to the Gmail/OpenAI transfer and deletion disclosures. |
-| 0:40–1:40 | Open the existing workspace, choose the Ethos Google connection, show the full Google consent screen and return callback | Display Followthrough's name, current logo, requested permissions and client ID. Calendar list/free-busy support availability; event write access supports task blocks on the selected owned calendar. |
-| 1:40–2:40 | Select a sample blocking calendar; create one sample task; show its event; change its schedule and complete/delete that sample task | Demonstrate reading availability, creating/updating/removing only Followthrough task events, and preservation of an unrelated sample appointment. |
-| 2:40–3:40 | In Settings, show Gmail off, the in-app email/OpenAI disclosure, explicit opt-in and the full incremental Gmail consent flow | Read-only access supplies the message bodies needed for requests and replies. The implementation checks a bounded recent window and does not send or modify mail. |
-| 3:40–5:00 | Run the actual check on the sample mailbox; review a real generated suggestion; edit/accept one; dismiss another | Show that suggestions are separate from the plan until accepted, correspond to an existing project, and retain limited provenance rather than full email bodies. An FYI or completed request should not create speculative work. |
-| 5:00–6:00 | Show Gmail disable, export, erase and disconnect/revoke controls | Accepted tasks persist until deleted. Turning off checks differs from revoking Google authorization. Do not activate workspace erasure or clear real pending suggestions in the live product. Explain those controls without destructive actions. |
-| 6:00–7:00 | Brief Mac/iPhone handoff if needed, then return to the real app | Native clients use the same web OAuth client. If any other client is discovered before recording, demonstrate its actual grant/data flow too. |
+The replacement uses the real production app at https://followthrough.link and public homepage/privacy policy at https://actions.followthrough.link/. It was captured from background browser tabs without recording the desktop. Local English narration, chapter headers, and privacy masks are assembled with the scripts in `outputs/google-verification/2026-10-28/`.
 
-The current project has one observed OAuth client: 634149682182-6b834qgclfuof6mco3jj00m9qttlqq23.apps.googleusercontent.com. Never show its client secret. Confirm the client inventory before the recording.
+The recording demonstrates:
 
-## Sample data to prepare
+- The actual Google account selection and unverified-app warning, followed by the full consent page with all five permission details expanded. The owner handled the warning and completed authorization. The same consent page was revisited through browser history to capture its existing-access details; narration states this explicitly.
+- The single web OAuth client used by web, Mac, and iPhone: `634149682182-6b834qgclfuof6mco3jj00m9qttlqq23.apps.googleusercontent.com`. The client inventory was checked live. No client secret appears in the video.
+- Creating a 15-minute task, changing it to 30 minutes, and completing it. Google's Calendar interface shows creation, changed duration, and a fresh search with no results after completion. Its existing display time zone was retained.
+- Explicit Gmail/OpenAI disclosure and opt-in, two real sample messages, two actual generated Gmail suggestions, accepting one, dismissing one, and editing the accepted task.
+- Gmail disable controls, workspace export, privacy/retention information, and the distinction between disabling checks and revoking Google authorization. Workspace erasure was not activated.
+- Why Gmail metadata, Calendar read-only/free-busy, and app-created-calendar access alone cannot provide the demonstrated body analysis and writes to an existing owned calendar.
 
-Use a project named Verification Demo. In the test calendar create an unrelated busy appointment. In the test mailbox prepare a recent request such as “For Verification Demo, please send the sample outline by tomorrow,” an FYI that needs no action, and a request with a sent reply clearly confirming completion. These are preparation examples, not evidence that the feature has produced a suggestion. The actual model run must work before filming.
+These are edited screen recordings with reading holds. Product behavior and source-account results are real. Unrelated private areas are excluded or masked. The recording does not use synthetic suggestions or a fixture workspace.
 
-If the Gmail check shows the previously observed grounding/analysis error, stop recording and fix/retest that failure. Do not substitute synthetic results or edit the recording to imply successful processing.
+## Sample content and restoration
 
-## Upload and submit
+Project: **Verification Demo**, short name **DEMO1028**, ID `3c943211-88d7-47d2-be4d-b396b563388f`.
 
-Upload to YouTube with Visibility set to Unlisted, using a title such as Followthrough – Google OAuth scope verification. Review the full video for private data. Paste the resulting URL into Google Auth Platform → Data Access → YouTube link, save, and re-open Prepare for verification. That page currently lists the demo video as the missing field and disables Confirm. Add reviewer access instructions and confirm the final Google requirements before submission.
+The Calendar destination stayed **Google / cory@behindthefilm.com / ▽ Behind The Film**. The Gmail sample account is **hello@ethosapps.dev**. Both use the same web client. Two controlled requests were sent between the owner's accounts: a sample outline due October 29 and a checklist review due October 30. The real Gmail check produced one suggestion for each.
 
-Google requires the grant flow, app identity/client ID and functionality for each requested sensitive/restricted scope. [Official recording requirements](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification#steps_to_prepare_for_verification)
+Both sample tasks were completed after filming, and the checklist proposal was dismissed. No real tasks were completed or deleted. All six calendar accounts, seven busy-calendar selections, the existing destination, and all four Gmail suggestion settings were retained/restored. See [the CalDAV recovery note](caldav-timezone-recovery.md).
+
+## Delivery and existing review case
+
+Local deliverables are named `Followthrough-Google-OAuth-Demo-2026-10-28.mp4`, matching `.srt`, `narration.md`, and `edit-manifest.json`, under `outputs/google-verification/2026-10-28/`.
+
+The approved unlisted upload destination is **@ethosapps**, channel `UC-V0-wU9HjcB655dElVKM4Q`. Inspect the export for privacy and readable permissions before uploading, and verify playback afterward.
+
+There is already an active Google verification case. The October 23 reviewer email in hello@ethosapps.dev (Spark thread 84307) asks for stronger gmail.readonly/calendar.events.owned functionality proof and the full permission list. Continue the existing case; do not cancel it or create another review. The former video was https://youtu.be/WXGXy9mFs1A. The revised natural-voice replacement is now uploaded and saved as recorded above. The owner subsequently authorized the prepared reviewer reply, which was sent October 29 with the new video URL and scope explanation. See the submission packet for the sent-message evidence.
+
+No scopes were added or removed, no access/owner-pilot gate was widened, and no Google approval or security assessment is claimed. Google consent may still display the previously approved .site policy URL while .link branding is reviewed; that legacy URL redirects to the current policy.
+
+References: [Google demo requirements](https://support.google.com/cloud/answer/13804565?hl=en), [minimum-scope requirements](https://support.google.com/cloud/answer/13807380?hl=en).

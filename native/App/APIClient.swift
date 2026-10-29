@@ -12,13 +12,13 @@ enum APIError: LocalizedError {
     var status: Int? { if case .response(let code, _) = self { return code }; return nil }
 }
 struct APIClient: Sendable {
-    static let liveServer = "https://followthrough.site"
+    static let liveServer = "https://followthrough.link"
     let baseURL: URL
     // Sites keeps the web workspace behind sign-in. Native requests use its
     // dedicated relay, which still requires the device's scoped bearer token.
     private var transportURL: URL {
         baseURL.absoluteString == Self.liveServer
-            ? URL(string: "https://actions.followthrough.site")!
+            ? URL(string: "https://actions.followthrough.link")!
             : baseURL
     }
     private static let session: URLSession = {
@@ -34,7 +34,7 @@ struct APIClient: Sendable {
         else { throw APIError.invalidServer }
         // Old saved servers remain valid Keychain/cache identities. Resolve
         // their network destinations here without moving sessions or outboxes.
-        let liveHosts = ["followthrough.site", "followthrough.corymccabe.com", "followthrough.corybytheway.chatgpt.site"]
+        let liveHosts = ["followthrough.link", "followthrough.site", "followthrough.corymccabe.com", "followthrough.corybytheway.chatgpt.site"]
         if url.scheme == "https", url.port == nil || url.port == 443, liveHosts.contains(url.host ?? "") {
             baseURL = URL(string: Self.liveServer)!
         } else {
