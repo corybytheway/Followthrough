@@ -198,7 +198,11 @@ struct Workspace: Codable, Sendable {
         }
     }
     var todayTasks: [FTTask] {
-        let ids = Set(blocks.filter { $0.endDate > Date() && day($0.startDate) == day(Date()) }.map(\.taskId))
+        todayTasks(at: .now)
+    }
+    func todayTasks(at date: Date) -> [FTTask] {
+        let today = day(date)
+        let ids = Set(blocks.filter { $0.endDate > date && day($0.startDate) == today }.map(\.taskId))
         return availableTasks.filter { ids.contains($0.id) }
     }
     func day(_ date: Date) -> String {

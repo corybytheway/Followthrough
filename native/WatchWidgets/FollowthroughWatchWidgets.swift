@@ -36,8 +36,12 @@ private struct UpNextComplicationView: View {
                 if let block { Text(block.start, style: .time).foregroundStyle(.secondary) }
             }
             .font(.caption2)
-            Text(block?.task.title ?? (entry.snapshot == nil ? "Open Followthrough to sync" : "Nothing scheduled"))
-                .font(.headline).lineLimit(2).privacySensitive()
+            Group {
+                if let block { Text(block.task.title) }
+                else if entry.snapshot == nil { Text("Open Followthrough to sync") }
+                else { Text("That’s it for today!") }
+            }
+            .font(.headline).lineLimit(2).privacySensitive()
             if let block {
                 Text(block.task.remainingLabel).font(.caption2).foregroundStyle(.secondary)
             }
