@@ -7,6 +7,62 @@ import Foundation
         guard condition else { throw Failure(message: name) }
         print("PASS: " + name)
     }
+    static func verifyUpNext(account: String) throws {
+        func date(_ value: String) -> Date { Date.iso(value)! }
+        func task(_ id: String, priority: Priority, due: String? = nil, created: String = "2026-10-01T00:00:00Z") -> FTTask {
+            FTTask(id: id, title: id, projectId: nil, notes: "", source: "", steps: [],
+                   estimateMinutes: 60, remainingMinutes: 60, priority: priority, status: "ready",
+                   dueDate: due, notBefore: nil, blockers: [], splittable: true,
+                   createdAt: created, updatedAt: created)
+        }
+        let low = task("low", priority: .low)
+        let laterDeadline = task("later-deadline", priority: .high, due: "2026-11-04")
+        let newer = task("newer", priority: .high, due: "2026-11-03", created: "2026-10-02T00:00:00Z")
+        let first = task("a-first", priority: .high, due: "2026-11-03")
+        let tied = task("b-tied", priority: .high, due: "2026-11-03")
+        let tasks = [low, laterDeadline, newer, tied, first]
+        let blocks = tasks.enumerated().map { index, task in
+            FTBlock(id: task.id, taskId: task.id,
+                    start: "2026-10-30T\(16 + index):00:00Z", end: "2026-10-30T\(17 + index):00:00Z")
+        } + [FTBlock(id: "monday", taskId: low.id, start: "2026-11-02T17:00:00Z", end: "2026-11-02T18:00:00Z")]
+        let workspace = Workspace(projects: [], tasks: tasks, busy: [], blocks: blocks,
+            settings: .init(timeZone: "America/Los_Angeles", workStart: "09:00", workEnd: "17:00",
+                            workDays: [1,2,3,4,5], maxBlockMinutes: 120, breakEveryMinutes: 120, breakMinutes: 15),
+            currentDate: "2026-10-30", revision: 1, warnings: [])
+        func watchTask(_ task: FTTask) -> WatchPlanTask {
+            .init(id: task.id, title: task.title, project: nil, remainingMinutes: task.remainingMinutes,
+                  updatedAt: task.updatedAt, canComplete: true)
+        }
+        let snapshot = WatchPlanSnapshot.bounded(workspaceID: account, updatedAt: date("2026-10-30T15:00:00Z"),
+            blocks: blocks.map { block in
+                .init(task: watchTask(tasks.first { $0.id == block.taskId }!), start: block.startDate, end: block.endDate)
+            },
+            tasks: tasks.map(watchTask), timeZone: workspace.settings.timeZone, taskOrder: workspace.availableTasks.map(\.id))
+        let decoded = try JSONDecoder().decode(WatchPlanSnapshot.self, from: JSONEncoder().encode(snapshot))
+        try check("The phone delivers its workspace time zone and Up next task order", decoded == snapshot && decoded.valid)
+        for stamp in ["2026-10-30T15:00:00Z", "2026-10-30T16:30:00Z", "2026-10-30T21:00:00Z",
+                      "2026-10-31T01:00:00Z", "2026-10-31T19:00:00Z", "2026-11-02T07:59:59Z", "2026-11-02T08:00:00Z"] {
+            let now = date(stamp)
+            try check("Watch and menu bar agree at \(stamp)", decoded.next(at: now)?.task.id == workspace.todayTasks(at: now).first?.id)
+        }
+        try check("Up next follows priority, deadline, creation and ID order before scheduled time",
+                  decoded.next(at: date("2026-10-30T16:30:00Z"))?.task.id == first.id)
+        try check("The Watch does not show Monday's task after Friday or on the weekend",
+                  decoded.next(at: date("2026-10-31T01:00:00Z")) == nil && decoded.next(at: date("2026-10-31T19:00:00Z")) == nil)
+        try check("Cached timelines advance at local midnight after the daylight-saving change",
+                  decoded.timelineDates(from: date("2026-11-01T20:00:00Z")).contains(date("2026-11-02T08:00:00Z")))
+
+        let evening = WatchPlanBlock(task: watchTask(low), start: date("2026-10-30T23:00:00Z"), end: date("2026-10-31T02:00:00Z"))
+        let latePlan = WatchPlanSnapshot(workspaceID: account, updatedAt: evening.start, blocks: [evening], timeZone: "America/Los_Angeles")
+        try check("Today's work stays visible across UTC midnight in the workspace time zone",
+                  latePlan.next(at: date("2026-10-31T01:00:00Z")) == evening && latePlan.next(at: evening.end) == nil)
+        var invalid = decoded
+        invalid.timeZone = "invalid"
+        try check("Invalid workspace time zones are rejected", !invalid.valid)
+        invalid = decoded
+        invalid.taskOrder = [first.id, first.id]
+        try check("Duplicate ordering IDs are rejected", !invalid.valid)
+    }
     static func main() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ft-watch-queue-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -81,6 +137,7 @@ import Foundation
         try check("The cached complication advances at the current task end", plan.next(at: current.end) == future)
         try check("A finished cached plan shows no task", plan.next(at: future.end) == nil)
         try check("Complication timelines include every future transition once", plan.timelineDates(from: now) == [now, current.end, future.start, future.end])
+        try verifyUpNext(account: accountA)
         let context = WatchWorkspaceLink(workspaceID: accountA, plan: plan)
         try check("The phone can deliver a bounded plan to its paired account", WatchWorkspaceLink(message: context.message) == context)
         var wrongAccount = context.message
@@ -113,10 +170,12 @@ import Foundation
                           projectName: String(repeating: "p", count: 200), projectColor: "#35EAB1",
                           estimateMinutes: 60, priority: .medium, dueDate: "2026-11-02", status: "ready")
         }
-        let bounded = WatchPlanSnapshot.bounded(workspaceID: accountA, updatedAt: now, blocks: [current], tasks: oversizedTasks)
+        let bounded = WatchPlanSnapshot.bounded(workspaceID: accountA, updatedAt: now, blocks: [current], tasks: oversizedTasks,
+                                               timeZone: "UTC", taskOrder: [task.id])
         try check("Large task lists fit the account-bound transport without losing the total count",
                   bounded.valid && (try JSONEncoder().encode(bounded).count) <= 44_000
-                  && bounded.totalTaskCount == 180 && bounded.listedTasks.count < 128 && bounded.next(at: now) == current)
+                  && bounded.totalTaskCount == 180 && bounded.listedTasks.count < 128 && bounded.next(at: now) == current
+                  && bounded.timeZone == "UTC" && bounded.taskOrder == [task.id])
         let boundedLink = WatchWorkspaceLink(workspaceID: accountA, plan: bounded)
         try check("The largest emitted task list passes the receiver's payload guard", WatchWorkspaceLink(message: boundedLink.message) == boundedLink)
         let completion = WatchCaptureResult(id: first.id, workspaceID: accountA, tasks: [detailedTask], totalTaskCount: 1)

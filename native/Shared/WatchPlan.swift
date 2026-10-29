@@ -83,6 +83,9 @@ struct WatchPlanSnapshot: Codable, Equatable, Sendable {
     let blocks: [WatchPlanBlock]
     var tasks: [WatchPlanTask]? = nil
     var totalTaskCount: Int? = nil
+    var timeZone: String? = nil
+    /// The app's priority/deadline order, independent of block or task-list order.
+    var taskOrder: [String]? = nil
 
     /// Older cached plans contain scheduled blocks only. Keep them usable offline.
     var listedTasks: [WatchPlanTask] {
@@ -94,21 +97,30 @@ struct WatchPlanSnapshot: Codable, Equatable, Sendable {
     }
 
     /// Leave room in WatchConnectivity's message for the account and envelope.
-    static func bounded(workspaceID: String, updatedAt: Date, blocks: [WatchPlanBlock], tasks: [WatchPlanTask]) -> Self {
-        var result = Self(workspaceID: workspaceID, updatedAt: updatedAt, blocks: Array(blocks.prefix(24)),
-                          tasks: Array(tasks.prefix(128)), totalTaskCount: tasks.count)
+    static func bounded(workspaceID: String, updatedAt: Date, blocks: [WatchPlanBlock], tasks: [WatchPlanTask],
+                        timeZone: String? = nil, taskOrder: [String]? = nil) -> Self {
+        let retainedBlocks = Array(blocks.prefix(24))
+        let scheduledIDs = Set(retainedBlocks.map { $0.task.id })
+        var result = Self(workspaceID: workspaceID, updatedAt: updatedAt, blocks: retainedBlocks,
+                          tasks: Array(tasks.prefix(128)), totalTaskCount: tasks.count,
+                          timeZone: timeZone, taskOrder: taskOrder?.filter { scheduledIDs.contains($0) })
         while ((try? JSONEncoder().encode(result).count) ?? Int.max) > 44_000 {
             if result.tasks?.isEmpty == false { result.tasks?.removeLast() }
             else if result.blocks.count > 1 {
                 result = Self(workspaceID: workspaceID, updatedAt: updatedAt, blocks: Array(result.blocks.dropLast()),
-                              tasks: result.tasks, totalTaskCount: tasks.count)
+                              tasks: result.tasks, totalTaskCount: tasks.count,
+                              timeZone: result.timeZone, taskOrder: result.taskOrder)
             } else { break }
         }
         return result
     }
 
     func next(at date: Date = .now) -> WatchPlanBlock? {
-        blocks.filter { $0.end > date }.sorted {
+        let calendar = calendar
+        let ranks = Dictionary(uniqueKeysWithValues: (taskOrder ?? []).enumerated().map { ($0.element, $0.offset) })
+        return blocks.filter { $0.end > date && calendar.isDate($0.start, inSameDayAs: date) }.sorted {
+            let a = ranks[$0.task.id] ?? Int.max, b = ranks[$1.task.id] ?? Int.max
+            if a != b { return a < b }
             if $0.start != $1.start { return $0.start < $1.start }
             return $0.task.id < $1.task.id
         }.first
@@ -120,9 +132,15 @@ struct WatchPlanSnapshot: Codable, Equatable, Sendable {
         blocks.filter { $0.task.id == id && $0.end > date }.min { $0.start < $1.start }
     }
 
-    /// Advance at cached block boundaries even while the phone is unavailable.
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone.flatMap(TimeZone.init(identifier:)) ?? .current
+        return calendar
+    }
+
+    /// Advance at block boundaries and local midnight without needing the phone.
     func timelineDates(from now: Date) -> [Date] {
-        [now] + Set(blocks.flatMap { [$0.start, $0.end] }.filter { $0 > now }).sorted()
+        [now] + Set(blocks.flatMap { [calendar.startOfDay(for: $0.start), $0.start, $0.end] }.filter { $0 > now }).sorted()
     }
 
     var valid: Bool {
@@ -130,6 +148,9 @@ struct WatchPlanSnapshot: Codable, Equatable, Sendable {
             && blocks.allSatisfy { $0.task.valid && $0.start < $0.end }
             && tasks.map { $0.count <= 128 && $0.allSatisfy(\.valid) && Set($0.map(\.id)).count == $0.count } != false
             && totalTaskCount.map { $0 >= (tasks?.count ?? 0) } != false
+            && timeZone.map { TimeZone(identifier: $0) != nil } != false
+            && taskOrder.map { $0.count <= 64 && Set($0).count == $0.count
+                && $0.allSatisfy { !$0.isEmpty && $0.utf16.count <= 200 } } != false
     }
 }
 

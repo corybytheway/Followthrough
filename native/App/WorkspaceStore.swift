@@ -155,7 +155,8 @@ import Security
         }
         return WatchPlanSnapshot.bounded(workspaceID: workspaceID,
             updatedAt: lastSynced ?? Date.iso(workspace.plannedAt ?? "") ?? .now,
-            blocks: upcoming, tasks: workspace.tasksForList(includeCompleted: false).map { watchTask($0, in: workspace) })
+            blocks: upcoming, tasks: workspace.tasksForList(includeCompleted: false).map { watchTask($0, in: workspace) },
+            timeZone: workspace.settings.timeZone, taskOrder: workspace.availableTasks.map(\.id))
     }
     private func watchTask(_ task: FTTask, in workspace: Workspace) -> WatchPlanTask {
         let project = workspace.project(task.projectId)
