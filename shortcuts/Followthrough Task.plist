@@ -276,7 +276,7 @@
 						<key>attachmentsByRange</key>
 						<dict/>
 						<key>string</key>
-						<string>https://followthrough.site/api/shortcuts/capture</string>
+						<string>https://followthrough.link/api/shortcuts/capture</string>
 					</dict>
 					<key>WFSerializationType</key>
 					<string>WFTextTokenString</string>
@@ -504,7 +504,7 @@
 						<key>attachmentsByRange</key>
 						<dict/>
 						<key>string</key>
-						<string>https://followthrough.site/api/shortcuts/capture</string>
+						<string>https://followthrough.link/api/shortcuts/capture</string>
 					</dict>
 					<key>WFSerializationType</key>
 					<string>WFTextTokenString</string>

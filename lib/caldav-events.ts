@@ -18,6 +18,17 @@ export function calendarInstant(value: ICAL.Time, timeZone: string): number {
     value.minute,
     value.second,
   );
+  // Expanded CalDAV responses can use an explicit offset label without a
+  // VTIMEZONE, such as GMT-0500. It is a fixed offset, not an IANA region.
+  // Resolved UTC/embedded zones already returned above and stay authoritative.
+  const offset = /^(?:GMT|UTC)([+-])(\d{2}):?(\d{2})$/i.exec(timeZone);
+  if (offset) {
+    const hours = Number(offset[2]), minutes = Number(offset[3]);
+    if (hours < 24 && minutes < 60) {
+      const direction = offset[1] === '-' ? -1 : 1;
+      return target - direction * (hours * 60 + minutes) * 60_000;
+    }
+  }
   let result = target;
   let formatter: Intl.DateTimeFormat;
   try {
@@ -33,7 +44,7 @@ export function calendarInstant(value: ICAL.Time, timeZone: string): number {
     });
   } catch {
     throw new InputError(
-      'An CalDAV event uses an unrecognized time zone. Sync stopped.',
+      `A CalDAV event uses an unrecognized time zone ${JSON.stringify(timeZone.slice(0, 120))}. Sync stopped.`,
     );
   }
   for (let i = 0; i < 4; i++) {

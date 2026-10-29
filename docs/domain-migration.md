@@ -1,13 +1,16 @@
 # Followthrough domain migration
 
-Created by Cory McCabe. Updated October 19, 2026.
+Current status: the web app and primary task email use `.link`; `.site` app/action links and `tasks@followthrough.site` remain compatible. The email cutover used the existing Resend plan.
+
+Created by Cory McCabe. Updated October 28, 2026.
 
 The existing Sites projects remain authoritative; no workspace or credentials are copied to a replacement service.
 
 | Experience | Canonical hostname | Existing compatible hosts |
 | --- | --- | --- |
-| Invite-only planner | https://followthrough.site | followthrough.corymccabe.com, followthrough.corybytheway.chatgpt.site |
-| Public information, privacy, signed calendar actions, Codex context, native API, signed email webhook | https://actions.followthrough.site | follow.corymccabe.com, followthrough-actions.corybytheway.chatgpt.site |
+| Invite-only planner | https://followthrough.link | followthrough.site, followthrough.corymccabe.com, followthrough.corybytheway.chatgpt.site |
+| Public information, privacy, signed calendar actions, Codex context, native API, signed email webhook | https://actions.followthrough.link | actions.followthrough.site, follow.corymccabe.com, followthrough-actions.corybytheway.chatgpt.site |
+| Primary task capture and confirmations | tasks@followthrough.link | tasks@followthrough.site |
 
 The relay forwards allowlisted native requests and signed email/Codex requests using its existing server-held gateway credential. Calendar actions POST through the existing Google Apps Script bridge. Neither task signatures nor gateway/native credentials change. Signed GET links remain on their original host and only POST after the existing browser flow. Old public information pages redirect to the new relay hostname. Old planner document navigation preserves paths and queries; API, MCP, native authorization and hosting/Google callbacks retain their original transport.
 
@@ -42,3 +45,37 @@ PR reconciliation: PR #19 through 89d3789744566fe88b4908e4e41808be2dbda4b2 is in
 Planner Sites version 146, source cfb6f416a60b3d8ad0007d4a2b338a68725066af, deployed successfully with environment revision 9. It includes the redirect repair and Shortcut download version 7, applied to the latest hosted source while preserving concurrent UI work. Existing sharing, runtime secrets and storage bindings were retained. Native distribution, the exported demo, Google data-access approval, assessment and organization migration remain separate outstanding states.
 
 Final privacy alignment: planner version 147 (f7fc6a1178df81557025683a579cb920ece0c858, environment revision 9) and public relay version 25 (86337c4a4fdd6e3ed6d43adbadd6d335fb78fe69, environment revision 2) deployed successfully. Both policies now describe task events on the user-selected owned Google calendar, including the primary calendar, matching the current multi-account/calendar behavior. Both production builds and all five relay public-route tests passed for this wording update. The revised Calendar justification is prepared in the submission packet; Google disables Save while the required video field is empty, so the existing saved justification and scopes are retained.
+
+## Initial calendar-action-only setup on .link (superseded by full cutover)
+
+New calendar action links use `https://actions.followthrough.link/action` through the planner's `CALENDAR_ACTION_URL` runtime setting. This hostname is an alias of the existing public Followthrough Actions Site, with a DNS-only CNAME to `custom-domains.chatgpt.site` and the provider-issued verification TXT records.
+
+The planner remains at `https://followthrough.site`; Manage Task links, Google sign-in callbacks, native API routing, email webhooks, and Codex context URLs retain their existing addresses. Keep `actions.followthrough.site`, `follow.corymccabe.com`, and the original Sites action hostname attached and working. Existing signed links retain their tokens and original transport; do not bulk rewrite calendar events as part of this change. Future event creation or normal event updates use the configured action hostname.
+
+## October 28, 2026 cutover
+
+The apex custom domain is active with TLS. Planner version 160 (source `79a89fbe8450bd379ebe65662508f00a8b7ed755`, environment revision 11) and relay version 26 (source `3639aceb24f1cd2ab72d34cb747d32f202e822f2`, environment revision 2) deployed successfully. Existing custom/public audiences, database bindings, encrypted credentials and legacy custom domains remain in place.
+
+Google Search Console verified `followthrough.link`. Google retains all old authorized domains and callback URLs, plus the new `.link` callback. The public homepage and privacy URL now use `actions.followthrough.link`. Branding and data-access verification remain under review; the Verification Center lists demo-video and minimum-scope issues. No OAuth scopes were added or removed for the migration.
+
+The live Apps Script scheduler and Gmail-suggestions source URLs now use `.link`. The existing web-app deployment was updated in place to version 7, retaining its URL, script properties, execute-as identity and audience. Calendar background sync has a pre-existing CalDAV time-zone error (the app reports its last successful sync as October 27); this domain migration does not resolve that calendar issue.
+
+Resend's existing email.received webhook now targets `https://actions.followthrough.link/api/email/capture` with its original signing secret. The owner selected retirement of only the older `followthrough.corymccabe.com` email domain to free a slot. That domain was removed; `followthrough.site` and `metanote.pro` remain verified. The new `followthrough.link` domain verified sending and receiving using Resend's exact DNS records: DKIM TXT at `resend._domainkey`, DNS-only CNAMEs `rsend` and `send`, MX priority 10 to `receive.forge.rmta.net`, and the supplied DMARC TXT. The app's stored primary forwarding and confirmation address is now `tasks@followthrough.link`, with its original encrypted credentials and six accepted senders retained. `tasks@followthrough.site` remains an alias of that same connection. No plan upgrade or added monthly charge was incurred.
+
+The deployed planner passed 330 tests and the relay passed 24, with successful type checks and production builds. Live checks confirm the new public homepage/privacy return 200, legacy public pages redirect to `.link`, unsigned service requests are rejected, and signed-in legacy planner navigation preserves path/query at `.link`. Synthetic invalid action/context tokens are rejected through both new and old relays. A new signed Shortcut is available. Native routing tests and unsigned Mac/iPhone Release builds passed; no installed native release or App Store distribution was performed.
+
+Local source integration preserves unrelated working changes and the full earlier migration history. The GitHub checkout is older than the production Sites source for some email-confirmation and settings work; the production repositories remain authoritative for deployment. The migration changes were applied to matching local source, with the alias/address-update regression tests, without replacing unrelated production-only features or local UI changes.
+
+Planner version 161 (`5cf68eb378681afdfa04c0851db1dbac0e619f75`, environment revision 11) subsequently deployed successfully with the address-change help corrected to reflect the retained `.site` alias. A replay of an already processed `.site` email at the new Resend webhook endpoint returned HTTP 200 with `duplicate: true` and `ignored: false`, confirming authenticated delivery to the same workspace without another task. The local checkout passed 313 tests; its app/test source type check passed when excluding the existing incomplete archived files under `outputs/` (the unfiltered repository type check still reports those artifact errors).
+
+The owner chose the no-upgrade alternative: retire only Resend's older `followthrough.corymccabe.com` email domain, freeing its third slot for `followthrough.link` while retaining `followthrough.site` and `metanote.pro`. This retirement and the new domain's verification are complete.
+
+The Shortcut downloaded from `https://followthrough.link/shortcuts/Followthrough%20Task.shortcut?v=8` exactly matches the Apple-signed build (SHA-256 `569cdd2eb7b5c2d2b23f298ba3ae48c500ce81576122f2643169b8ce25362b1c`).
+
+A real email from the owner's existing account to `tasks@followthrough.link` created exactly one marked test task, retained the original email source and requested start constraint, and generated a confirmation from `Followthrough <tasks@followthrough.link>`. The temporary task was then archived. Spark's queued-send history reported cancellation, but the actual captured task and received confirmation establish delivery; no second send attempt was made. Earlier replay of a processed `.site` email through the new webhook returned HTTP 200 with `duplicate: true`, preserving the existing idempotency record. Pure alias-resolution tests cover both recipient domains before and after the primary-address change.
+
+Keep both `followthrough.link` and `followthrough.site` domains renewed and their web/email DNS records active. Only the still older `followthrough.corymccabe.com` mail domain was retired; its web hostname remains attached and compatible. Google review completion, the existing CalDAV time-zone sync failure, and native installation/distribution are separate follow-ups.
+
+Completion record: planner version 162 (`b056371ad818c1f329d1554c23b58b5968907335`, environment revision 11) deployed successfully, retaining relay version 26. After the primary email-address change, synthetic webhook requests for both owned aliases reached signature verification and were rejected with HTTP 401; an unknown recipient was ignored with HTTP 200. These probes never retrieved an email, sent a message, or created a task. The `.link` email delivery test task is archived.
+
+Calendar follow-up resolved: the GMT-0500 CalDAV fixed-offset repair is live in planner version 164. Manual and automatic background sync succeeded on October 28. See [the recovery record](caldav-timezone-recovery.md).

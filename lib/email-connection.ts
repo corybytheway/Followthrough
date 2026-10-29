@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import { calendarConfig } from './calendar-store';
 import { seal, unseal } from './calendar-security';
 import { InputError } from './validation';
+import { emailAddressAliases } from './email-addresses';
 
 type Credentials = { apiKey: string; webhookSecret: string };
 type Row = {
@@ -55,8 +56,7 @@ export async function emailCaptureStatus(ownerId: string) {
 }
 
 export async function findEmailConnection(addresses: string[]) {
-  for (const raw of addresses) {
-    const address = raw.trim().toLowerCase();
+  for (const address of new Set(addresses.flatMap(emailAddressAliases))) {
     const row = await env.DB.prepare(
       'SELECT owner_id, inbound_address, allowed_senders, credentials FROM email_connections WHERE inbound_address = ?',
     )
@@ -110,6 +110,18 @@ export async function saveEmailConnection(
     )
     .run();
   return { connected: true, address, allowedSenders };
+}
+
+export async function updateEmailAddress(ownerId: string, value: string) {
+  const address = normalizeAddress(value, 'Inbound address');
+  const result = await env.DB.prepare(
+    'UPDATE email_connections SET inbound_address = ?, updated_at = ? WHERE owner_id = ?',
+  )
+    .bind(address, new Date().toISOString(), ownerId)
+    .run();
+  if (!result.meta.changes)
+    throw new InputError('Connect email capture before changing its address.');
+  return emailCaptureStatus(ownerId);
 }
 
 export async function updateEmailAllowedSenders(

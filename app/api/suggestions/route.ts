@@ -58,6 +58,7 @@ export async function POST(request: Request) {
         const state = randomToken(),
           verifier = randomToken();
         credentials.oauth = {
+          redirectUri: callbackUrl(),
           stateHash: await hash(state),
           verifier,
           expiresAt: Date.now() + 600_000,

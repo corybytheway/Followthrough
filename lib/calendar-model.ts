@@ -28,6 +28,7 @@ export type CalendarCredentials = {
   oauth?: {
     stateHash: string;
     verifier: string;
+    redirectUri?: string;
     expiresAt: number;
     purpose?: 'gmail';
     account?: string;
