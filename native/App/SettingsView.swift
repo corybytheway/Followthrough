@@ -138,14 +138,25 @@ struct SettingsView: View {
 #if os(macOS)
 private struct MenuBarAppearanceSettings: View {
     @AppStorage(MenuBarIconAppearance.monochromeDefaultsKey) private var monochrome = false
+    @AppStorage(MacMenuBarCapture.visibleDefaultsKey) private var showInMenuBar = true
 
     var body: some View {
         Section("Menu bar") {
+            Toggle("Show in the menu bar", isOn: $showInMenuBar)
+                .toggleStyle(.switch)
+                .controlSize(.regular)
+                .tint(Color.followMint)
+                .help("macOS must also allow Followthrough in System Settings → Menu Bar.")
+                .accessibilityIdentifier("showInMenuBar")
             Toggle("Monochrome icon", isOn: $monochrome)
+                .toggleStyle(.switch)
+                .controlSize(.regular)
+                .tint(Color.followMint)
                 .accessibilityIdentifier("monochromeMenuBarIcon")
         }
     }
 }
+
 #endif
 
 private struct WorkHoursSettings: View {
