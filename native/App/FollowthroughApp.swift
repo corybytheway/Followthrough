@@ -1846,7 +1846,8 @@ struct MenuBarContent: View {
             if let task = nextTask {
                 MenuBarTaskSummary(
                     title: task.displayTitle(project: project, scopedProjectID: task.projectId),
-                    minutes: task.remainingMinutes
+                    minutes: task.remainingMinutes,
+                    onOpen: { openTask(task) }
                 )
                 MenuBarTaskActions(
                     completed: store.completionStatus(for: task) == "done",
@@ -1913,6 +1914,13 @@ struct MenuBarContent: View {
 
     private func showMainWindow() {
         openMainWindow()
+    }
+
+    private func openTask(_ task: FTTask) {
+        store.dismissCaptureFocus()
+        // Keep an existing editor and its unsaved changes intact.
+        if store.selectedTask == nil { store.selectedTask = task }
+        showMainWindow()
     }
 
     private func handoff(_ task: FTTask) {
@@ -2025,11 +2033,18 @@ private struct MenuBarHeader: View {
 private struct MenuBarTaskSummary: View {
     let title: String
     let minutes: Int
+    let onOpen: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.system(size: 16, weight: .semibold))
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onOpen) {
+                Text(title).font(.system(size: 16, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Open task in Followthrough")
+            .accessibilityIdentifier("menuBarOpenTask")
             MenuBarTaskDuration(minutes: minutes).font(.caption).foregroundStyle(.secondary)
         }
     }
