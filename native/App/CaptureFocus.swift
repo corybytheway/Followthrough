@@ -56,6 +56,7 @@ import Carbon
 
 /// App-owned status item and shortcut survive closing the workspace window.
 @MainActor @Observable final class MacMenuBarCapture: NSObject {
+    static let visibleDefaultsKey = "followthrough.menuBar.visible"
     private(set) var focusRequestID = 0
     var isShown: Bool { popover.isShown }
     @ObservationIgnored private var statusItem: NSStatusItem?
@@ -87,6 +88,11 @@ import Carbon
         statusItem?.button?.image = monochrome ? MenuBarIconAppearance.monochromeImage : MenuBarIconAppearance.mintImage
     }
 
+    func updateVisibility(_ visible: Bool) {
+        if !visible { popover.performClose(nil) }
+        statusItem?.isVisible = visible
+    }
+
     func showCapture() {
         guard let button = statusItem?.button else { return }
         if !popover.isShown {
@@ -111,6 +117,7 @@ struct MacCaptureShortcutHost: View {
     let menuBar: MacMenuBarCapture
     @Environment(\.openWindow) private var openWindow
     @AppStorage(MenuBarIconAppearance.monochromeDefaultsKey) private var monochrome = false
+    @AppStorage(MacMenuBarCapture.visibleDefaultsKey) private var showInMenuBar = true
 
     var body: some View {
         Color.clear
@@ -121,9 +128,15 @@ struct MacCaptureShortcutHost: View {
                     NSApplication.shared.activate()
                 }
                 menuBar.updateIcon(monochrome: monochrome)
+                menuBar.updateVisibility(showInMenuBar)
                 shortcut.onCapture = { [menuBar, store] in
                     let app = NSApplication.shared
-                    if app.isActive, app.mainWindow?.isVisible == true, !menuBar.isShown {
+                    let visible = UserDefaults.standard.object(forKey: MacMenuBarCapture.visibleDefaultsKey) as? Bool ?? true
+                    if !visible {
+                        openWindow(id: "main")
+                        app.activate()
+                        store.focusCapture()
+                    } else if app.isActive, app.mainWindow?.isVisible == true, !menuBar.isShown {
                         store.focusCapture()
                     } else {
                         menuBar.showCapture()
@@ -132,6 +145,7 @@ struct MacCaptureShortcutHost: View {
                 shortcut.register()
             }
             .onChange(of: monochrome) { _, value in menuBar.updateIcon(monochrome: value) }
+            .onChange(of: showInMenuBar) { _, value in menuBar.updateVisibility(value) }
     }
 }
 
