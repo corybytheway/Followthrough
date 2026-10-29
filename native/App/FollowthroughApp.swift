@@ -1841,11 +1841,11 @@ struct MenuBarContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            let project = store.presentationWorkspace?.projects.first { $0.id == nextTask?.projectId }
+            MenuBarHeader(projectName: project?.name, onOpenApp: showMainWindow)
             if let task = nextTask {
-                let project = store.presentationWorkspace?.projects.first { $0.id == task.projectId }
                 MenuBarTaskSummary(
                     title: task.displayTitle(project: project, scopedProjectID: task.projectId),
-                    projectName: project?.name,
                     minutes: task.remainingMinutes
                 )
                 MenuBarTaskActions(
@@ -1856,7 +1856,6 @@ struct MenuBarContent: View {
                     onHandoff: { handoff(task) }
                 )
             } else {
-                Text("Up next:").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 Text(store.workspace == nil ? "Connect your workspace to get started." : "That’s it for today!")
                     .font(.headline)
             }
@@ -2000,18 +1999,34 @@ private struct MenuBarCaptureComposer: View {
     }
 }
 
-private struct MenuBarTaskSummary: View {
-    let title: String
+private struct MenuBarHeader: View {
     let projectName: String?
-    let minutes: Int
+    let onOpenApp: () -> Void
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             if let projectName {
                 Text("Up next for \(projectName):")
                     .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             } else {
                 Text("Up next:").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             }
+            Spacer(minLength: 0)
+            Button("Open App", action: onOpenApp)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .fixedSize()
+                .help("Open the Followthrough window")
+                .accessibilityIdentifier("menuBarOpenApp")
+        }
+    }
+}
+
+private struct MenuBarTaskSummary: View {
+    let title: String
+    let minutes: Int
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
             Text(title).font(.system(size: 16, weight: .semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
