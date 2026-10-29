@@ -3,6 +3,172 @@ import XCTest
 
 final class FollowthroughMacUITests: XCTestCase {
 
+    @MainActor func testMenuBarCapturePreservesOpenTaskDraft() async throws {
+        continueAfterFailure = false
+        let (app, server) = try await menuBarCaptureApplication()
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout: 15), app.debugDescription)
+        openMenuBar(in: app)
+        app.buttons["menuBarOpenTask"].click()
+        let title = app.textFields["taskTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5), app.debugDescription)
+        title.click()
+        title.typeKey("a", modifierFlags: .command)
+        title.typeText("Unsaved original task draft")
+
+        for source in ["First menu bar capture", "Second menu bar capture"] {
+            openMenuBar(in: app)
+            let input = app.textFields["menuBarCaptureInput"]
+            XCTAssertTrue(input.waitForExistence(timeout: 5), app.debugDescription)
+            input.typeText(source)
+            app.buttons["menuBarCaptureSubmit"].click()
+            XCTAssertTrue(app.staticTexts["1 task added"].waitForExistence(timeout: 10), app.debugDescription)
+            XCTAssertEqual(title.value as? String, "Unsaved original task draft")
+            recordMenuBar("Menu bar capture saved while task draft stays open")
+            app.buttons["menuBarCaptureAnother"].click()
+            XCTAssertTrue(input.waitForExistence(timeout: 5))
+            XCTAssertEqual(input.value as? String, "")
+            input.typeKey(.escape, modifierFlags: [])
+            XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+        }
+
+        let state = try await menuBarFixtureRequest(server, path: "/__fixture/state")
+        let workspace = try XCTUnwrap(state["workspace"] as? [String: Any])
+        let tasks = try XCTUnwrap(workspace["tasks"] as? [[String: Any]])
+        XCTAssertEqual(tasks.count, 3, "Each request must create exactly one task.")
+        XCTAssertEqual(tasks.first?["title"] as? String, "Original menu bar task", "Capture must not save the editor's draft.")
+        app.activate()
+        XCTAssertEqual(title.value as? String, "Unsaved original task draft")
+        app.buttons["saveTask"].click()
+        XCTAssertTrue(title.waitForNonExistence(timeout: 5), "The original editor must still be saveable.")
+        var savedTitle: String?
+        for _ in 0..<25 {
+            let saved = try await menuBarFixtureRequest(server, path: "/__fixture/state")
+            let savedWorkspace = try XCTUnwrap(saved["workspace"] as? [String: Any])
+            let savedTasks = try XCTUnwrap(savedWorkspace["tasks"] as? [[String: Any]])
+            savedTitle = savedTasks.first?["title"] as? String
+            if savedTitle == "Unsaved original task draft" { break }
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        XCTAssertEqual(savedTitle, "Unsaved original task draft")
+    }
+
+    @MainActor func testMenuBarCaptureRetryAndCorrectionPreserveOpenEditor() async throws {
+        continueAfterFailure = false
+        let (app, server) = try await menuBarCaptureApplication(mode: "unavailable")
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout: 15))
+        openMenuBar(in: app)
+        app.buttons["menuBarOpenTask"].click()
+        let title = app.textFields["taskTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        openMenuBar(in: app)
+        var input = app.textFields["menuBarCaptureInput"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.typeText("Queued menu bar capture")
+        app.buttons["menuBarCaptureSubmit"].click()
+        XCTAssertTrue(app.buttons["menuBarCaptureRetry"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Fictional connection unavailable"].waitForExistence(timeout: 10), app.debugDescription)
+        recordMenuBar("Menu bar capture waiting to retry alongside editor")
+        app.typeKey(.escape, modifierFlags: [])
+        openMenuBar(in: app)
+        XCTAssertTrue(app.buttons["menuBarCaptureRetry"].waitForExistence(timeout: 5), "The queued receipt must survive reopening.")
+        _ = try await menuBarFixtureRequest(server, path: "/__fixture/mode", body: ["mode": "online"])
+        app.buttons["menuBarCaptureRetry"].click()
+        XCTAssertTrue(app.staticTexts["1 task added"].waitForExistence(timeout: 10), app.debugDescription)
+        let state = try await menuBarFixtureRequest(server, path: "/__fixture/state")
+        let attempts = try XCTUnwrap(state["attempts"] as? [[String: Any]])
+        XCTAssertGreaterThanOrEqual(attempts.count, 2)
+        XCTAssertEqual(Set(attempts.compactMap { $0["requestId"] as? String }).count, 1, "Retry must retain the durable request ID.")
+
+        app.buttons["menuBarCaptureAnother"].click()
+        _ = try await menuBarFixtureRequest(server, path: "/__fixture/mode", body: ["mode": "rejected"])
+        input = app.textFields["menuBarCaptureInput"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.typeText("Rejected menu bar capture")
+        app.buttons["menuBarCaptureSubmit"].click()
+        XCTAssertTrue(app.buttons["menuBarCaptureEdit"].waitForExistence(timeout: 10), app.debugDescription)
+        app.buttons["menuBarCaptureEdit"].click()
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, "Rejected menu bar capture")
+        _ = try await menuBarFixtureRequest(server, path: "/__fixture/mode", body: ["mode": "online"])
+        input.click()
+        input.typeKey("a", modifierFlags: .command)
+        input.typeText("Corrected menu bar capture")
+        app.buttons["menuBarCaptureSubmit"].click()
+        XCTAssertTrue(app.staticTexts["1 task added"].waitForExistence(timeout: 10))
+        XCTAssertEqual(title.value as? String, "Original menu bar task")
+        let final = try await menuBarFixtureRequest(server, path: "/__fixture/state")
+        let workspace = try XCTUnwrap(final["workspace"] as? [String: Any])
+        let tasks = try XCTUnwrap(workspace["tasks"] as? [[String: Any]])
+        XCTAssertEqual(tasks.count, 3, "A retry and correction must each save once.")
+    }
+
+    @MainActor func testMenuBarCaptureWithoutEditorOpensAppReceipt() async throws {
+        continueAfterFailure = false
+        let (app, _) = try await menuBarCaptureApplication()
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.textFields["captureInput"].waitForExistence(timeout: 15))
+        openMenuBar(in: app)
+        let input = app.textFields["menuBarCaptureInput"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.typeText("Capture with no open editor")
+        app.buttons["menuBarCaptureSubmit"].click()
+        XCTAssertTrue(app.buttons["captureDone"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["1 task added"].exists)
+        XCTAssertFalse(app.buttons["menuBarCaptureAnother"].exists)
+        record(app, "Menu bar capture still presents app receipt without an editor")
+    }
+
+    @MainActor private func openMenuBar(in app: XCUIApplication) {
+        app.activate()
+        let item = app.descendants(matching: .any)["followthroughMenuBar"].firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5), app.debugDescription)
+        item.click()
+    }
+
+    @MainActor private func recordMenuBar(_ name: String) {
+        // A window screenshot crops the popover above the workspace window.
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor private func menuBarCaptureApplication(mode: String = "online") async throws -> (XCUIApplication, String) {
+        let url = URL(fileURLWithPath: "/tmp/ft-menu-bar-capture/fixture.json")
+        guard let data = try? Data(contentsOf: url),
+              let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let server = fixture["server"] as? String,
+              ["127.0.0.1", "localhost"].contains(URL(string: server)?.host ?? ""),
+              let session = fixture["session"] as? [String: Any],
+              session["ownerId"] as? String == "menu-bar-capture-test" else {
+            throw XCTSkip("Start native/Scripts/serve-menu-bar-capture-fixture.py first.")
+        }
+        _ = try await menuBarFixtureRequest(server, path: "/__fixture/reset", body: ["mode": mode])
+        let app = XCUIApplication()
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-server", server,
+                               "-followthrough.menuBar.visible", "YES"]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = try JSONSerialization.data(withJSONObject: session).base64EncodedString()
+        app.launchEnvironment["FOLLOWTHROUGH_LOCAL_STORAGE"] = "menu-bar-capture-\(UUID().uuidString)"
+        return (app, server)
+    }
+
+    @MainActor private func menuBarFixtureRequest(_ server: String, path: String, body: [String: String]? = nil) async throws -> [String: Any] {
+        var request = URLRequest(url: try XCTUnwrap(URL(string: server + path)))
+        if let body {
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
     @MainActor func testSuggestedTasksPreviewAndDirectAcceptance() async throws {
         continueAfterFailure = false
         let native = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
