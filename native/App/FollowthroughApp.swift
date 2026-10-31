@@ -1862,8 +1862,15 @@ struct MenuBarContent: View {
             }
             if let handoffError { Text(handoffError).font(.callout).foregroundStyle(.red) }
             Divider()
-            MenuBarCaptureComposer(text: $store.captureText, submitting: submitting,
-                                   error: captureError, focusRequestID: menuBar.focusRequestID, onSubmit: submitCapture)
+            if store.selectedTask != nil, let receipt = store.captureReceipt {
+                MenuBarCaptureReceipt(receipt: receipt, connected: store.connected,
+                                      onDone: { store.finishCapture() },
+                                      onRetry: { if store.connected { store.retry() } else { store.connect() } },
+                                      onEdit: store.editBlockedCapture)
+            } else {
+                MenuBarCaptureComposer(text: $store.captureText, submitting: submitting,
+                                       error: captureError, focusRequestID: menuBar.focusRequestID, onSubmit: submitCapture)
+            }
         }
         .padding(12)
         .frame(width: 340)
@@ -1888,9 +1895,6 @@ struct MenuBarContent: View {
     private func submitCapture() {
         guard !submitting, !store.captureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         guard store.workspace != nil else { showMainWindow(); return }
-        guard store.selectedTask == nil else {
-            captureError = "Finish or cancel the open task edit before adding a request."; return
-        }
         if store.captureReceipt != nil { showCaptureResult(); return }
         guard !store.blockedMutation else {
             captureError = "Review your waiting changes in Followthrough before adding a request."; return
@@ -1905,10 +1909,11 @@ struct MenuBarContent: View {
 
     private func showCaptureResult() {
         submittedCaptureID = nil
-        if store.selectedTask == nil {
-            store.selectedSection = "today"
-            store.focusCapture()
-        }
+        // Keep the result in the menu bar while another task's draft is open.
+        // Capture uses its own durable request and must not dismiss that editor.
+        guard store.selectedTask == nil else { return }
+        store.selectedSection = "today"
+        store.focusCapture()
         showMainWindow()
     }
 
@@ -1950,6 +1955,52 @@ struct MenuBarContent: View {
     }
 }
 
+private struct MenuBarCaptureReceipt: View {
+    let receipt: CaptureReceipt
+    let connected: Bool
+    let onDone: () -> Void
+    let onRetry: () -> Void
+    let onEdit: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch receipt.phase {
+            case .sending:
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Adding to your plan…")
+                }
+            case .saved(let tasks):
+                Label(tasks.count == 1 ? "1 task added" : "\(tasks.count) tasks added", systemImage: "checkmark.circle.fill")
+                    .fontWeight(.semibold)
+                Button("Add another", action: onDone)
+                    .accessibilityIdentifier("menuBarCaptureAnother")
+            case .queued(let message):
+                Label("Saved on this device", systemImage: "tray.and.arrow.down")
+                    .fontWeight(.semibold)
+                Text(message ?? "Waiting to sync with your workspace. Your request will be added when the connection is available.")
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("Keep working", action: onDone)
+                    Spacer()
+                    Button(connected ? "Retry now" : "Reconnect", action: onRetry)
+                        .accessibilityIdentifier("menuBarCaptureRetry")
+                }
+            case .needsAttention(let message):
+                Label("Couldn’t add this request", systemImage: "exclamationmark.circle")
+                    .fontWeight(.semibold)
+                Text(message).foregroundStyle(.secondary)
+                Button("Edit request", action: onEdit)
+                    .accessibilityIdentifier("menuBarCaptureEdit")
+            }
+        }
+        .font(.callout)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("menuBarCaptureReceipt")
+    }
+}
+
 private struct MenuBarCaptureComposer: View {
     @Binding var text: String
     let submitting: Bool
@@ -1973,7 +2024,13 @@ private struct MenuBarCaptureComposer: View {
                     .lineLimit(1...4)
                     .focused($inputFocused)
                     .defaultFocus($inputFocused, true)
-                    .onAppear { inputFocused = true }
+                    .task {
+                        // The field is recreated after Add another or Edit request.
+                        // Wait for it to attach before restoring keyboard focus.
+                        await Task.yield()
+                        guard !Task.isCancelled else { return }
+                        inputFocused = true
+                    }
                     .onDisappear { inputFocused = false }
                     .onChange(of: focusRequestID) { inputFocused = true }
                     .onSubmit(onSubmit)
