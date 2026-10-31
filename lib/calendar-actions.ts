@@ -1,5 +1,6 @@
 // Created by Cory McCabe
-import { addedTaskTime, type Task, type Workspace } from './model';
+import type { Task, Workspace } from './model';
+import { addedTaskTime } from './task-duration';
 import { hmac } from './calendar-security';
 import { localDay, nextWorkDay } from './scheduler';
 import { InputError } from './validation';

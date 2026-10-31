@@ -9,7 +9,7 @@ import {
   taskEditorDurations,
   addedTaskTime,
   MAX_TASK_MINUTES,
-} from '../lib/model';
+} from '../lib/task-duration';
 
 void test('task durations use an eight-hour day and forty-hour week without duplicate choices', () => {
   assert.deepEqual(TASK_DURATION_PRESETS.map(minutesLabel), [
