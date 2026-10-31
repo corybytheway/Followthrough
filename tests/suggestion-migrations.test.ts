@@ -29,8 +29,8 @@ function databaseSchema(database: DatabaseSync) {
   });
 }
 
-void test('journaled suggestion snapshots form a continuous chain and match their actual SQL migrations', async () => {
-  for (const index of [8, 9]) {
+void test('journaled snapshots form a continuous chain and match their actual SQL migrations', async () => {
+  for (const { idx: index } of journal.entries.filter((entry) => entry.idx >= 8)) {
     const previous = snapshot(index - 1);
     const current = snapshot(index);
     assert.equal(current.prevId, previous.id);
@@ -54,7 +54,7 @@ void test('journaled suggestion snapshots form a continuous chain and match thei
 });
 
 void test('the latest journal snapshot has no migration diff against the current Drizzle schema', async () => {
-  const latest = snapshot(9);
+  const latest = snapshot(journal.entries.at(-1)!.idx);
   const current = await generateSQLiteDrizzleJson(schema, latest.id);
   assert.deepEqual(await generateSQLiteMigration(latest, current), []);
 });

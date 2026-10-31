@@ -113,6 +113,20 @@ export const emailConnections = sqliteTable('email_connections', {
   updatedAt: text('updated_at').notNull(),
 });
 
+// Persist successful capture receipts across webhook retries and replays.
+export const emailCaptureReceipts = sqliteTable(
+  'email_capture_receipts',
+  {
+    ownerId: text('owner_id').notNull(),
+    emailId: text('email_id').notNull(),
+    payload: text('payload').notNull(),
+    createdAt: integer('created_at').notNull(),
+    sentEmailId: text('sent_email_id'),
+    sentAt: integer('sent_at'),
+  },
+  (table) => [primaryKey({ columns: [table.ownerId, table.emailId] })],
+);
+
 // One active Mac per owner. Pairing codes expire; only hashed device keys are stored.
 export const codexDevices = sqliteTable(
   'codex_devices',
