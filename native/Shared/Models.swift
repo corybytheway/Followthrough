@@ -147,6 +147,30 @@ struct FTTask: Codable, Identifiable, Hashable, Sendable {
         return parts.joined(separator: " ")
     }
 }
+struct TaskDeadline {
+    let date: Date
+    let dayOffset: Int
+    let includesYear: Bool
+    let timeZone: TimeZone
+
+    init?(day: String?, relativeTo now: Date, timeZone: TimeZone) {
+        guard let day, day.utf8.count == 10 else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        // Deadlines are calendar days in the workspace, not UTC timestamps.
+        let parser = DateFormatter()
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.calendar = calendar
+        parser.timeZone = timeZone
+        parser.dateFormat = "yyyy-MM-dd"
+        parser.isLenient = false
+        guard let date = parser.date(from: day), parser.string(from: date) == day else { return nil }
+        self.date = date
+        self.timeZone = timeZone
+        dayOffset = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: date).day ?? 0
+        includesYear = calendar.component(.year, from: date) != calendar.component(.year, from: now)
+    }
+}
 struct FTBlock: Codable, Identifiable, Hashable, Sendable {
     var id: String; var taskId: String; var start: String; var end: String
     var startDate: Date { Date.iso(start) ?? .distantPast }

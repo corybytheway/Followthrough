@@ -792,7 +792,7 @@ struct TodayTaskList: View {
                 Button("View all tasks →") { store.selectedSection = "tasks" }.buttonStyle(.plain).foregroundStyle(Color.followAccent)
             } else {
                 VStack(spacing:0) { ForEach(workspace.todayTasks) { task in
-                    TaskRow(task:task,project:workspace.project(task.projectId),completionStatus:store.completionStatus(for:task),completionEnabled:store.canComplete(task, in:workspace),blocked:workspace.hasUnfinishedPrerequisites(for:task),warning:workspace.warnings.first { $0.taskId == task.id && ["deadline", "capacity"].contains($0.reason) }?.message,onSelect:{store.selectedTask = task},onComplete:{store.complete(task)})
+                    TaskRow(task:task,project:workspace.project(task.projectId),timeZone:workspace.settings.timeZone,completionStatus:store.completionStatus(for:task),completionEnabled:store.canComplete(task, in:workspace),blocked:workspace.hasUnfinishedPrerequisites(for:task),warning:workspace.warnings.first { $0.taskId == task.id && ["deadline", "capacity"].contains($0.reason) }?.message,onSelect:{store.selectedTask = task},onComplete:{store.complete(task)})
                     if task.id != workspace.todayTasks.last?.id { Divider().padding(.leading,70) }
                 } }
                 .background(Color.card,in:RoundedRectangle(cornerRadius:18))
@@ -805,6 +805,7 @@ struct TaskRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let task: FTTask
     let project: FTProject?
+    let timeZone: String
     var scopedProjectID: String? = nil
     var completionStatus: String? = nil
     var completionEnabled = true
@@ -842,12 +843,7 @@ struct TaskRow: View {
                             SearchHighlightedText(text: project.name, query: searchQuery, muted: unavailable).foregroundStyle(unavailable ? Color.secondary : Color.primary).lineLimit(1)
                         }.font(.system(size:12))
                     }
-                    HStack(spacing:12) {
-                        Text(task.remainingLabel)
-                        if !task.steps.isEmpty { Text("\(task.steps.filter(\.done).count)/\(task.steps.count) steps") }
-                        if unavailable { Text("Blocked") }
-                        if task.priority == .top || task.priority == .high { Text("\(task.priority.title) priority").fontWeight(.bold).foregroundStyle(unavailable ? Color.secondary : task.priority == .top ? Color.red : Color(hex:"#ffae00")) }
-                    }.font(.system(size:12)).foregroundStyle(.secondary)
+                    TaskRowMetadata(task: task, timeZone: timeZone, completed: completed, unavailable: unavailable)
                     if let excerpt = TaskSearch.excerpt(for: task, query: searchQuery) {
                         TaskSearchExcerptView(excerpt: excerpt, muted: unavailable)
                             .accessibilityIdentifier("taskSearchExcerpt_\(task.id)")
@@ -869,6 +865,81 @@ struct TaskRow: View {
             }.buttonStyle(.plain)
             Image(systemName:"arrow.up.right").font(.system(size:12,weight:.medium)).foregroundStyle(.secondary).padding(.top,5)
         }.padding(.horizontal,14).padding(.vertical,14)
+    }
+}
+private struct TaskRowMetadata: View {
+    let task: FTTask
+    let timeZone: String
+    let completed: Bool
+    let unavailable: Bool
+
+    private var hasStatus: Bool { unavailable || task.priority == .top || task.priority == .high }
+
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            let deadline = TaskDeadline(day: task.dueDate, relativeTo: context.date, timeZone: TimeZone(identifier: timeZone) ?? .current)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(task.remainingLabel)
+                    if let deadline { TaskDeadlineText(deadline: deadline, completed: completed) }
+                    if hasStatus { TaskRowStatus(priority: task.priority, unavailable: unavailable) }
+                }
+                .fixedSize(horizontal: true, vertical: true)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(task.remainingLabel).fixedSize()
+                        if let deadline {
+                            TaskDeadlineText(deadline: deadline, completed: completed)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    if hasStatus { TaskRowStatus(priority: task.priority, unavailable: unavailable) }
+                }
+            }
+        }
+        .font(.system(size: 12))
+        .foregroundStyle(.secondary)
+    }
+}
+
+private struct TaskRowStatus: View {
+    let priority: Priority
+    let unavailable: Bool
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            if unavailable { Text("Blocked") }
+            if priority == .top || priority == .high {
+                Text("\(priority.title) priority")
+                    .fontWeight(.bold)
+                    .foregroundStyle(unavailable ? Color.secondary : priority == .top ? Color.red : Color(hex: "#ffae00"))
+            }
+        }
+    }
+}
+
+private struct TaskDeadlineText: View {
+    @Environment(\.locale) private var locale
+    let deadline: TaskDeadline
+    let completed: Bool
+
+    private var overdue: Bool { deadline.dayOffset < 0 && !completed }
+    private var dateFormat: Date.FormatStyle {
+        var format = Date.FormatStyle.dateTime.month(.abbreviated).day()
+        if deadline.includesYear { format = format.year() }
+        format.locale = locale
+        format.timeZone = deadline.timeZone
+        return format
+    }
+
+    var body: some View {
+        Group {
+            if overdue { Text("Overdue \(deadline.date, format: dateFormat)") }
+            else if deadline.dayOffset == 0 { Text("Due today") }
+            else if deadline.dayOffset == 1 { Text("Due tomorrow") }
+            else { Text("Due \(deadline.date, format: dateFormat)") }
+        }
+        .foregroundStyle(overdue ? Color.red : Color.secondary)
     }
 }
 private struct SearchHighlightedText: View {
@@ -1028,7 +1099,7 @@ struct TasksView: View {
                 Text("No tasks match these filters").foregroundStyle(.secondary)
             }
             ForEach(visibleTasks) { task in
-                TaskRow(task:task,project:workspace.project(task.projectId),scopedProjectID:scopedProjectID,completionStatus:store.completionStatus(for:task),completionEnabled:store.canComplete(task, in:workspace),blocked:workspace.hasUnfinishedPrerequisites(for:task),warning:workspace.warnings.first { $0.taskId == task.id && ["deadline", "capacity"].contains($0.reason) }?.message,searchQuery:search,onSelect:{store.selectedTask = task},onComplete:{store.complete(task)}).listRowInsets(EdgeInsets())
+                TaskRow(task:task,project:workspace.project(task.projectId),timeZone:workspace.settings.timeZone,scopedProjectID:scopedProjectID,completionStatus:store.completionStatus(for:task),completionEnabled:store.canComplete(task, in:workspace),blocked:workspace.hasUnfinishedPrerequisites(for:task),warning:workspace.warnings.first { $0.taskId == task.id && ["deadline", "capacity"].contains($0.reason) }?.message,searchQuery:search,onSelect:{store.selectedTask = task},onComplete:{store.complete(task)}).listRowInsets(EdgeInsets())
                     .id(task.id)
             }
         }
