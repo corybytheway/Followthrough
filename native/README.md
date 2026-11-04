@@ -186,3 +186,8 @@ Control–Option–F uses the same workspace capture as Command–N while the ma
 Watch UI rendering fixtures are available only in Debug simulator builds. Launch with `FOLLOWTHROUGH_WATCH_PREVIEW=capture`, `tasks`, `details`, `actions`, `saving`, `queued`, `saved`, `multiple`, or `priorities` to use fictional data without credentials, a real outbox, or Watch Connectivity delivery. `complication` and `complication-corner` render the shared full-color capture artwork in an app host; actual watch-face placement and system accent processing require face testing. Device and Release builds exclude this fixture code.
 
 Domain compatibility: saved `.site` and older server identities retain their Keychain, cache, and outbox keys; APIClient routes their network requests to `.link`. Keep all old server endpoints active for installed clients and old Shortcuts.
+
+
+## Photo sharing
+
+The iPhone share extension accepts 1–5 JPEG, PNG, or HEIC photos, extracts text locally, and saves a separate intake for explicit draft review in Followthrough. See [Photo share sheet](../docs/photo-share-sheet.md) for limits, fallback behavior, storage, required relay preparation, and repeatable verification. No task is created until **Add to plan**.

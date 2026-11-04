@@ -3301,4 +3301,256 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertTrue(accept.allElementsBoundByIndex.allSatisfy { !$0.isEnabled })
     }
 
+
+    private func launchPhotoFixture() throws {
+        let fixtureURL = URL(fileURLWithPath: "/tmp/ft-photo-capture-fixture.json")
+        guard let data = try? Data(contentsOf: fixtureURL),
+              let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let server = fixture["server"] as? String,
+              ["127.0.0.1", "localhost"].contains(URL(string: server)?.host ?? ""),
+              let session = fixture["session"] as? [String: Any] else {
+            throw XCTSkip("Requires the isolated photo capture fixture and a dedicated simulator with a synthetic photo.")
+        }
+        app.launchArguments = ["-server", server]
+        app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = try JSONSerialization.data(withJSONObject: session).base64EncodedString()
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["captureInput"].firstMatch.waitForExistence(timeout: 25))
+        record("Photo 01 workspace")
+    }
+
+    private func photoFixture(_ path: String, body: [String: Any]? = nil) async throws -> [String: Any] {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:4539" + path)!)
+        if let body {
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+    }
+
+    private func openPhotoShareExtension(_ name: String) throws -> XCUIApplication {
+        let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
+        photos.terminate()
+        photos.launch()
+        record(name + " Photos initial", application: photos)
+        if photos.buttons["Continue"].firstMatch.waitForExistence(timeout: 3) {
+            photos.buttons["Continue"].firstMatch.tap()
+            record(name + " Photos continued", application: photos)
+        }
+        let share = photos.buttons["PUOneUpBarButtonItemIdentifierShare"].firstMatch
+        if !share.exists {
+            let imported = photos.images.matching(identifier: "PXGGridLayout-Info").allElementsBoundByIndex.last
+            XCTAssertNotNil(imported, "Import the synthetic photo into this dedicated simulator first.")
+            imported?.tap()
+            record(name + " Photo detail", application: photos)
+        }
+        XCTAssertTrue(share.waitForExistence(timeout: 10))
+        share.tap()
+        record(name + " System share sheet", application: photos)
+        let follow = photos.collectionViews["activityCollectionView"].cells.matching(NSPredicate(format: "label BEGINSWITH %@", "Followthrough")).firstMatch
+        XCTAssertTrue(follow.waitForExistence(timeout: 10))
+        follow.tap()
+        record(name + " Extension loading", application: photos)
+        let source = photos.descendants(matching: .any)["shareSource"].firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 90))
+        record(name + " Extension extracted", application: photos)
+        XCTAssertTrue((source.value as? String ?? "").localizedCaseInsensitiveContains("invoice"))
+        return photos
+    }
+
+    private func photoScrollTo(_ element: XCUIElement, name: String) {
+        for index in 0..<8 {
+            if element.exists && element.isHittable && element.frame.minY > 100 && element.frame.maxY < app.frame.maxY - 30 { return }
+            app.swipeUp()
+            record(name + " scroll \(index + 1)")
+        }
+        XCTAssertTrue(element.exists && element.isHittable)
+    }
+
+    func testPhotoShareReviewPersistsAndSavesOnlyAfterApproval() async throws {
+        _ = try await photoFixture("/__fixture/reset", body: [:])
+        try launchPhotoFixture()
+        var photos = try openPhotoShareExtension("Photo 02 Cancel")
+        photos.buttons["Cancel"].firstMatch.tap()
+        record("Photo 03 Cancelled extension", application: photos)
+        app.activate()
+        XCTAssertFalse(app.buttons["reviewSharedPhotos"].exists)
+        var state = try await photoFixture("/__fixture/state")
+        XCTAssertEqual((state["generations"] as? [Any])?.count, 0)
+        XCTAssertEqual((state["saves"] as? [Any])?.count, 0)
+
+        photos = try openPhotoShareExtension("Photo 04 Intake")
+        XCTAssertTrue(photos.buttons["shareSave"].isEnabled)
+        photos.buttons["shareSave"].tap()
+        record("Photo 05 Saved for review", application: photos)
+        app.activate()
+        let review = app.buttons["reviewSharedPhotos"]
+        XCTAssertTrue(review.waitForExistence(timeout: 20))
+        record("Photo 06 Review banner")
+        review.tap()
+        let source = app.descendants(matching: .any)["photoSource"].firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 10))
+        XCTAssertTrue((source.value as? String ?? "").contains("invoice"))
+        record("Photo 07 Review source")
+        app.buttons["photoReviewClose"].tap()
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(review.waitForExistence(timeout: 15))
+        record("Photo 08 Intake survived relaunch")
+        review.tap()
+        XCTAssertTrue(source.waitForExistence(timeout: 10))
+        let generate = app.buttons["photoGenerateDrafts"]
+        photoScrollTo(generate, name: "Photo 09 Generate")
+        generate.tap()
+        let title = app.descendants(matching: .any)["photoDraftTitle0"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 15))
+        record("Photo 10 Generated draft")
+        state = try await photoFixture("/__fixture/state")
+        XCTAssertEqual((state["generations"] as? [Any])?.count, 1)
+        XCTAssertEqual((state["saves"] as? [Any])?.count, 0)
+        photoScrollTo(title, name: "Photo 11 Edit")
+        title.tap()
+        title.typeText(" QA")
+        record("Photo 12 Edited draft")
+        app.buttons["photoReviewClose"].tap()
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(review.waitForExistence(timeout: 15))
+        review.tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        XCTAssertTrue((title.value as? String ?? "").contains("QA"))
+        record("Photo 13 Edited draft survived relaunch")
+        let add = app.buttons["photoAddToPlan"]
+        photoScrollTo(add, name: "Photo 14 Add")
+        XCTAssertTrue(add.isEnabled)
+        add.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["photoSaveConfirmed"].firstMatch.waitForExistence(timeout: 15))
+        record("Photo 15 Confirmed save")
+        state = try await photoFixture("/__fixture/state")
+        let tasks = (state["workspace"] as? [String: Any])?["tasks"] as? [[String: Any]]
+        XCTAssertEqual(tasks?.count, 1)
+        XCTAssertTrue((tasks?.first?["title"] as? String ?? "").contains("QA"))
+        XCTAssertTrue((tasks?.first?["source"] as? String ?? "").contains("invoice"))
+        app.buttons["photoReviewClose"].tap()
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["captureInput"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertFalse(review.exists)
+        record("Photo 16 Consumed intake after relaunch")
+    }
+
+    func testPhotoShareOfflineBasicDraftAndDurableRetry() async throws {
+        _ = try await photoFixture("/__fixture/reset", body: [:])
+        _ = try await photoFixture("/__fixture/mode", body: ["mode": "offline"])
+        try launchPhotoFixture()
+        let photos = try openPhotoShareExtension("Photo offline 01 Intake")
+        photos.buttons["shareSave"].tap()
+        record("Photo offline 02 Saved for review", application: photos)
+        app.activate()
+        let review = app.buttons["reviewSharedPhotos"]
+        XCTAssertTrue(review.waitForExistence(timeout: 20))
+        review.tap()
+        let generate = app.buttons["photoGenerateDrafts"]
+        photoScrollTo(generate, name: "Photo offline 03 Generate")
+        generate.tap()
+        let generationError = app.descendants(matching: .any)["photoReviewError"].firstMatch
+        XCTAssertTrue(generationError.waitForExistence(timeout: 15))
+        record("Photo offline 04 Generation error preserved source")
+        var state = try await photoFixture("/__fixture/state")
+        XCTAssertEqual((state["saves"] as? [Any])?.count, 0)
+        app.buttons["photoBasicDraft"].tap()
+        let title = app.descendants(matching: .any)["photoDraftTitle0"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        XCTAssertEqual(title.value as? String, "Review shared photo")
+        record("Photo offline 05 Basic draft")
+        let add = app.buttons["photoAddToPlan"]
+        photoScrollTo(add, name: "Photo offline 06 Add")
+        add.tap()
+        XCTAssertTrue(app.staticTexts["Saved on this device"].firstMatch.waitForExistence(timeout: 15))
+        record("Photo offline 07 Durable queued save")
+        state = try await photoFixture("/__fixture/state")
+        XCTAssertEqual(((state["workspace"] as? [String: Any])?["tasks"] as? [Any])?.count, 0)
+        app.buttons["photoReviewClose"].tap()
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["captureInput"].firstMatch.waitForExistence(timeout: 15))
+        record("Photo offline 08 Queued save survived relaunch")
+        _ = try await photoFixture("/__fixture/mode", body: ["mode": "online"])
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["captureInput"].firstMatch.waitForExistence(timeout: 15))
+        for _ in 0..<20 {
+            state = try await photoFixture("/__fixture/state")
+            if ((state["workspace"] as? [String: Any])?["tasks"] as? [Any])?.count == 1 { break }
+            try await Task.sleep(for: .milliseconds(300))
+        }
+        let tasks = (state["workspace"] as? [String: Any])?["tasks"] as? [[String: Any]]
+        XCTAssertEqual(tasks?.count, 1)
+        XCTAssertEqual(tasks?.first?["captureMode"] as? String, "basic")
+        let saves = state["saves"] as? [[String: Any]] ?? []
+        XCTAssertGreaterThan(saves.count, 1)
+        XCTAssertEqual(Set(saves.compactMap { $0["requestId"] as? String }).count, 1)
+        XCTAssertFalse(review.exists)
+        tapTab("Tasks")
+        XCTAssertTrue(app.staticTexts["Review shared photo"].firstMatch.waitForExistence(timeout: 10))
+        record("Photo offline 09 Exactly one confirmed task after retry")
+    }
+
+    func testPhotoShareTwoImagesRemainSeparateUntilReview() async throws {
+        _ = try await photoFixture("/__fixture/reset", body: [:])
+        try launchPhotoFixture()
+        let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
+        photos.terminate()
+        photos.launch()
+        record("Photo multiple 01 Library", application: photos)
+        if photos.buttons["BackButton"].exists {
+            photos.buttons["BackButton"].tap()
+            record("Photo multiple 02 Back to library", application: photos)
+        }
+        XCTAssertTrue(photos.buttons["Select"].firstMatch.waitForExistence(timeout: 10))
+        photos.buttons["Select"].firstMatch.tap()
+        record("Photo multiple 03 Selection", application: photos)
+        let images = photos.images.matching(identifier: "PXGGridLayout-Info").allElementsBoundByIndex
+        XCTAssertGreaterThanOrEqual(images.count, 2, "Import two synthetic photos into this dedicated simulator first.")
+        for image in images.suffix(2) {
+            image.tap()
+            record("Photo multiple 04 Selected image", application: photos)
+        }
+        let share = photos.buttons["Share"].firstMatch
+        XCTAssertTrue(share.waitForExistence(timeout: 10))
+        share.tap()
+        record("Photo multiple 05 Share sheet", application: photos)
+        let follow = photos.collectionViews["activityCollectionView"].cells.matching(NSPredicate(format: "label BEGINSWITH %@", "Followthrough")).firstMatch
+        XCTAssertTrue(follow.waitForExistence(timeout: 10))
+        follow.tap()
+        record("Photo multiple 06 Extracting", application: photos)
+        let source = photos.descendants(matching: .any)["shareSource"].firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 90))
+        let extracted = source.value as? String ?? ""
+        XCTAssertTrue(extracted.contains("Photo 1:"))
+        XCTAssertTrue(extracted.contains("Photo 2:"))
+        record("Photo multiple 07 Both sources", application: photos)
+        photos.buttons["shareSave"].tap()
+        app.activate()
+        let review = app.buttons["reviewSharedPhotos"]
+        XCTAssertTrue(review.waitForExistence(timeout: 20))
+        review.tap()
+        let reviewed = app.descendants(matching: .any)["photoSource"].firstMatch
+        XCTAssertTrue(reviewed.waitForExistence(timeout: 10))
+        XCTAssertEqual(reviewed.value as? String, extracted)
+        record("Photo multiple 08 Review source preserved")
+        let state = try await photoFixture("/__fixture/state")
+        XCTAssertEqual((state["generations"] as? [Any])?.count, 0)
+        XCTAssertEqual((state["saves"] as? [Any])?.count, 0)
+        let discard = app.buttons["Discard photo intake"]
+        photoScrollTo(discard, name: "Photo multiple 09 Discard")
+        discard.tap()
+        record("Photo multiple 10 Discard confirmation")
+        app.buttons["Discard"].firstMatch.tap()
+        XCTAssertFalse(review.exists)
+        record("Photo multiple 11 Intake discarded")
+    }
+
 }

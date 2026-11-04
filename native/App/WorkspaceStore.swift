@@ -26,6 +26,12 @@ import Security
     private(set) var captureFocusRequestID = UUID()
     var captureText = ""
     var captureReceipt: CaptureReceipt?
+    var photoCaptures: [PhotoCaptureIntake] = []
+    var photoReviewPresented = false
+    var reviewingPhotoID: String?
+    var photoReviewError: String?
+    var generatingPhotoDrafts = false
+    var photoSaveReceipt: CaptureReceipt?
     var selectedTask: FTTask?
     var taskConflict: TaskSyncConflict?
     var selectedSection = "today"
@@ -130,6 +136,7 @@ import Security
                 pending = queue.operations
                 acceptedWatchActions = queue.acceptedWatchActions ?? []
             }
+            importPhotoCaptures()
             openPendingTask()
             NativeSyncLog.record("outbox_loaded", count: pending.count)
         }
@@ -364,6 +371,7 @@ import Security
             var body = operation.body; body["requestId"] = .string(operation.id)
             do { return try await authorized(operation.endpoint, method: "POST", body: body) }
             catch let failure as APIError where failure.status == 409 {
+                if case .string("capture_tasks") = operation.body["action"], attempt < 2 { continue }
                 guard TaskEditReconciliation.patch(operation) != nil,
                       case .string(let id) = operation.body["id"] else { throw failure }
                 let latest: Workspace = try await authorized("api/native/workspace")
@@ -404,13 +412,21 @@ import Security
             if !blockedMutation {
                 while let operation = pending.first {
                     if captureReceipt?.id == operation.id { captureReceipt?.phase = .sending }
+                    if photoSaveReceipt?.id == operation.id { photoSaveReceipt?.phase = .sending }
                     do {
                         let result = try await sendQueued(operation)
                         var captured: [FTTask]?
-                        if operation.endpoint == "api/native/inbox" {
-                            let group = "capture_" + SHA256.hash(data: Data(((session?.ownerId ?? "") + ":" + operation.id).utf8)).map { String(format: "%02x", $0) }.joined()
+                        let reviewedGroup: String? = {
+                            if case .string("capture_tasks") = operation.body["action"], case .string(let group) = operation.body["captureGroupId"] { return group }
+                            return nil
+                        }()
+                        if operation.endpoint == "api/native/inbox" || reviewedGroup != nil {
+                            let group = reviewedGroup ?? photoCaptureGroup(operation.id)
                             guard let confirmed = result.confirmedCapture(group: group) else {
                                 throw APIError.response(503, "Could not confirm the added tasks. Your request is safe on this device. Retry to check it without creating duplicates.")
+                            }
+                            if reviewedGroup != nil, case .array(let expected) = operation.body["captures"], confirmed.count != expected.count {
+                                throw APIError.response(503, "Could not confirm every reviewed task. Your drafts are safe on this device. Retry without creating duplicates.")
                             }
                             captured = confirmed
                         }
@@ -425,6 +441,10 @@ import Security
                             pending = beforeAcknowledgment
                             throw APIError.response(0, storageError ?? "Could not save synchronization progress on this device.")
                         }
+                        if reviewedGroup != nil {
+                            try? PhotoCaptureInbox.remove(operation.id)
+                            if photoSaveReceipt?.id == operation.id, let captured { photoSaveReceipt?.phase = .saved(captured) }
+                        }
                         NativeSyncLog.record("mutation_saved", count: pending.count)
                         #if os(iOS)
                         if captured != nil { PhoneWatchCaptureRelay.shared.captureSaved(requestID: operation.id) }
@@ -437,7 +457,7 @@ import Security
                             if captureText == captureReceipt?.source { captureText = "" }
                         }
                     } catch let failure as APIError {
-                        if failure.status == 409 || failure.status == 400 { blockedMutation = true }
+                        if failure.status == 409 || failure.status == 400 || (failure.status == 413 && operation.body["action"] == .string("capture_tasks")) { blockedMutation = true }
                         throw failure
                     }
                 }
@@ -451,6 +471,10 @@ import Security
             self.error = error.localizedDescription
             if let receipt = captureReceipt, pending.contains(where: { $0.id == receipt.id }) {
                 captureReceipt?.phase = blockedMutation && pending.first?.id == receipt.id
+                    ? .needsAttention(error.localizedDescription) : .queued(error.localizedDescription)
+            }
+            if let receipt = photoSaveReceipt, pending.contains(where: { $0.id == receipt.id }) {
+                photoSaveReceipt?.phase = blockedMutation && pending.first?.id == receipt.id
                     ? .needsAttention(error.localizedDescription) : .queued(error.localizedDescription)
             }
             if (error as? APIError)?.status == 401 { connected = false }
@@ -737,6 +761,7 @@ import Security
         acceptedWatchActions = []
         selectedSection = "today"; selectedTask = nil; taskConflict = nil; captureFocused = false; captureText = ""; captureReceipt = nil
         pendingTaskID = nil
+        photoCaptures = []; photoReviewPresented = false; reviewingPhotoID = nil; photoSaveReceipt = nil; photoReviewError = nil
         syncRequested = false
         try? FileManager.default.removeItem(at:cacheURL); try? FileManager.default.removeItem(at:queueURL)
         SharedStorage.unbind()
@@ -753,7 +778,101 @@ import Security
         } catch { storageError = "Your changes are saved, but the offline task cache could not update: " + error.localizedDescription; self.error = storageError }
         return true
     }
+    var reviewingPhotoCapture: PhotoCaptureIntake? { photoCaptures.first { $0.id == reviewingPhotoID } }
+    private func photoCaptureGroup(_ id: String) -> String {
+        "capture_" + SHA256.hash(data: Data(((session?.ownerId ?? "") + ":" + id).utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+    private func importPhotoCaptures() {
+        guard session != nil else { return }
+        do {
+            let editing = photoReviewPresented ? reviewingPhotoCapture : nil
+            photoCaptures = try PhotoCaptureInbox.load(identity: identity).map { intake in
+                if let editing, editing.id == intake.id { return editing }
+                return intake
+            }.filter { intake in
+                if pending.contains(where: { $0.id == intake.id }) { return false }
+                if workspace?.tasks.contains(where: { $0.captureGroupId == photoCaptureGroup(intake.id) }) == true {
+                    try? PhotoCaptureInbox.remove(intake.id)
+                    return false
+                }
+                return true
+            }
+        } catch { self.error = "Could not read saved photos: " + error.localizedDescription }
+    }
+    func reviewNextPhoto() {
+        guard selectedTask == nil, !captureFocused, let first = photoCaptures.first else { return }
+        reviewingPhotoID = first.id; photoSaveReceipt = nil; photoReviewError = nil; photoReviewPresented = true
+    }
+    func updatePhotoCapture(_ change: (inout PhotoCaptureIntake) -> Void) {
+        guard !generatingPhotoDrafts, photoSaveReceipt == nil,
+              let index = photoCaptures.firstIndex(where: { $0.id == reviewingPhotoID }) else { return }
+        change(&photoCaptures[index])
+        do { try PhotoCaptureInbox.save(photoCaptures[index]); photoReviewError = nil }
+        catch { photoReviewError = error.localizedDescription }
+    }
+    func generatePhotoDrafts() async {
+        guard !generatingPhotoDrafts, photoSaveReceipt == nil, let intake = reviewingPhotoCapture else { return }
+        do {
+            try PhotoCaptureInbox.validateSource(intake.source)
+            try PhotoCaptureInbox.save(intake)
+            generatingPhotoDrafts = true
+            defer { generatingPhotoDrafts = false }
+            struct Response: Decodable, Sendable { var drafts: [PhotoTaskDraft] }
+            let response: Response = try await authorized("api/native/capture", method: "POST", body: ["source": .string(intake.source)])
+            guard identity == intake.identity, let index = photoCaptures.firstIndex(where: { $0.id == intake.id }),
+                  photoCaptures[index].source == intake.source else { return }
+            try PhotoTaskDraft.validate(response.drafts, source: intake.source, projects: workspace?.projects ?? [])
+            photoCaptures[index].drafts = response.drafts
+            try PhotoCaptureInbox.save(photoCaptures[index])
+            photoReviewError = nil
+        } catch {
+            // Keep the source and any earlier drafts. Never turn an OCR/model failure into a saved task.
+            if identity == intake.identity { photoReviewError = error.localizedDescription }
+        }
+    }
+    func useBasicPhotoDraft() {
+        updatePhotoCapture { $0.drafts = [.basic()] }
+    }
+    @discardableResult func addPhotoDrafts() -> Bool {
+        guard !generatingPhotoDrafts, photoSaveReceipt == nil, let intake = reviewingPhotoCapture else { return false }
+        do {
+            let drafts = intake.drafts ?? []
+            try PhotoTaskDraft.validate(drafts, source: intake.source, projects: workspace?.projects ?? [])
+            try PhotoCaptureInbox.save(intake)
+            let group = photoCaptureGroup(intake.id)
+            let captures = try drafts.enumerated().map { index, draft -> JSONValue in
+                let id = "capture_" + SHA256.hash(data: Data((group + ":" + String(index)).utf8)).map { String(format: "%02x", $0) }.joined()
+                return .object(["captureId": .string(id), "task": try draft.taskBody(source: intake.source)])
+            }
+            let operation = PendingMutation(id: intake.id, endpoint: "api/native/workspace", body: [
+                "action": .string("capture_tasks"), "captureGroupId": .string(group), "captures": .array(captures)
+            ], title: "Tasks from shared photos")
+            try PhotoCaptureInbox.validateSubmission(operation.body, requestID: operation.id)
+            guard enqueue(operation) else { photoReviewError = storageError ?? error; return false }
+            photoSaveReceipt = .init(id: intake.id, source: intake.source, phase: .queued(nil))
+            photoCaptures.removeAll { $0.id == intake.id }
+            photoReviewError = nil
+            return true
+        } catch { photoReviewError = error.localizedDescription; return false }
+    }
+    func editRejectedPhotoDrafts() {
+        guard !syncing, blockedMutation, let receipt = photoSaveReceipt, pending.first?.id == receipt.id else { return }
+        let removed = pending.removeFirst()
+        guard persist() else { pending.insert(removed, at: 0); return }
+        blockedMutation = false; photoSaveReceipt = nil; photoReviewError = nil
+        importPhotoCaptures()
+        Task { await sync() }
+    }
+    func discardPhotoCapture() {
+        guard !generatingPhotoDrafts, photoSaveReceipt == nil, let intake = reviewingPhotoCapture else { return }
+        do {
+            try PhotoCaptureInbox.remove(intake.id)
+            photoCaptures.removeAll { $0.id == intake.id }; photoReviewPresented = false; reviewingPhotoID = nil
+        } catch { photoReviewError = error.localizedDescription }
+    }
+
     private func importSharedCaptures() {
+        importPhotoCaptures()
         let folder = SharedStorage.directory.appendingPathComponent("Inbox")
         guard let files = try? FileManager.default.contentsOfDirectory(at:folder,includingPropertiesForKeys:nil) else { return }
         for file in files.sorted(by: {$0.lastPathComponent < $1.lastPathComponent}) {

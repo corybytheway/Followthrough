@@ -111,6 +111,23 @@ struct RootView: View {
         }
         .modifier(CapturePresentation(store: store))
         .sheet(item: $store.selectedTask) { TaskEditor(store: store, task: $0) }
+        .sheet(isPresented: $store.photoReviewPresented) { PhotoCaptureReviewView(store: store) }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !store.photoCaptures.isEmpty {
+                HStack {
+                    Label {
+                        if store.photoCaptures.count == 1 { Text("1 photo intake ready to review") }
+                        else { Text("\(store.photoCaptures.count) photo intakes ready to review") }
+                    } icon: { Image(systemName: "photo") }
+                    .font(.callout)
+                    Spacer()
+                    Button("Review") { store.reviewNextPhoto() }
+                        .disabled(store.selectedTask != nil || store.captureFocused)
+                        .accessibilityIdentifier("reviewSharedPhotos")
+                }
+                .padding().background(.thinMaterial)
+            }
+        }
         .onChange(of: phase) { _, value in
             if value == .active { Task { await store.sync(); store.synchronizeDeviceTimeZone() } }
         }
