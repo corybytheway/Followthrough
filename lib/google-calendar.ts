@@ -1,6 +1,6 @@
 // Created by Cory McCabe
 import type { BusyEvent, Block, Task, Project } from './model';
-import { taskLabel } from './model';
+import { calendarEventTitle } from './calendar-event-title';
 import type {
   CalendarChoice,
   CalendarCredentials,
@@ -288,8 +288,10 @@ export async function reconcileGoogle(
     desired.add(id);
     const body = {
       id,
-      summary: taskLabel(
-        task.title,
+      summary: calendarEventTitle(
+        task,
+        block,
+        blocks,
         projects.find((p) => p.id === task.projectId),
       ),
       colorId: '8',
