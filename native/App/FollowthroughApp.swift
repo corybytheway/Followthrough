@@ -879,16 +879,23 @@ private struct TaskRowMetadata: View {
         TimelineView(.everyMinute) { context in
             let deadline = TaskDeadline(day: task.dueDate, relativeTo: context.date, timeZone: TimeZone(identifier: timeZone) ?? .current)
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(task.remainingLabel)
-                    if let deadline { TaskDeadlineText(deadline: deadline, completed: completed) }
-                    if hasStatus { TaskRowStatus(priority: task.priority, unavailable: unavailable) }
+                    if let deadline {
+                        TaskMetadataSeparator()
+                        TaskDeadlineText(deadline: deadline, completed: completed)
+                    }
+                    if hasStatus {
+                        TaskMetadataSeparator()
+                        TaskRowStatus(priority: task.priority, unavailable: unavailable)
+                    }
                 }
                 .fixedSize(horizontal: true, vertical: true)
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(task.remainingLabel).fixedSize()
                         if let deadline {
+                            TaskMetadataSeparator()
                             TaskDeadlineText(deadline: deadline, completed: completed)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -902,14 +909,23 @@ private struct TaskRowMetadata: View {
     }
 }
 
+private struct TaskMetadataSeparator: View {
+    var body: some View {
+        Text(verbatim: "•")
+            .fixedSize()
+            .accessibilityHidden(true)
+    }
+}
+
 private struct TaskRowStatus: View {
     let priority: Priority
     let unavailable: Bool
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             if unavailable { Text("Blocked") }
             if priority == .top || priority == .high {
+                if unavailable { TaskMetadataSeparator() }
                 Text("\(priority.title) priority")
                     .fontWeight(.bold)
                     .foregroundStyle(unavailable ? Color.secondary : priority == .top ? Color.red : Color(hex: "#ffae00"))
