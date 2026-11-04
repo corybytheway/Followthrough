@@ -6,7 +6,7 @@ enum PhotoCaptureError: LocalizedError {
     var errorDescription: String? { if case .message(let message) = self { return message }; return nil }
 }
 
-/// Image bytes never enter the shared inbox or the task-generation request.
+/// Images remain in the device inbox for Apple Intelligence; they are never uploaded.
 struct PhotoCaptureIntake: Codable, Identifiable, Equatable, Sendable {
     var id = UUID().uuidString
     var identity: String
@@ -15,6 +15,10 @@ struct PhotoCaptureIntake: Codable, Identifiable, Equatable, Sendable {
     var warnings: [String]
     var createdAt = Date()
     var drafts: [PhotoTaskDraft]?
+    var imageNames: [String]?
+    var interpretation: String?
+    var interpretationWarnings: [String]?
+    var draftOrigin: String?
 }
 
 struct PhotoTaskDraft: Codable, Identifiable, Equatable, Sendable {
@@ -123,6 +127,42 @@ enum PhotoCaptureInbox {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try JSONEncoder().encode(intake).write(to: folder.appendingPathComponent(intake.id + ".json"), options: .atomic)
     }
+    static func save(_ intake: PhotoCaptureIntake, images: [Data], directory: URL = SharedStorage.directory) throws {
+        guard let names = intake.imageNames, names.count == images.count, !images.isEmpty else {
+            throw PhotoCaptureError.message("The photos could not be saved. Share them again.")
+        }
+        let folder = try imageFolder(intake, directory: directory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        do {
+            for (name, data) in zip(names, images) {
+                try data.write(to: folder.appendingPathComponent(name), options: .atomic)
+            }
+            var values = URLResourceValues(); values.isExcludedFromBackup = true
+            var imageDirectory = folder; try imageDirectory.setResourceValues(values)
+            try save(intake, directory: directory)
+        } catch {
+            try? FileManager.default.removeItem(at: folder)
+            throw error
+        }
+    }
+    private static func imageFolder(_ intake: PhotoCaptureIntake, directory: URL) throws -> URL {
+        guard UUID(uuidString: intake.id) != nil, let names = intake.imageNames,
+              (1...5).contains(names.count), Set(names).count == names.count,
+              names.allSatisfy({ $0.range(of: "^[1-5]\\.jpg$", options: .regularExpression) != nil }) else {
+            throw PhotoCaptureError.message("The saved photo references are invalid. Share the photos again.")
+        }
+        return directory.appendingPathComponent("PhotoInbox/Images", isDirectory: true).appendingPathComponent(intake.id, isDirectory: true)
+    }
+    static func imageURLs(_ intake: PhotoCaptureIntake, directory: URL = SharedStorage.directory) throws -> [URL] {
+        let folder = try imageFolder(intake, directory: directory)
+        return try (intake.imageNames ?? []).map { name in
+            let url = folder.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                throw PhotoCaptureError.message("A saved photo is missing. Share it again or use the text fallback.")
+            }
+            return url
+        }
+    }
     static func load(identity: String, directory: URL = SharedStorage.directory) throws -> [PhotoCaptureIntake] {
         let folder = directory.appendingPathComponent("PhotoInbox", isDirectory: true)
         guard FileManager.default.fileExists(atPath: folder.path) else { return [] }
@@ -137,6 +177,36 @@ enum PhotoCaptureInbox {
     static func remove(_ id: String, directory: URL = SharedStorage.directory) throws {
         guard UUID(uuidString: id) != nil else { return }
         let file = directory.appendingPathComponent("PhotoInbox").appendingPathComponent(id + ".json")
+        let images = directory.appendingPathComponent("PhotoInbox/Images").appendingPathComponent(id)
+        if FileManager.default.fileExists(atPath: images.path) { try FileManager.default.removeItem(at: images) }
         if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
+    }
+}
+
+/// Small on-device models sometimes emit one draft per step of the same outcome.
+/// Merge only identical titles/projects/dates; distinct outcomes remain separate.
+enum PhotoDraftConsolidation {
+    private struct Key: Hashable {
+        var title: String; var project: String?; var due: String?; var start: String?
+    }
+    static func merge(_ drafts: [PhotoTaskDraft]) -> [PhotoTaskDraft] {
+        var result: [PhotoTaskDraft] = [], indexes: [Key: Int] = [:]
+        func unique(_ values: [String]) -> [String] {
+            var seen = Set<String>()
+            return values.filter { seen.insert($0.trimmingCharacters(in: .whitespacesAndNewlines)).inserted }
+        }
+        for draft in drafts {
+            let title = draft.title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+                .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            let key = Key(title: title, project: draft.projectId, due: draft.dueDate, start: draft.notBefore)
+            if let index = indexes[key] {
+                result[index].steps = unique(result[index].steps + draft.steps)
+                result[index].notes = unique([result[index].notes, draft.notes]).filter { !$0.isEmpty }.joined(separator: "\n\n")
+                result[index].estimateMinutes = max(result[index].estimateMinutes, draft.estimateMinutes)
+            } else {
+                indexes[key] = result.count; result.append(draft)
+            }
+        }
+        return result
     }
 }

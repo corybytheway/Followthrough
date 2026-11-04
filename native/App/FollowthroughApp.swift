@@ -74,6 +74,12 @@ private struct WorkspaceWindowContent: View {
             .tint(.followAccent)
             .onOpenURL { store.open($0) }
             .task {
+                #if DEBUG && os(iOS)
+                if ProcessInfo.processInfo.arguments.contains("--verify-photo-intelligence") {
+                    await PhotoIntelligenceDiagnostic.run()
+                    return
+                }
+                #endif
                 await store.start()
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(20))

@@ -13,13 +13,38 @@ struct PhotoCaptureReviewView: View {
                     PhotoSaveStatus(receipt: receipt, retry: { store.retry() }, edit: { store.editRejectedPhotoDrafts() })
                 } else if let intake = store.reviewingPhotoCapture {
                     Section {
-                        Text("Review the text and context from your photos. Tasks enter your plan only when you choose Add to plan.")
-                            .foregroundStyle(.secondary)
+                        if intake.imageNames?.isEmpty == false {
+                            Text("Apple Intelligence interprets what your photos show and proposes tasks. Review the interpretation before choosing Add to plan.")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("This older intake contains text only. Share the photos again to use Apple Intelligence image understanding.")
+                                .foregroundStyle(.secondary)
+                        }
                         ForEach(intake.warnings, id: \.self) { warning in
                             Label(warning, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                         }
                     }
+                    if intake.imageNames?.isEmpty == false {
+                        Section("Image understanding") {
+                            Label {
+                                if intake.imageNames?.count == 1 { Text("1 photo saved on this device") }
+                                else { Text("\(intake.imageNames?.count ?? 0) photos saved on this device") }
+                            } icon: { Image(systemName: "photo") }
+                            Text(PhotoImageUnderstanding.availabilityMessage).font(.callout).foregroundStyle(.secondary)
+                        }
+                    }
+                    if let interpretation = intake.interpretation {
+                        Section("Apple Intelligence interpretation") {
+                            Text(interpretation).textSelection(.enabled).accessibilityIdentifier("photoInterpretation")
+                            ForEach(intake.interpretationWarnings ?? [], id: \.self) { Text($0).foregroundStyle(.secondary) }
+                        }
+                    }
                     if let drafts = intake.drafts {
+                        Section {
+                            if intake.draftOrigin == "appleIntelligence" { Label("Drafts from image understanding", systemImage: "sparkles") }
+                            else if intake.draftOrigin == "basic" { Label("Basic draft — fill in the details", systemImage: "pencil") }
+                            else { Label("Text-only drafts — OCR fallback", systemImage: "text.viewfinder") }
+                        }
                         Section("Original text & context") {
                             Text(intake.source).textSelection(.enabled)
                             Button("Edit text & generate again") { confirmRegenerate = true }
@@ -38,9 +63,9 @@ struct PhotoCaptureReviewView: View {
                             if let validationError { Text(validationError).foregroundStyle(.red) }
                         }
                     } else {
-                        Section("Text & context") {
+                        Section("Context & supporting OCR") {
                             TextEditor(text: Binding(get: { store.reviewingPhotoCapture?.source ?? "" }, set: { value in
-                                store.updatePhotoCapture { $0.source = value }
+                                store.updatePhotoCapture { $0.source = value; $0.interpretation = nil; $0.interpretationWarnings = nil }
                             }))
                             .frame(minHeight: 180)
                             .accessibilityLabel("Photo text and context")
@@ -49,11 +74,17 @@ struct PhotoCaptureReviewView: View {
                         }
                         Section {
                             if store.generatingPhotoDrafts {
-                                ProgressView("Creating task drafts…")
+                                ProgressView(intake.imageNames?.isEmpty == false ? "Understanding your photos…" : "Creating task drafts…")
                             } else {
-                                Button("Create task drafts") { Task { await store.generatePhotoDrafts() } }
+                                Button(intake.imageNames?.isEmpty == false ? "Understand photos & create drafts" : "Create task drafts") { Task { await store.generatePhotoDrafts() } }
                                     .accessibilityIdentifier("photoGenerateDrafts")
-                                    .disabled((try? PhotoCaptureInbox.validateSource(intake.source)) == nil)
+                                    .disabled(intake.source.utf16.count > 8000 || (intake.imageNames?.isEmpty != false && (try? PhotoCaptureInbox.validateSource(intake.source)) == nil))
+                                if intake.imageNames?.isEmpty == false {
+                                    Button("Generate from OCR text only") { Task { await store.generatePhotoDrafts(textOnly: true) } }
+                                        .accessibilityIdentifier("photoOCRFallback")
+                                        .disabled((try? PhotoCaptureInbox.validateSource(intake.source)) == nil)
+                                    Text("Text-only fallback uses your connected service. It cannot see the photos.").font(.caption).foregroundStyle(.secondary)
+                                }
                                 Button("Make a basic draft") { store.useBasicPhotoDraft() }
                                     .accessibilityIdentifier("photoBasicDraft")
                                     .disabled((try? PhotoCaptureInbox.validateSource(intake.source)) == nil)
@@ -83,7 +114,7 @@ struct PhotoCaptureReviewView: View {
                 Button("Discard", role: .destructive) { store.discardPhotoCapture() }
             }
             .confirmationDialog("Replace the edited drafts? Your photo text will be kept.", isPresented: $confirmRegenerate, titleVisibility: .visible) {
-                Button("Edit text", role: .destructive) { store.updatePhotoCapture { $0.drafts = nil } }
+                Button("Edit text", role: .destructive) { store.updatePhotoCapture { $0.drafts = nil; $0.draftOrigin = nil; $0.interpretation = nil; $0.interpretationWarnings = nil } }
             }
         }
         .interactiveDismissDisabled(store.generatingPhotoDrafts)

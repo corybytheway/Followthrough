@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Created by Cory McCabe
 """Disposable loopback workspace for photo share UI verification; no real account access."""
+import argparse
 import copy
 import json
 import time
@@ -91,6 +92,12 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    Path("/tmp/ft-photo-capture-fixture.json").write_text(json.dumps({"server": SERVER, "session": SESSION}))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--photo-inbox", type=Path, help="Optional dedicated simulator PhotoInbox path for read-only storage assertions")
+    args = parser.parse_args()
+    fixture = {"server": SERVER, "session": SESSION}
+    if args.photo_inbox:
+        fixture["photoInboxPath"] = str(args.photo_inbox)
+    Path("/tmp/ft-photo-capture-fixture.json").write_text(json.dumps(fixture))
     print(f"Photo share fixture: {SERVER}", flush=True)
     HTTPServer(("127.0.0.1", 4539), Handler).serve_forever()

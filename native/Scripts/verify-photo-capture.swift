@@ -102,6 +102,15 @@ import UniformTypeIdentifiers
         try rejects("relay byte limit including multi-byte text") {
             try PhotoCaptureInbox.validateSubmission(["source": .string(String(repeating: "😀", count: 25000))], requestID: intake.id)
         }
+        var same = first
+        same.steps = ["Read the quote", "Note concerns"]
+        first.steps = ["Read the quote"]
+        let merged = PhotoDraftConsolidation.merge([first, same])
+        precondition(merged.count == 1 && merged[0].steps == ["Read the quote", "Note concerns"])
+        same.dueDate = "2026-11-05"
+        precondition(PhotoDraftConsolidation.merge([first, same]).count == 2)
+        precondition(PhotoDraftConsolidation.merge([first, second]).count == 2)
+        print("PASS image task consolidation preserves steps and distinct outcomes/dates")
         let group = "capture_" + String(repeating: "a", count: 64)
         let payload: JSONValue = .object([
             "action": .string("capture_tasks"), "captureGroupId": .string(group),

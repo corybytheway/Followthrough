@@ -800,7 +800,9 @@ import Security
         } catch { self.error = "Could not read saved photos: " + error.localizedDescription }
     }
     func reviewNextPhoto() {
-        guard selectedTask == nil, !captureFocused, let first = photoCaptures.first else { return }
+        // Review retained images before legacy OCR-only intakes, without deleting the older work.
+        let next = photoCaptures.first { $0.imageNames?.isEmpty == false } ?? photoCaptures.first
+        guard selectedTask == nil, !captureFocused, let first = next else { return }
         reviewingPhotoID = first.id; photoSaveReceipt = nil; photoReviewError = nil; photoReviewPresented = true
     }
     func updatePhotoCapture(_ change: (inout PhotoCaptureIntake) -> Void) {
@@ -810,28 +812,45 @@ import Security
         do { try PhotoCaptureInbox.save(photoCaptures[index]); photoReviewError = nil }
         catch { photoReviewError = error.localizedDescription }
     }
-    func generatePhotoDrafts() async {
+    func generatePhotoDrafts(textOnly: Bool = false) async {
         guard !generatingPhotoDrafts, photoSaveReceipt == nil, let intake = reviewingPhotoCapture else { return }
         do {
-            try PhotoCaptureInbox.validateSource(intake.source)
             try PhotoCaptureInbox.save(intake)
             generatingPhotoDrafts = true
             defer { generatingPhotoDrafts = false }
-            struct Response: Decodable, Sendable { var drafts: [PhotoTaskDraft] }
-            let response: Response = try await authorized("api/native/capture", method: "POST", body: ["source": .string(intake.source)])
+            var revised = intake
+            if intake.imageNames?.isEmpty == false && !textOnly {
+                let result = try await PhotoImageUnderstanding.interpret(
+                    images: PhotoCaptureInbox.imageURLs(intake), context: intake.source,
+                    projects: workspace?.projects ?? [], localDate: workspace?.day(.now) ?? "")
+                revised.draftOrigin = "appleIntelligence"
+                revised.interpretation = result.summary
+                revised.interpretationWarnings = result.uncertainties
+                if revised.source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    revised.source = "Shared image interpreted by Apple Intelligence:\n" + result.summary
+                }
+                revised.drafts = result.drafts.isEmpty ? nil : result.drafts
+            } else {
+                try PhotoCaptureInbox.validateSource(intake.source)
+                struct Response: Decodable, Sendable { var drafts: [PhotoTaskDraft] }
+                let response: Response = try await authorized("api/native/capture", method: "POST", body: ["source": .string(intake.source)])
+                revised.draftOrigin = "ocr"
+                revised.drafts = response.drafts
+                revised.interpretation = nil; revised.interpretationWarnings = nil
+            }
             guard identity == intake.identity, let index = photoCaptures.firstIndex(where: { $0.id == intake.id }),
                   photoCaptures[index].source == intake.source else { return }
-            try PhotoTaskDraft.validate(response.drafts, source: intake.source, projects: workspace?.projects ?? [])
-            photoCaptures[index].drafts = response.drafts
-            try PhotoCaptureInbox.save(photoCaptures[index])
-            photoReviewError = nil
+            if let drafts = revised.drafts { try PhotoTaskDraft.validate(drafts, source: revised.source, projects: workspace?.projects ?? []) }
+            photoCaptures[index] = revised
+            try PhotoCaptureInbox.save(revised)
+            photoReviewError = revised.drafts == nil ? "The image was interpreted, but no clear task was found. Add what you want to do, then try again." : nil
         } catch {
             // Keep the source and any earlier drafts. Never turn an OCR/model failure into a saved task.
             if identity == intake.identity { photoReviewError = error.localizedDescription }
         }
     }
     func useBasicPhotoDraft() {
-        updatePhotoCapture { $0.drafts = [.basic()] }
+        updatePhotoCapture { $0.drafts = [.basic()]; $0.draftOrigin = "basic" }
     }
     @discardableResult func addPhotoDrafts() -> Bool {
         guard !generatingPhotoDrafts, photoSaveReceipt == nil, let intake = reviewingPhotoCapture else { return false }

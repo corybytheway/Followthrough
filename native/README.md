@@ -190,4 +190,4 @@ Domain compatibility: saved `.site` and older server identities retain their Key
 
 ## Photo sharing
 
-The iPhone share extension accepts 1–5 JPEG, PNG, or HEIC photos, extracts text locally, and saves a separate intake for explicit draft review in Followthrough. See [Photo share sheet](../docs/photo-share-sheet.md) for limits, fallback behavior, storage, required relay preparation, and repeatable verification. No task is created until **Add to plan**.
+The iPhone share extension accepts 1–5 JPEG, PNG, or HEIC photos and saves bounded image copies for Apple Intelligence to interpret in Followthrough. OCR is supporting context and an explicitly labeled text-only fallback. See [Photo share sheet](../docs/photo-share-sheet.md) for limits, fallback behavior, storage, optional OCR relay preparation, and repeatable verification. No task is created until **Add to plan**.

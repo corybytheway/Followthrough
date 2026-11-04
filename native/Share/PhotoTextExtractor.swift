@@ -7,6 +7,8 @@ import Vision
 struct PhotoTextResult: Sendable {
     var text: String
     var uncertain: Bool
+    var imageData: Data? = nil
+    var warning: String? = nil
 }
 
 enum PhotoTextExtractor {
@@ -55,10 +57,19 @@ enum PhotoTextExtractor {
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
         request.automaticallyDetectsLanguage = true
-        try VNImageRequestHandler(cgImage: image).perform([request])
+        let jpeg = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(jpeg, UTType.jpeg.identifier as CFString, 1, nil) else {
+            throw PhotoCaptureError.message("Could not prepare this photo for Apple Intelligence.")
+        }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { throw PhotoCaptureError.message("Could not save this photo.") }
+        do { try VNImageRequestHandler(cgImage: image).perform([request]) }
+        catch { return PhotoTextResult(text: "", uncertain: true, imageData: jpeg as Data, warning: "OCR was unavailable. Apple Intelligence can still interpret the image.") }
         let candidates = (request.results ?? []).compactMap { $0.topCandidates(1).first }
         let text = candidates.map(\.string).joined(separator: "\n")
-        guard text.utf16.count <= 16000 else { throw PhotoCaptureError.message("This photo contains too much text. Crop it to the relevant part and share it again.") }
-        return PhotoTextResult(text: text, uncertain: candidates.contains { $0.confidence < 0.65 })
+        guard text.utf16.count <= 16000 else {
+            return PhotoTextResult(text: "", uncertain: true, imageData: jpeg as Data, warning: "There is too much text for the OCR fallback. The image is saved for Apple Intelligence.")
+        }
+        return PhotoTextResult(text: text, uncertain: candidates.contains { $0.confidence < 0.65 }, imageData: jpeg as Data)
     }
 }

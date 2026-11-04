@@ -26,8 +26,11 @@ final class ShareViewController: UIViewController {
     var error: String?
     private var identity: String?
     private var loaded = false
+    private var saved = false
+    private var imageData: [Data] = []
+    private var imageNames: [String] = []
     var canSave: Bool {
-        !loading && imageCount <= PhotoTextExtractor.maximumImages && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.utf16.count <= 8000
+        !loading && !saved && imageCount <= PhotoTextExtractor.maximumImages && (!imageData.isEmpty || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) && text.utf16.count <= 8000
     }
 
     func load(_ items: [NSExtensionItem]) async {
@@ -49,8 +52,10 @@ final class ShareViewController: UIViewController {
                 photoIndex += 1
                 do {
                     let result = try await PhotoTextExtractor.extract(from: provider)
+                    if let data = result.imageData { imageData.append(data); imageNames.append("\(photoIndex).jpg") }
+                    if let warning = result.warning { warnings.append("Photo \(photoIndex): \(warning)") }
                     if result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        warnings.append("Photo \(photoIndex): No readable text found. Add a description of what you want to do, or share a clearer photo.")
+                        warnings.append("Photo \(photoIndex): No readable text found. The image can still be interpreted by Apple Intelligence in Followthrough.")
                     } else {
                         fragments.append(imageCount == 1 ? result.text : "Photo \(photoIndex):\n\(result.text)")
                         if result.uncertain { warnings.append("Photo \(photoIndex): Some text may be inaccurate. Check names, numbers, and dates.") }
@@ -73,6 +78,7 @@ final class ShareViewController: UIViewController {
     }
 
     func save() -> Bool {
+        if saved { return true }
         do {
             if imageCount > 0 {
                 guard SharedStorage.extensionsAvailable, let identity else {
@@ -81,11 +87,13 @@ final class ShareViewController: UIViewController {
                 guard PhotoCaptureInbox.boundIdentity() == identity else {
                     throw PhotoCaptureError.message("Your connected workspace changed. Share the photo again for the current workspace.")
                 }
-                try PhotoCaptureInbox.validateSource(text)
-                try PhotoCaptureInbox.save(.init(identity: identity, source: text, imageCount: imageCount, warnings: warnings))
+                guard !imageData.isEmpty else { throw PhotoCaptureError.message("No photos could be loaded. Share them again.") }
+                let intake = PhotoCaptureIntake(identity: identity, source: text, imageCount: imageCount, warnings: warnings, imageNames: imageNames)
+                try PhotoCaptureInbox.save(intake, images: imageData)
             } else {
                 try SharedStorage.capture(text)
             }
+            saved = true
             return true
         } catch { self.error = error.localizedDescription; return false }
     }
@@ -105,8 +113,8 @@ struct ShareCaptureView: View {
                 } else {
                     if model.imageCount > 0 {
                         Section {
-                            Text("Check the extracted text and add what you want to do. Save it here, then open Followthrough to review task drafts.")
-                            Text("Photos stay on this device. Only the text and context below will be sent to your connected task-generation service.")
+                            Text("Save the photos, then open Followthrough. Apple Intelligence will interpret what is shown and suggest task drafts. You can add context below.")
+                            Text("Photos stay on this device for Apple Intelligence. Extracted text is supporting context; it is not the image interpretation.")
                                 .font(.callout).foregroundStyle(.secondary)
                         }
                     }
@@ -114,7 +122,7 @@ struct ShareCaptureView: View {
                         Label(warning, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.orange)
                     }
-                    Section(model.imageCount > 0 ? "Text & context" : "Your request") {
+                    Section(model.imageCount > 0 ? "Optional context & OCR" : "Your request") {
                         TextEditor(text: $model.text)
                             .frame(minHeight: 180)
                             .accessibilityLabel("Text and context")
