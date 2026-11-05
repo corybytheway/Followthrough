@@ -13,6 +13,10 @@ import {
   type ReactNode,
 } from 'react';
 import { flushSync } from 'react-dom';
+import { TaskHandoffDialog } from '@/components/task-handoff-dialog';
+import { AIAssistantSettings } from '@/components/ai-assistant-settings';
+import { assistantDestination } from '@/lib/ai-assistant';
+import { launchAssistantInBrowser } from '@/lib/assistant-launch';
 import { googleConnectionResult } from '@/lib/google-connection-result';
 import Link from 'next/link';
 import {
@@ -1402,51 +1406,83 @@ function TaskEditor({
     { blockers },
     state.tasks,
   );
-  const [codexDraft, setCodexDraft] = useState<{
-    taskVersion: string;
-    url: string;
+  const [openingHandoff, setOpeningHandoff] = useState(false);
+  const handoffAssistant = assistantDestination('', state.settings.aiAssistant);
+  const [handoffFallback, setHandoffFallback] = useState<{
+    prompt: string;
+    destination: ReturnType<typeof assistantDestination>;
+    copied: boolean;
   } | null>(null);
-  const [codexDraftError, setCodexDraftError] = useState(false);
-  const [codexDraftRetry, setCodexDraftRetry] = useState(0);
+  const stopHandoffLaunch = useRef<(() => void) | null>(null);
+  const handoffRequest = useRef<AbortController | null>(null);
   const taskVersion = `${initial.id}:${initial.updatedAt}`;
-  useEffect(() => {
-    if (
-      !initial.id ||
-      initial.deletedAt ||
-      initial.status === 'done' ||
-      initial.status === 'archived'
-    )
+  useEffect(
+    () => () => {
+      handoffRequest.current?.abort();
+      stopHandoffLaunch.current?.();
+    },
+    [taskVersion],
+  );
+  async function openTaskHandoff() {
+    if (openingHandoff || saving || hasUnsavedChanges()) {
+      setLocalError('Save your changes before handing off this task.');
       return;
+    }
+    setOpeningHandoff(true);
+    setLocalError('');
     const controller = new AbortController();
-    setCodexDraft(null);
-    setCodexDraftError(false);
-    void fetch('/api/codex/handoff', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: initial.id,
-        expectedUpdatedAt: initial.updatedAt,
-      }),
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const result = (await response.json()) as { chatgptUrl?: string };
-        if (!response.ok || !result.chatgptUrl)
-          throw new Error('Handoff unavailable');
-        setCodexDraft({ taskVersion, url: result.chatgptUrl });
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setCodexDraftError(true);
+    handoffRequest.current?.abort();
+    handoffRequest.current = controller;
+    try {
+      const response = await fetch('/api/codex/handoff', {
+        signal: controller.signal,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: initial.id,
+          expectedUpdatedAt: initial.updatedAt,
+        }),
       });
-    return () => controller.abort();
-  }, [
-    initial.id,
-    initial.updatedAt,
-    initial.deletedAt,
-    initial.status,
-    taskVersion,
-    codexDraftRetry,
-  ]);
+      const result = (await response.json()) as {
+        error?: string;
+        handoff?: { prompt: string; assistant?: string };
+      };
+      if (!response.ok || !result.handoff?.prompt)
+        throw new Error(
+          result.error || 'Could not prepare this task. Try again.',
+        );
+      if (controller.signal.aborted) return;
+      const destination = assistantDestination(
+        result.handoff.prompt,
+        result.handoff.assistant,
+      );
+      if (destination.requiresPaste) {
+        let copied = false;
+        try {
+          await navigator.clipboard.writeText(result.handoff.prompt);
+          copied = true;
+        } catch { /* The dialog keeps the complete brief available for manual copy. */ }
+        if (controller.signal.aborted) return;
+        setHandoffFallback({ prompt: result.handoff.prompt, destination, copied });
+        return;
+      }
+      if (controller.signal.aborted) return;
+      stopHandoffLaunch.current?.();
+      stopHandoffLaunch.current = launchAssistantInBrowser(destination);
+    } catch (error) {
+      if (!controller.signal.aborted)
+        setLocalError(
+          error instanceof Error
+            ? error.message
+            : 'Could not hand off this task. Try again.',
+        );
+    } finally {
+      if (handoffRequest.current === controller) {
+        handoffRequest.current = null;
+        setOpeningHandoff(false);
+      }
+    }
+  }
   function hasUnsavedChanges() {
     const current = [
       title,
@@ -1558,37 +1594,43 @@ function TaskEditor({
           <Check /> {status === 'done' ? 'Reopen task' : 'Mark complete'}
         </Button>
       )}
-      {initial.id &&
-        status !== 'done' &&
-        status !== 'archived' &&
-        (codexDraft?.taskVersion === taskVersion ? (
-          <a
-            href={codexDraft.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={buttonVariants({ className: 'do-task-button' })}
-            onClick={(event) => {
-              if (saving || hasUnsavedChanges()) {
-                event.preventDefault();
-                setLocalError(
-                  'Save your changes before sending this task to Codex.',
-                );
-              }
-            }}
-          >
-            <ArrowUpRight /> Do this for me
-          </a>
-        ) : (
+      {initial.id && status !== 'done' && status !== 'archived' && (
+        <>
           <Button
             type="button"
             className="do-task-button"
-            disabled={!codexDraftError}
-            onClick={() => setCodexDraftRetry((value) => value + 1)}
+            disabled={openingHandoff || saving}
+            onClick={() => void openTaskHandoff()}
           >
-            {codexDraftError ? <ArrowUpRight /> : <Loader2 className="spin" />}
-            {codexDraftError ? 'Retry handoff' : 'Preparing task…'}
+            {openingHandoff ? <Loader2 className="spin" /> : <ArrowUpRight />}{' '}
+            {openingHandoff ? 'Opening assistant…' : 'Do this for me'}
           </Button>
-        ))}
+          {!handoffAssistant.browserPrefillsPrompt && (
+            <p className="secondary-text">
+              Copy task details and open {handoffAssistant.name}
+            </p>
+          )}
+          {handoffFallback && (
+            <TaskHandoffDialog
+              key={taskVersion}
+              prompt={handoffFallback.prompt}
+              destination={handoffFallback.destination}
+              initiallyCopied={handoffFallback.copied}
+              open
+              onOpenChange={(open) => {
+                if (!open) setHandoffFallback(null);
+              }}
+              onContinue={() => {
+                stopHandoffLaunch.current?.();
+                stopHandoffLaunch.current = launchAssistantInBrowser(
+                  handoffFallback.destination,
+                );
+                setHandoffFallback(null);
+              }}
+            />
+          )}
+        </>
+      )}
       {initial.captureMode === 'basic' && initial.estimateProvisional && (
         <div className="draft-note">
           <strong>Basic capture</strong>
@@ -2161,11 +2203,15 @@ function SettingsPanel({
             value={settings.maxBlockMinutes}
             onChange={(e) => update('maxBlockMinutes', Number(e.target.value))}
           >
-            {[30, 45, 60, 90, 120, 180, 240].map((n) => (
-              <option key={n} value={n}>
-                {minutesLabel(n)}
-              </option>
-            ))}
+            {Array.from(
+              new Set([30, 45, 60, 90, 120, 180, 240, settings.maxBlockMinutes]),
+            )
+              .sort((a, b) => a - b)
+              .map((n) => (
+                <option key={n} value={n}>
+                  {minutesLabel(n)}
+                </option>
+              ))}
           </NativeSelect>
         </Field>
         <Field label="Break length">
@@ -2173,11 +2219,13 @@ function SettingsPanel({
             value={settings.breakMinutes}
             onChange={(e) => update('breakMinutes', Number(e.target.value))}
           >
-            {[0, 15, 30, 45, 60].map((n) => (
-              <option key={n} value={n}>
-                {n === 0 ? 'No break' : minutesLabel(n)}
-              </option>
-            ))}
+            {Array.from(new Set([0, 15, 30, 45, 60, settings.breakMinutes]))
+              .sort((a, b) => a - b)
+              .map((n) => (
+                <option key={n} value={n}>
+                  {n === 0 ? 'No break' : minutesLabel(n)}
+                </option>
+              ))}
           </NativeSelect>
         </Field>
         {error && (
@@ -2190,6 +2238,15 @@ function SettingsPanel({
         </Button>
       </form>
       <div className="connections">
+        <AIAssistantSettings
+          value={state.settings.aiAssistant}
+          save={(assistant) =>
+            commit({
+              action: 'update_settings',
+              settings: { aiAssistant: assistant },
+            })
+          }
+        />
         <CalendarSettings />
         <SuggestionSettings />
         <OpenAISettings />

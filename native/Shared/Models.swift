@@ -181,6 +181,7 @@ struct FTWarning: Codable, Hashable, Sendable { var taskId: String; var reason: 
 struct FTSettings: Codable, Hashable, Sendable {
     var timeZone: String; var workStart: String; var workEnd: String; var workDays: [Int]
     var maxBlockMinutes: Int; var breakEveryMinutes: Int; var breakMinutes: Int
+    var aiAssistant: String? = nil
 }
 struct Workspace: Codable, Sendable {
     var projects: [FTProject]; var tasks: [FTTask]; var busy: [FTBusy]; var blocks: [FTBlock]
