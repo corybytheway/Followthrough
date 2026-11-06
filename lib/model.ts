@@ -99,6 +99,7 @@ export type Block = {
   kind: 'task';
 };
 export type Settings = {
+  aiAssistant?: import('./ai-assistant').AIAssistant;
   timeZone: string;
   workStart: string;
   workEnd: string;

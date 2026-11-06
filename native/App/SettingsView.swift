@@ -13,6 +13,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             WorkHoursSettings(store: store, settings: settings)
+            AIAssistantSettings(store: store, savedAssistant: settings.aiAssistant)
             if store.suggestions?.status.available == true {
                 Section("Task suggestions") {
                     Text("Suggestions recognize your routines, remember workflows, and help with tasks that keep moving later. Review each before changing your plan.").font(.callout).foregroundStyle(.secondary)
@@ -132,6 +133,44 @@ struct SettingsView: View {
         do { calendarStatus = try await store.calendars() }
         catch { calendarError = error.localizedDescription }
         calendarAccess.refresh()
+    }
+}
+
+private struct AIAssistantSettings: View {
+    let store: WorkspaceStore
+    let savedAssistant: String?
+    @State private var saveError: String?
+
+    private var assistant: AIAssistant {
+        for operation in store.pending.reversed() where operation.body["action"] == .string("update_settings") {
+            if case .object(let settings)? = operation.body["settings"],
+               case .string(let value)? = settings["aiAssistant"], let assistant = AIAssistant(rawValue: value) { return assistant }
+        }
+        return AIAssistant(rawValue: savedAssistant ?? "") ?? .chatgpt
+    }
+
+    var body: some View {
+        Section {
+            Picker("AI assistant", selection: Binding(get: { assistant }, set: { value in
+                guard value != assistant else { return }
+                if store.mutate(action: "update_settings", title: "AI assistant", fields: ["settings": .object(["aiAssistant": .string(value.rawValue)])]) {
+                    saveError = nil
+                } else { saveError = "Could not save your AI assistant. Try again." }
+            })) {
+                ForEach(AIAssistant.allCases, id: \.self) { value in
+                    Text(verbatim: value.displayName).tag(value)
+                }
+            }
+            .accessibilityIdentifier("aiAssistantPicker")
+            if let saveError { Text(saveError).foregroundStyle(.orange) }
+        } header: {
+            Text("Do this for me")
+        } footer: {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Where tasks go when you choose ‘Do this for me.’ Your choice syncs across web, Mac, and iPhone.")
+                Text(assistant.settingsInstructions)
+            }
+        }
     }
 }
 

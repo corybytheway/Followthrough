@@ -12,6 +12,7 @@ import {
   suggestProjectKeywords,
   uniqueProjectKeywords,
 } from './project-keywords';
+import { AI_ASSISTANTS } from './ai-assistant';
 import { hasUnfinishedPrerequisites } from './task-prerequisites';
 export class InputError extends Error {
   status = 400;
@@ -277,6 +278,11 @@ export function projectInput(
 export function settingsInput(input: unknown, existing: Settings): Settings {
   const v = object(input),
     s = { ...existing };
+  if (v.aiAssistant !== undefined) {
+    if (!AI_ASSISTANTS.some((assistant) => assistant.id === v.aiAssistant))
+      throw new InputError('Choose a supported AI assistant.');
+    s.aiAssistant = v.aiAssistant as Settings['aiAssistant'];
+  }
   if (v.timeZone !== undefined) {
     s.timeZone = text(v.timeZone, 'Time zone', 80, true);
     try {
