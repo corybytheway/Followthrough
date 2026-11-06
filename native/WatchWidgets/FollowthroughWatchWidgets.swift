@@ -37,7 +37,13 @@ private struct UpNextComplicationView: View {
             }
             .font(.caption2)
             Group {
-                if let block { Text(block.task.title) }
+                if let block {
+                    if let project = block.task.project, !project.isEmpty {
+                        Text("\(project): \(block.task.title)")
+                    } else {
+                        Text(block.task.title)
+                    }
+                }
                 else if entry.snapshot == nil { Text("Open Followthrough to sync") }
                 else { Text("That’s it for today!") }
             }
