@@ -59,14 +59,96 @@ function refreshFollowthroughSuggestions() {
   const properties = PropertiesService.getScriptProperties();
   const gateway = properties.getProperty('SITES_GATEWAY_TOKEN');
   const key = properties.getProperty('SCHEDULER_KEY');
-  if (!gateway || !key) return;
-  const response = UrlFetchApp.fetch('https://followthrough.link/api/suggestions/background', {
-    method:'post', contentType:'application/json', payload:'{}',
-    headers:{'OAI-Sites-Authorization':'Bearer '+gateway,'x-followthrough-scheduler-key':key},
-    followRedirects:false, muteHttpExceptions:true,
-  });
-  if (response.getResponseCode() !== 200 && response.getResponseCode() !== 409)
-    throw new Error('Suggestions could not be checked. Calendar sync runs independently.');
+  if (!gateway || !key)
+    throw new Error('Configure Followthrough Script Properties first.');
+  const started = Date.now();
+  const attempts = 3;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    let response;
+    try {
+      response = UrlFetchApp.fetch(
+        'https://followthrough.link/api/suggestions/background',
+        {
+          method: 'post',
+          contentType: 'application/json',
+          payload: '{}',
+          headers: {
+            'OAI-Sites-Authorization': 'Bearer ' + gateway,
+            'x-followthrough-scheduler-key': key,
+          },
+          followRedirects: false,
+          muteHttpExceptions: true,
+        },
+      );
+    } catch (error) {
+      const kind = suggestionsFetchFailure_(error);
+      if (kind === 'transport' && attempt < attempts) {
+        console.warn(
+          'Suggestions refresh: URL Fetch transport error on attempt ' +
+            attempt + '; retrying.',
+        );
+        Utilities.sleep(attempt * 1000);
+        continue;
+      }
+      // Do not log provider exceptions: they may contain URLs or credentials.
+      throw new Error(
+        'Suggestions refresh failed: URL Fetch ' + kind +
+          ' error on attempt ' + attempt +
+          '. Calendar sync runs independently.',
+      );
+    }
+    const status = response.getResponseCode();
+    if (status === 409) {
+      console.log('Suggestions refresh skipped: already running (HTTP 409).');
+      return;
+    }
+    if (status === 200) {
+      let result;
+      try {
+        result = JSON.parse(response.getContentText());
+      } catch (_) {
+        throw new Error(
+          'Suggestions refresh returned invalid JSON (HTTP 200). Check scheduler access.',
+        );
+      }
+      if (!result || result.ok !== true)
+        throw new Error(
+          'Suggestions refresh did not confirm success (HTTP 200). Check scheduler access.',
+        );
+      console.log(
+        'Suggestions refresh completed: HTTP 200, attempt ' + attempt +
+          ', ' + (Date.now() - started) + ' ms.',
+      );
+      return;
+    }
+    if (
+      (status === 408 || status === 429 || (status >= 500 && status <= 599)) &&
+      attempt < attempts
+    ) {
+      console.warn(
+        'Suggestions refresh: HTTP ' + status +
+          ' on attempt ' + attempt + '; retrying.',
+      );
+      Utilities.sleep(attempt * 1000);
+      continue;
+    }
+    throw new Error(
+      'Suggestions refresh failed: HTTP ' + status +
+        ' on attempt ' + attempt + '. Calendar sync runs independently.',
+    );
+  }
+}
+
+function suggestionsFetchFailure_(error) {
+  const message = String((error && error.message) || error);
+  if (/quota|too many times|too much computer time|limit exceeded/i.test(message))
+    return 'quota';
+  if (/permission|authoriz|access denied/i.test(message))
+    return 'authorization';
+  if (
+    /server error occurred|server (?:is )?(?:temporarily )?(?:not available|unavailable)|address unavailable|timeout|timed? out|DNS error|connection (?:reset|refused)|socket/i.test(message)
+  ) return 'transport';
+  return 'service';
 }
 
 function installFollowthroughScheduler() {
