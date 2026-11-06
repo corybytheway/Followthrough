@@ -18,13 +18,11 @@ struct TaskEditor: View {
     init(store: WorkspaceStore, task: FTTask) {
         self.store = store
         self.task = task
-        var initialDraft = task
-        let durations = FTTask.editorDurations(estimate: task.estimateMinutes, remaining: task.remainingMinutes)
-        initialDraft.estimateMinutes = durations.estimate
-        initialDraft.remainingMinutes = durations.remaining
-        _draft = State(initialValue: initialDraft)
-        _estimateOptions = State(initialValue: FTTask.durationOptions([durations.estimate]))
-        _remainingOptions = State(initialValue: FTTask.durationOptions([durations.remaining]))
+        // Opening details must not edit a task. Include exact stored durations
+        // in the pickers so legacy estimates and logged progress stay unchanged.
+        _draft = State(initialValue: task)
+        _estimateOptions = State(initialValue: FTTask.durationOptions([task.estimateMinutes]))
+        _remainingOptions = State(initialValue: FTTask.durationOptions([task.remainingMinutes]))
     }
 
     var body: some View {

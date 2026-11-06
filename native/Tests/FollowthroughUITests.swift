@@ -2113,7 +2113,14 @@ final class FollowthroughUITests: XCTestCase {
         try await verifyEditorControls(includeProjects: false)
     }
 
-    private func verifyEditorControls(includeProjects: Bool) async throws {
+    func testTaskEditorPreservesNonPresetDurationsUntilEdited() async throws {
+        for (estimate, remaining) in [(90, 45), (75, 30), (120, 17)] {
+            app.terminate()
+            try await verifyEditorControls(includeProjects: false, estimate: estimate, remaining: remaining)
+        }
+    }
+
+    private func verifyEditorControls(includeProjects: Bool, estimate: Int = 30, remaining: Int = 30) async throws {
         let endpoint = try XCTUnwrap(URL(string: "http://localhost:4318/api/workspace"))
         func workspace(_ mutation: [String: Any]? = nil) async throws -> [String: Any] {
             var request = URLRequest(url: endpoint)
@@ -2136,9 +2143,12 @@ final class FollowthroughUITests: XCTestCase {
         let originalName = try XCTUnwrap(originalProject["name"] as? String)
         let marker = String(UUID().uuidString.prefix(8))
         let taskName = "Editor controls QA " + marker
-        let created = try await workspace(["action": "create_task", "task": ["title": taskName, "source": taskName, "priority": "top", "status": "ready", "estimateMinutes": 30, "remainingMinutes": 30]])
+        let created = try await workspace(["action": "create_task", "task": ["title": taskName, "source": taskName, "priority": "top", "status": "ready", "estimateMinutes": estimate, "remainingMinutes": remaining]])
         let result = try XCTUnwrap(created["result"] as? [String: Any])
         let taskID = try XCTUnwrap((result["task"] as? [String: Any])?["id"] as? String)
+        let originalTask = try XCTUnwrap(result["task"] as? [String: Any])
+        XCTAssertEqual(originalTask["estimateMinutes"] as? Int, estimate)
+        XCTAssertEqual(originalTask["remainingMinutes"] as? Int, remaining)
         func project() async throws -> [String: Any] {
             let current = try await workspace()
             return try XCTUnwrap((current["projects"] as? [[String: Any]])?.first { $0["id"] as? String == projectID })
@@ -2250,15 +2260,39 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertTrue(titleField.waitForExistence(timeout: 5))
         XCTAssertFalse(saveTask.isEnabled)
         record("Editor controls 07 task unchanged check disabled")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(titleField.waitForNonExistence(timeout: 5), "Viewing task details must allow an unchanged exit without confirmation.")
+        XCTAssertFalse(app.alerts["Discard your changes?"].exists)
+        let viewedTask = try await task()
+        XCTAssertTrue(NSDictionary(dictionary: viewedTask).isEqual(to: originalTask), "Viewing details must not write any task fields.")
+
+        taskRow(taskName).tap()
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5))
+        titleField.tap()
+        titleField.typeText("x")
+        XCTAssertTrue(saveTask.isEnabled)
+        titleField.typeText(XCUIKeyboardKey.delete.rawValue)
+        XCTAssertEqual(titleField.value as? String, taskName)
+        XCTAssertFalse(saveTask.isEnabled, "Restoring the original value must clear the dirty state.")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(titleField.waitForNonExistence(timeout: 5))
+        XCTAssertFalse(app.alerts["Discard your changes?"].exists)
+
+        taskRow(taskName).tap()
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5))
         let draftTitle = append(" unsaved " + marker, to: titleField)
         XCTAssertTrue(saveTask.isEnabled)
         app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.alerts["Discard your changes?"].waitForExistence(timeout: 5))
         app.buttons["Keep editing"].tap()
         XCTAssertEqual(titleField.value as? String, draftTitle)
+        XCTAssertTrue(saveTask.isEnabled)
         app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.alerts["Discard your changes?"].waitForExistence(timeout: 5))
         app.buttons["Discard changes"].tap()
+        XCTAssertTrue(titleField.waitForNonExistence(timeout: 5))
         let discardedTask = try await task()
-        XCTAssertEqual(discardedTask["title"] as? String, taskName)
+        XCTAssertTrue(NSDictionary(dictionary: discardedTask).isEqual(to: originalTask), "Discarding must preserve the entire original task, including durations and progress.")
         taskRow(taskName).tap()
         XCTAssertTrue(titleField.waitForExistence(timeout: 5))
         XCTAssertFalse(saveTask.isEnabled)
@@ -2274,6 +2308,8 @@ final class FollowthroughUITests: XCTestCase {
         record("Editor controls 08 task saved and reopened unchanged")
         app.buttons["Cancel"].tap()
         let savedTask = try await task()
+        XCTAssertEqual(savedTask["estimateMinutes"] as? Int, estimate, "Saving a title edit must preserve the estimate.")
+        XCTAssertEqual(savedTask["remainingMinutes"] as? Int, remaining, "Saving a title edit must preserve logged progress.")
         _ = try await workspace(["action": "update_task", "id": taskID, "task": ["title": taskName, "expectedUpdatedAt": try XCTUnwrap(savedTask["updatedAt"] as? String)]])
         _ = try await workspace(["action": "delete_task", "id": taskID])
         record("Editor controls 09 fixtures restored")
