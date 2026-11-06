@@ -231,6 +231,7 @@ struct ShareCaptureView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(model.hasAddedTasks ? "Close" : "Cancel", action: finish)
+                        .tint(.primary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if model.loading && model.imageCount > 0 {
@@ -238,7 +239,7 @@ struct ShareCaptureView: View {
                             .disabled(true)
                             .accessibilityIdentifier("shareSave")
                     } else if !model.drafts.isEmpty {
-                        Button("Add all") {
+                        Button(model.drafts.count == 1 ? "Add" : "Add all") {
                             if model.save() { finish() }
                         }
                         .buttonStyle(.borderedProminent)

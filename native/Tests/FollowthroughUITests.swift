@@ -3479,7 +3479,7 @@ final class FollowthroughUITests: XCTestCase {
             XCTAssertTrue(issue.label.contains("Followthrough"))
             XCTAssertFalse(photos.staticTexts["Suggested tasks"].exists)
         } else {
-            XCTAssertEqual(save.label, "Add all")
+            XCTAssertEqual(save.label, titles.count == 1 ? "Add" : "Add all")
             XCTAssertTrue(photos.staticTexts["Suggested tasks"].exists)
             XCTAssertTrue(photos.staticTexts["Syncs when you open Followthrough."].exists)
             XCTAssertTrue(titles.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })

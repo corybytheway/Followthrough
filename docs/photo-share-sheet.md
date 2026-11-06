@@ -5,7 +5,7 @@ Created by Cory McCabe.
 ## Current flow
 
 1. Share 1–5 JPEG, PNG, or HEIC/HEIF photos or screenshots into Followthrough. The share extension automatically passes the prepared images to the on-device Apple Intelligence model and shows **Suggested tasks** as soon as it has drafts.
-2. Each suggestion shows its project color and name, estimated duration, and any deadline. Tap **+** to add one task, **×** to dismiss it, or **Add all** to add the remaining suggestions. Followthrough syncs approved tasks when it opens. A durable outbox preserves approvals offline and reuses stable intake, group, and task IDs on retry.
+2. Each suggestion shows its project color and name, estimated duration, and any deadline. Tap **+** to add a task or **×** to dismiss it. The toolbar shows **Add** for one remaining suggestion and **Add all** for multiple. Followthrough syncs approved tasks when it opens. A durable outbox preserves approvals offline and reuses stable intake, group, and task IDs on retry.
 3. If suggestions are unavailable or there's no clear task, **Save photo** keeps the image for **Review** in Followthrough. Add context and try again. Task names are editable, and **Details** and **Photo context** hold the optional fields and source information.
 4. One multimodal response per photo drafts its distinct unfinished outcomes. Related conversation details and design states become checklist steps for one task. Completed items and interface labels are excluded. Identical outcomes with the same project and dates are consolidated across photos.
 5. A successful sync confirms the complete batch and removes its image intake. If the server rejects the batch, **Photo tasks need review** lets you edit or discard it.
