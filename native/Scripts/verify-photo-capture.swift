@@ -76,6 +76,20 @@ import UniformTypeIdentifiers
         try rejects("empty source") { try PhotoCaptureInbox.validateSource("  ") }
         try rejects("source limit uses UTF-16 like the server") { try PhotoCaptureInbox.validateSource(String(repeating: "😀", count: 4001)) }
         let projects = [FTProject(id: "photo-project", name: "Photo Studio", aliases: [], description: "Synthetic test", color: "#4465FF")]
+        let followthrough = FTProject(id: "ft", name: "⚡️Followthrough", shortName: "FT", aliases: ["Follow through"], description: "", color: "#35EAB1")
+        let mercury = FTProject(id: "mercury", name: "Mercury Weather", shortName: "MW", aliases: [], description: "", color: "#36A2FF")
+        let catalog = [mercury, followthrough]
+        let shareText = "FT: Build photo share sheet\nWorkspace: Followthrough\n2:26\nWorked for 1m 14s"
+        let matches = PhotoDraftEvidence.projects(in: shareText, from: catalog)
+        precondition(matches == [followthrough] && PhotoDraftEvidence.repeatedProject(in: shareText, among: matches) == followthrough)
+        precondition(PhotoDraftEvidence.repeatedProject(in: "Followthrough\nFollowthrough", among: matches) == nil)
+        precondition(PhotoDraftEvidence.projects(in: "The app is running.", from: catalog).isEmpty)
+        let bothProjects = shareText + "\nMercury Weather"
+        let bothMatches = PhotoDraftEvidence.projects(in: bothProjects, from: catalog)
+        precondition(bothMatches == catalog && PhotoDraftEvidence.repeatedProject(in: bothProjects, among: bothMatches) == nil)
+        precondition(PhotoDraftEvidence.calendarDays(in: shareText).isEmpty)
+        precondition(PhotoDraftEvidence.calendarDays(in: "Due December 12, 2026\nStart on 2026-11-07") == ["2026-11-07", "2026-12-12"])
+        print("PASS source evidence excludes unrelated projects and clock times, preserves explicit calendar dates")
         let basic = PhotoTaskDraft.basic()
         try PhotoTaskDraft.validate([basic], source: text, projects: projects)
         var draft = basic; draft.title = "  "

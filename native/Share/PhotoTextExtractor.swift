@@ -23,7 +23,7 @@ enum PhotoTextExtractor {
         }
     }
 
-    static func extract(from provider: NSItemProvider) async throws -> PhotoTextResult {
+    static func extract(from provider: NSItemProvider, recognitionLevel: VNRequestTextRecognitionLevel = .accurate) async throws -> PhotoTextResult {
         guard let type = supportedType(for: provider) else {
             throw PhotoCaptureError.message("Use a JPEG, PNG, or HEIC photo.")
         }
@@ -35,13 +35,13 @@ enum PhotoTextExtractor {
                 }
                 // The provider's temporary file is valid only inside this callback.
                 // Decode a bounded thumbnail here rather than loading full image data.
-                do { continuation.resume(returning: try autoreleasepool { try extract(from: url) }) }
+                do { continuation.resume(returning: try autoreleasepool { try extract(from: url, recognitionLevel: recognitionLevel) }) }
                 catch { continuation.resume(throwing: error) }
             }
         }
     }
 
-    static func extract(from url: URL) throws -> PhotoTextResult {
+    static func extract(from url: URL, recognitionLevel: VNRequestTextRecognitionLevel = .accurate) throws -> PhotoTextResult {
         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? maximumBytes + 1
         guard size <= maximumBytes else { throw PhotoCaptureError.message("This photo is larger than 20 MB. Share a smaller copy.") }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
@@ -53,16 +53,16 @@ enum PhotoTextExtractor {
                 kCGImageSourceThumbnailMaxPixelSize: 3072,
                 kCGImageSourceShouldCacheImmediately: true,
               ] as CFDictionary) else { throw PhotoCaptureError.message("This photo could not be read. Use a JPEG, PNG, or HEIC image.") }
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
-        request.automaticallyDetectsLanguage = true
         let jpeg = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(jpeg, UTType.jpeg.identifier as CFString, 1, nil) else {
             throw PhotoCaptureError.message("Could not prepare this photo for Apple Intelligence.")
         }
         CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { throw PhotoCaptureError.message("Could not save this photo.") }
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = recognitionLevel
+        request.usesLanguageCorrection = recognitionLevel == .accurate
+        request.automaticallyDetectsLanguage = recognitionLevel == .accurate
         do { try VNImageRequestHandler(cgImage: image).perform([request]) }
         catch { return PhotoTextResult(text: "", uncertain: true, imageData: jpeg as Data, warning: "OCR was unavailable. Apple Intelligence can still interpret the image.") }
         let candidates = (request.results ?? []).compactMap { $0.topCandidates(1).first }

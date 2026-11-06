@@ -3302,7 +3302,7 @@ final class FollowthroughUITests: XCTestCase {
     }
 
 
-    private func launchPhotoFixture() throws {
+    @discardableResult private func launchPhotoFixture(requiresConversationPhoto: Bool = false) throws -> [String: Any] {
         let fixtureURL = URL(fileURLWithPath: "/tmp/ft-photo-capture-fixture.json")
         guard let data = try? Data(contentsOf: fixtureURL),
               let fixture = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -3311,11 +3311,15 @@ final class FollowthroughUITests: XCTestCase {
               let session = fixture["session"] as? [String: Any] else {
             throw XCTSkip("Requires the isolated photo capture fixture and a dedicated simulator with a synthetic photo.")
         }
+        if requiresConversationPhoto && fixture["conversationPhotoImported"] as? Bool != true {
+            throw XCTSkip("Import the fictional details-toggle conversation as the newest photo and set conversationPhotoImported in the photo fixture.")
+        }
         app.launchArguments = ["-server", server]
         app.launchEnvironment["FOLLOWTHROUGH_SESSION"] = try JSONSerialization.data(withJSONObject: session).base64EncodedString()
         app.launch()
         XCTAssertTrue(app.descendants(matching: .any)["captureInput"].firstMatch.waitForExistence(timeout: 25))
         record("Photo 01 workspace")
+        return fixture
     }
 
     private func photoFixture(_ path: String, body: [String: Any]? = nil) async throws -> [String: Any] {
@@ -3330,6 +3334,20 @@ final class FollowthroughUITests: XCTestCase {
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
 
+    private func waitForPhotoFixtureState(_ condition: ([String: Any]) -> Bool) async throws -> [String: Any] {
+        var state = try await photoFixture("/__fixture/state")
+        for _ in 0..<30 {
+            if condition(state) { return state }
+            try await Task.sleep(for: .milliseconds(300))
+            state = try await photoFixture("/__fixture/state")
+        }
+        return state
+    }
+
+    private func fixturePhotoTasks(_ state: [String: Any]) -> [[String: Any]] {
+        (state["workspace"] as? [String: Any])?["tasks"] as? [[String: Any]] ?? []
+    }
+
     private func photoInboxDirectory() throws -> URL? {
         let file = URL(fileURLWithPath: "/tmp/ft-photo-capture-fixture.json")
         let fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
@@ -3341,7 +3359,8 @@ final class FollowthroughUITests: XCTestCase {
         return URL(fileURLWithPath: path, isDirectory: true)
     }
 
-    @discardableResult private func assertSavedPhotoImages(_ count: Int, phase: String) throws -> String? {
+    @discardableResult private func assertSavedPhotoImages(_ count: Int, phase: String, suggestions: [String]? = nil,
+                                                          visualSubjectTerms: [String] = [], approved: Bool? = nil) throws -> String? {
         guard let directory = try photoInboxDirectory() else { return nil }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }
         XCTAssertEqual(files.count, 1, "This dedicated test should have exactly one unconsumed photo intake.")
@@ -3351,6 +3370,17 @@ final class FollowthroughUITests: XCTestCase {
             XCTFail("The saved intake must reference actual image files."); return nil
         }
         XCTAssertEqual(names.count, count)
+        XCTAssertEqual(intake["imageCount"] as? Int, count)
+        if let suggestions {
+            let drafts = intake["drafts"] as? [[String: Any]] ?? []
+            XCTAssertEqual(drafts.compactMap { $0["title"] as? String }, suggestions)
+            if !suggestions.isEmpty { XCTAssertEqual(intake["draftOrigin"] as? String, "appleIntelligence") }
+        }
+        if !visualSubjectTerms.isEmpty {
+            let interpretation = intake["interpretation"] as? String ?? ""
+            XCTAssertTrue(visualSubjectTerms.contains { interpretation.localizedCaseInsensitiveContains($0) }, interpretation)
+        }
+        if let approved { XCTAssertEqual(intake["approvedInShareSheet"] as? Bool == true, approved) }
         var evidence = ["Intake: \(id)", "Phase: \(phase)"]
         for name in names {
             let image = directory.appendingPathComponent("Images").appendingPathComponent(id).appendingPathComponent(name)
@@ -3370,7 +3400,18 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("Images").appendingPathComponent(id).path))
     }
 
-    private func openPhotoShareExtension(_ name: String, imageIndex: Int? = nil, expectsOCR: Bool = true) throws -> XCUIApplication {
+    private func assertApprovedPhotoSyncs(_ suggestions: [String], intakeID: String?, evidence: String) async throws {
+        app.activate()
+        let state = try await waitForPhotoFixtureState { self.fixturePhotoTasks($0).count >= suggestions.count }
+        XCTAssertEqual(fixturePhotoTasks(state).compactMap { $0["title"] as? String }.sorted(), suggestions.sorted())
+        XCTAssertEqual((state["generations"] as? [Any])?.count, 0)
+        XCTAssertFalse(app.buttons["reviewSharedPhotos"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["photoDraftTitle0"].firstMatch.exists)
+        try assertPhotoImagesRemoved(intakeID)
+        record(evidence)
+    }
+
+    private func openPhotoLibrary(_ name: String) -> XCUIApplication {
         let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
         photos.terminate()
         photos.launch()
@@ -3379,25 +3420,31 @@ final class FollowthroughUITests: XCTestCase {
             photos.buttons["Continue"].firstMatch.tap()
             record(name + " Photos continued", application: photos)
         }
+        if photos.buttons["BackButton"].exists {
+            photos.buttons["BackButton"].tap()
+            record(name + " Back to library", application: photos)
+        }
+        if photos.buttons["Cancel"].exists && !photos.buttons["Select"].exists {
+            photos.buttons["Cancel"].tap()
+            record(name + " End selection", application: photos)
+        }
+        return photos
+    }
+
+    private func openPhotoShareExtension(_ name: String, imageIndex: Int? = nil) -> XCUIApplication {
+        let photos = openPhotoLibrary(name)
+        let images = photos.images.matching(identifier: "PXGGridLayout-Info").allElementsBoundByIndex
+        let index = imageIndex ?? images.indices.last ?? 0
         let share = photos.buttons["PUOneUpBarButtonItemIdentifierShare"].firstMatch
-        if let imageIndex {
-            if photos.buttons["BackButton"].exists {
-                photos.buttons["BackButton"].tap()
-                record(name + " Back to library", application: photos)
-            }
-            if photos.buttons["Cancel"].exists && !photos.buttons["Select"].exists {
-                photos.buttons["Cancel"].tap()
-                record(name + " End selection", application: photos)
-            }
-            let images = photos.images.matching(identifier: "PXGGridLayout-Info").allElementsBoundByIndex
-            XCTAssertTrue(images.indices.contains(imageIndex))
-            if images.indices.contains(imageIndex) { images[imageIndex].tap() }
+        XCTAssertTrue(images.indices.contains(index), "Import the synthetic photo into this dedicated simulator first.")
+        if images.indices.contains(index) {
+            let image = images[index]
+            image.tap()
             record(name + " Selected photo detail", application: photos)
-        } else if !share.exists {
-            let imported = photos.images.matching(identifier: "PXGGridLayout-Info").allElementsBoundByIndex.last
-            XCTAssertNotNil(imported, "Import the synthetic photo into this dedicated simulator first.")
-            imported?.tap()
-            record(name + " Photo detail", application: photos)
+            if !share.waitForExistence(timeout: 3) && image.isHittable {
+                image.tap()
+                record(name + " Opened photo after scrolling", application: photos)
+            }
         }
         XCTAssertTrue(share.waitForExistence(timeout: 10))
         share.tap()
@@ -3406,21 +3453,45 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertTrue(follow.waitForExistence(timeout: 10))
         follow.tap()
         record(name + " Extension loading", application: photos)
-        let source = photos.descendants(matching: .any)["shareSource"].firstMatch
-        XCTAssertTrue(source.waitForExistence(timeout: 90))
-        record(name + " Extension extracted", application: photos)
-        if expectsOCR {
-            XCTAssertTrue((source.value as? String ?? "").localizedCaseInsensitiveContains("invoice"))
-        } else {
-            XCTAssertTrue((source.value as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
         return photos
+    }
+
+    private func checkPhotoSharePreview(_ photos: XCUIApplication, name: String) -> [String] {
+        let save = photos.buttons["shareSave"].firstMatch
+        let issue = photos.staticTexts["sharePhotoIssue"].firstMatch
+        let tasks = photos.staticTexts.matching(identifier: "shareSuggestedTask")
+        let error = photos.staticTexts["shareError"].firstMatch
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            error.exists || (save.exists && save.isEnabled && (issue.exists || tasks.firstMatch.exists))
+        }, object: nil)
+        let result = XCTWaiter.wait(for: [settled], timeout: 90)
+        record(name, application: photos)
+        XCTAssertEqual(result, .completed)
+        XCTAssertFalse(error.exists, error.exists ? error.label : "")
+        XCTAssertFalse(photos.descendants(matching: .any)["shareSource"].firstMatch.exists)
+        XCTAssertFalse(photos.staticTexts["Context & supporting OCR"].exists)
+        XCTAssertFalse(photos.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Photo 1:\n")).firstMatch.exists)
+        let titles = tasks.allElementsBoundByIndex.map(\.label)
+        XCTAssertTrue(save.isHittable)
+        if titles.isEmpty {
+            XCTAssertEqual(save.label, "Save photo")
+            XCTAssertTrue(issue.exists)
+            XCTAssertTrue(issue.label.contains("Followthrough"))
+            XCTAssertFalse(photos.staticTexts["Suggested tasks"].exists)
+        } else {
+            XCTAssertEqual(save.label, "Add all")
+            XCTAssertTrue(photos.staticTexts["Suggested tasks"].exists)
+            XCTAssertTrue(photos.staticTexts["Syncs when you open Followthrough."].exists)
+            XCTAssertTrue(titles.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        }
+        return titles
     }
 
     private func photoScrollTo(_ element: XCUIElement, name: String) {
         for index in 0..<8 {
             if element.exists && element.isHittable && element.frame.minY > 100 && element.frame.maxY < app.frame.maxY - 30 { return }
-            app.swipeUp()
+            if element.exists && element.frame.minY < 100 { app.swipeDown() }
+            else { app.swipeUp() }
             record(name + " scroll \(index + 1)")
         }
         XCTAssertTrue(element.exists && element.isHittable)
@@ -3429,7 +3500,8 @@ final class FollowthroughUITests: XCTestCase {
     func testPhotoShareReviewPersistsAndSavesOnlyAfterApproval() async throws {
         _ = try await photoFixture("/__fixture/reset", body: [:])
         try launchPhotoFixture()
-        var photos = try openPhotoShareExtension("Photo 02 Cancel")
+        var photos = openPhotoShareExtension("Photo 02 Cancel")
+        _ = checkPhotoSharePreview(photos, name: "Photo 02 Cancel preview")
         photos.buttons["Cancel"].firstMatch.tap()
         record("Photo 03 Cancelled extension", application: photos)
         app.activate()
@@ -3438,20 +3510,29 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertEqual((state["generations"] as? [Any])?.count, 0)
         XCTAssertEqual((state["saves"] as? [Any])?.count, 0)
 
-        photos = try openPhotoShareExtension("Photo 04 Intake")
-        XCTAssertTrue(photos.buttons["shareSave"].isEnabled)
+        photos = openPhotoShareExtension("Photo 04 Intake")
+        let suggestions = checkPhotoSharePreview(photos, name: "Photo 04 Share preview without OCR")
+        try XCTSkipIf(!suggestions.isEmpty, "Use a photo with no clear task to check the editable Save photo fallback.")
         photos.buttons["shareSave"].tap()
         record("Photo 05 Saved for review", application: photos)
         app.activate()
         let review = app.buttons["reviewSharedPhotos"]
         XCTAssertTrue(review.waitForExistence(timeout: 20))
         record("Photo 06 Review banner")
-        let imageIntakeID = try assertSavedPhotoImages(1, phase: "initial share")
+        let imageIntakeID = try assertSavedPhotoImages(1, phase: "initial share", suggestions: suggestions, approved: false)
+        state = try await photoFixture("/__fixture/state")
+        XCTAssertEqual((state["generations"] as? [Any])?.count, 0)
+        XCTAssertEqual((state["saves"] as? [Any])?.count, 0)
         review.tap()
         let source = app.descendants(matching: .any)["photoSource"].firstMatch
+        let title = app.descendants(matching: .any)["photoDraftTitle0"].firstMatch
         XCTAssertTrue(source.waitForExistence(timeout: 10))
-        XCTAssertTrue((source.value as? String ?? "").contains("invoice"))
-        record("Photo 07 Review source")
+        if (source.value as? String ?? "").isEmpty {
+            source.tap()
+            source.typeText("Send the invoice to Alex")
+        }
+        XCTAssertTrue((source.value as? String ?? "").localizedCaseInsensitiveContains("invoice"))
+        record("Photo 07 Initial review")
         app.buttons["photoReviewClose"].tap()
         app.terminate()
         app.launch()
@@ -3463,9 +3544,8 @@ final class FollowthroughUITests: XCTestCase {
         let generate = app.buttons["photoOCRFallback"]
         photoScrollTo(generate, name: "Photo 09 Generate")
         generate.tap()
-        let title = app.descendants(matching: .any)["photoDraftTitle0"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 15))
-        record("Photo 10 Generated draft")
+        record("Photo 10 Draft review")
         state = try await photoFixture("/__fixture/state")
         XCTAssertEqual((state["generations"] as? [Any])?.count, 1)
         XCTAssertEqual((state["saves"] as? [Any])?.count, 0)
@@ -3482,7 +3562,7 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertTrue((title.value as? String ?? "").contains("QA"))
         record("Photo 13 Edited draft survived relaunch")
         XCTAssertEqual(try assertSavedPhotoImages(1, phase: "edited draft survived relaunch"), imageIntakeID)
-        XCTAssertFalse(app.descendants(matching: .any)["photoInterpretation"].firstMatch.exists, "OCR fallback must not claim an Apple image interpretation.")
+        XCTAssertTrue(app.staticTexts["Drafts from extracted text"].exists)
         let add = app.buttons["photoAddToPlan"]
         photoScrollTo(add, name: "Photo 14 Add")
         XCTAssertTrue(add.isEnabled)
@@ -3493,8 +3573,8 @@ final class FollowthroughUITests: XCTestCase {
         state = try await photoFixture("/__fixture/state")
         let tasks = (state["workspace"] as? [String: Any])?["tasks"] as? [[String: Any]]
         XCTAssertEqual(tasks?.count, 1)
-        XCTAssertTrue((tasks?.first?["title"] as? String ?? "").contains("QA"))
-        XCTAssertTrue((tasks?.first?["source"] as? String ?? "").contains("invoice"))
+        XCTAssertTrue(tasks?.contains { ($0["title"] as? String ?? "").contains("QA") } == true)
+        XCTAssertTrue((tasks?.first?["source"] as? String ?? "").localizedCaseInsensitiveContains("invoice"))
         app.buttons["photoReviewClose"].tap()
         app.terminate()
         app.launch()
@@ -3507,13 +3587,15 @@ final class FollowthroughUITests: XCTestCase {
         _ = try await photoFixture("/__fixture/reset", body: [:])
         _ = try await photoFixture("/__fixture/mode", body: ["mode": "offline"])
         try launchPhotoFixture()
-        let photos = try openPhotoShareExtension("Photo offline 01 Intake")
+        let photos = openPhotoShareExtension("Photo offline 01 Intake")
+        let suggestions = checkPhotoSharePreview(photos, name: "Photo offline 01 Share preview without OCR")
+        try XCTSkipIf(!suggestions.isEmpty, "Use a photo with no clear task or Apple Intelligence unavailable to check the basic draft fallback.")
         photos.buttons["shareSave"].tap()
         record("Photo offline 02 Saved for review", application: photos)
         app.activate()
         let review = app.buttons["reviewSharedPhotos"]
         XCTAssertTrue(review.waitForExistence(timeout: 20))
-        let imageIntakeID = try assertSavedPhotoImages(1, phase: "offline initial share")
+        let imageIntakeID = try assertSavedPhotoImages(1, phase: "offline initial share", suggestions: suggestions)
         review.tap()
         let unavailable = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "OCR is a text-only fallback.")).firstMatch
         let available = app.staticTexts["Apple Intelligence can interpret these images on this device."]
@@ -3534,6 +3616,14 @@ final class FollowthroughUITests: XCTestCase {
             XCTAssertEqual((state["generations"] as? [Any])?.count, 0, "The visual action must not silently invoke OCR-only generation.")
         }
         let generate = app.buttons["photoOCRFallback"]
+        let source = app.descendants(matching: .any)["photoSource"].firstMatch
+        if (source.value as? String ?? "").isEmpty {
+            photoScrollTo(source, name: "Photo offline 03 Context")
+            source.tap()
+            source.typeText("Send the invoice to Alex")
+            app.buttons["photoReviewClose"].tap()
+            review.tap()
+        }
         photoScrollTo(generate, name: "Photo offline 03 Generate")
         generate.tap()
         let generationError = app.descendants(matching: .any)["photoReviewError"].firstMatch
@@ -3546,7 +3636,9 @@ final class FollowthroughUITests: XCTestCase {
         record("Photo offline 04 Generation error preserved source")
         var state = try await photoFixture("/__fixture/state")
         XCTAssertEqual((state["saves"] as? [Any])?.count, 0)
-        app.buttons["photoBasicDraft"].tap()
+        let basic = app.buttons["photoBasicDraft"]
+        photoScrollTo(basic, name: "Photo offline 05 Basic")
+        basic.tap()
         let title = app.descendants(matching: .any)["photoDraftTitle0"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 10))
         XCTAssertEqual(title.value as? String, "Review shared photo")
@@ -3588,15 +3680,8 @@ final class FollowthroughUITests: XCTestCase {
 
     func testPhotoShareTwoImagesRemainSeparateUntilReview() async throws {
         _ = try await photoFixture("/__fixture/reset", body: [:])
-        try launchPhotoFixture()
-        let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
-        photos.terminate()
-        photos.launch()
-        record("Photo multiple 01 Library", application: photos)
-        if photos.buttons["BackButton"].exists {
-            photos.buttons["BackButton"].tap()
-            record("Photo multiple 02 Back to library", application: photos)
-        }
+        let fixture = try launchPhotoFixture()
+        let photos = openPhotoLibrary("Photo multiple 01")
         XCTAssertTrue(photos.buttons["Select"].firstMatch.waitForExistence(timeout: 10))
         photos.buttons["Select"].firstMatch.tap()
         record("Photo multiple 03 Selection", application: photos)
@@ -3614,22 +3699,31 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertTrue(follow.waitForExistence(timeout: 10))
         follow.tap()
         record("Photo multiple 06 Extracting", application: photos)
-        let source = photos.descendants(matching: .any)["shareSource"].firstMatch
-        XCTAssertTrue(source.waitForExistence(timeout: 90))
-        let extracted = source.value as? String ?? ""
-        XCTAssertTrue(extracted.contains("Photo 1:"))
-        XCTAssertTrue(extracted.contains("Photo 2:"))
-        record("Photo multiple 07 Both sources", application: photos)
+        let suggestions = checkPhotoSharePreview(photos, name: "Photo multiple 07 Share preview without OCR")
+        if let expectedTerms = fixture["independentPhotoTaskTitleTerms"] as? [[String]] {
+            XCTAssertEqual(suggestions.count, expectedTerms.count, "Independent photo tasks must stay separate.")
+            for terms in expectedTerms {
+                XCTAssertTrue(suggestions.contains { title in terms.contains { title.localizedCaseInsensitiveContains($0) } },
+                              "Expected a separate task for \(terms.joined(separator: " or ")); suggestions: \(suggestions)")
+            }
+        }
         photos.buttons["shareSave"].tap()
+        record("Photo multiple 07 Photos saved", application: photos)
+        let imageIntakeID = try assertSavedPhotoImages(2, phase: "two-photo share", suggestions: suggestions, approved: !suggestions.isEmpty)
+        if !suggestions.isEmpty {
+            try await assertApprovedPhotoSyncs(suggestions, intakeID: imageIntakeID, evidence: "Photo multiple 08 Synced independent drafts")
+            return
+        }
         app.activate()
         let review = app.buttons["reviewSharedPhotos"]
         XCTAssertTrue(review.waitForExistence(timeout: 20))
-        let imageIntakeID = try assertSavedPhotoImages(2, phase: "two-photo share")
         review.tap()
         let reviewed = app.descendants(matching: .any)["photoSource"].firstMatch
         XCTAssertTrue(reviewed.waitForExistence(timeout: 10))
-        XCTAssertEqual(reviewed.value as? String, extracted)
-        record("Photo multiple 08 Review source preserved")
+        let source = reviewed.value as? String ?? ""
+        XCTAssertTrue(source.contains("Photo 1:"))
+        XCTAssertTrue(source.contains("Photo 2:"))
+        record("Photo multiple 08 Review retained content")
         let state = try await photoFixture("/__fixture/state")
         XCTAssertEqual((state["generations"] as? [Any])?.count, 0)
         XCTAssertEqual((state["saves"] as? [Any])?.count, 0)
@@ -3647,16 +3741,24 @@ final class FollowthroughUITests: XCTestCase {
         _ = try await photoFixture("/__fixture/reset", body: [:])
         try launchPhotoFixture()
         // The dedicated simulator's first stock image is a photograph of a plant with no text.
-        let photos = try openPhotoShareExtension("Photo no OCR 01 Intake", imageIndex: 0, expectsOCR: false)
-        XCTAssertTrue(photos.buttons["shareSave"].isEnabled, "A valid image must be savable even without OCR.")
+        let photos = openPhotoShareExtension("Photo no OCR 01 Intake", imageIndex: 0)
+        let suggestions = checkPhotoSharePreview(photos, name: "Photo no OCR 01 Share preview")
         photos.buttons["shareSave"].tap()
         record("Photo no OCR 02 Saved image without text", application: photos)
+        // Fast OCR may see stray characters in the leaves. Check the visual interpretation independently.
+        let imageIntakeID = try assertSavedPhotoImages(1, phase: "no OCR image persisted", suggestions: suggestions,
+                                                       visualSubjectTerms: suggestions.isEmpty ? [] : ["leaf", "leaves", "plant", "foliage"],
+                                                       approved: !suggestions.isEmpty)
+        if !suggestions.isEmpty {
+            try await assertApprovedPhotoSyncs(suggestions, intakeID: imageIntakeID, evidence: "Photo no OCR 04 Synced visual draft without typed context")
+            return
+        }
         app.activate()
         let review = app.buttons["reviewSharedPhotos"]
         XCTAssertTrue(review.waitForExistence(timeout: 20))
-        let imageIntakeID = try assertSavedPhotoImages(1, phase: "no OCR image persisted")
         review.tap()
         let source = app.descendants(matching: .any)["photoSource"].firstMatch
+        let context = "Review lighting in this photo"
         XCTAssertTrue(source.waitForExistence(timeout: 10))
         XCTAssertTrue((source.value as? String ?? "").isEmpty)
         let understand = app.buttons["photoGenerateDrafts"]
@@ -3666,27 +3768,87 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertFalse(app.buttons["photoBasicDraft"].isEnabled)
         record("Photo no OCR 04 Visual action enabled and text fallbacks disabled")
         source.tap()
-        source.typeText("Review lighting in this photo")
+        source.typeText(context)
         record("Photo no OCR 05 Added context")
         XCTAssertTrue(app.buttons["photoOCRFallback"].isEnabled)
         app.buttons["photoReviewClose"].tap()
         app.terminate()
         app.launch()
         XCTAssertTrue(review.waitForExistence(timeout: 15))
-        XCTAssertEqual(try assertSavedPhotoImages(1, phase: "no OCR image and context survived relaunch"), imageIntakeID)
+        XCTAssertEqual(try assertSavedPhotoImages(1, phase: "no OCR image and context survived relaunch", suggestions: suggestions, approved: false), imageIntakeID)
         review.tap()
         XCTAssertTrue(source.waitForExistence(timeout: 10))
-        XCTAssertEqual(source.value as? String, "Review lighting in this photo")
+        XCTAssertEqual(source.value as? String, context)
         record("Photo no OCR 06 Image and context survived relaunch")
         let discard = app.buttons["Discard photo intake"]
         photoScrollTo(discard, name: "Photo no OCR 07 Discard")
         discard.tap()
+        record("Photo no OCR 07 Discard confirmation")
         app.buttons["Discard"].firstMatch.tap()
         try assertPhotoImagesRemoved(imageIntakeID)
+        XCTAssertTrue(review.waitForNonExistence(timeout: 5))
         record("Photo no OCR 08 Discard removed image")
         let state = try await photoFixture("/__fixture/state")
         XCTAssertEqual((state["generations"] as? [Any])?.count, 0)
         XCTAssertEqual((state["saves"] as? [Any])?.count, 0)
+    }
+
+    func testPhotoShareConversationKeepsOneDesignChange() async throws {
+        try launchPhotoFixture(requiresConversationPhoto: true)
+        _ = try await photoFixture("/__fixture/reset", body: [:])
+        let photos = openPhotoShareExtension("Photo conversation 01 Intake")
+        let suggestions = checkPhotoSharePreview(photos, name: "Photo conversation 02 Suggested design change")
+        XCTAssertEqual(suggestions.count, 1, "The label and two states belong to one design change.")
+        let suggestedTitle = try XCTUnwrap(suggestions.first)
+        let title = suggestedTitle.lowercased()
+        XCTAssertTrue(title.contains("toggle") || title.contains("control") || title.contains("button"))
+        XCTAssertNotEqual(title, "show details")
+        XCTAssertNotEqual(title, "hide details")
+        var state = try await photoFixture("/__fixture/state")
+        XCTAssertEqual((state["generations"] as? [Any])?.count, 0)
+        XCTAssertEqual((state["saves"] as? [Any])?.count, 0)
+        XCTAssertTrue(fixturePhotoTasks(state).isEmpty)
+        _ = try await photoFixture("/__fixture/mode", body: ["mode": "offline"])
+        photos.buttons["shareSave"].tap()
+        record("Photo conversation 03 Approved in Photos", application: photos)
+        let imageIntakeID = try assertSavedPhotoImages(1, phase: "conversation approved", suggestions: suggestions, approved: true)
+        if let imageIntakeID, let directory = try photoInboxDirectory() {
+            let data = try Data(contentsOf: directory.appendingPathComponent(imageIntakeID + ".json"))
+            let intake = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let drafts = try XCTUnwrap(intake["drafts"] as? [[String: Any]])
+            let draft = try XCTUnwrap(drafts.first)
+            let details = (draft["steps"] as? [String] ?? []) + [draft["notes"] as? String ?? ""]
+            let detailText = details.joined(separator: " ").lowercased()
+            XCTAssertTrue(detailText.contains("show details") && detailText.contains("hide details"), detailText)
+        }
+        state = try await photoFixture("/__fixture/state")
+        XCTAssertEqual((state["saves"] as? [Any])?.count, 0, "Opening Followthrough starts sync.")
+        app.activate()
+        state = try await waitForPhotoFixtureState { ($0["saves"] as? [Any])?.isEmpty == false }
+        XCTAssertGreaterThan((state["saves"] as? [Any])?.count ?? 0, 0)
+        XCTAssertTrue(fixturePhotoTasks(state).isEmpty)
+        XCTAssertFalse(app.buttons["reviewSharedPhotos"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["photoDraftTitle0"].firstMatch.exists)
+        record("Photo conversation 04 Approved task queued without another review")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["captureInput"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertEqual(try assertSavedPhotoImages(1, phase: "approved conversation survived relaunch", suggestions: suggestions, approved: true), imageIntakeID)
+        record("Photo conversation 05 Approved task survived relaunch")
+        _ = try await photoFixture("/__fixture/mode", body: ["mode": "online"])
+        app.terminate()
+        app.launch()
+        try await assertApprovedPhotoSyncs(suggestions, intakeID: imageIntakeID, evidence: "Photo conversation 06 Approved task synced")
+        state = try await photoFixture("/__fixture/state")
+        let saves = state["saves"] as? [[String: Any]] ?? []
+        let requestIDs = Set(saves.compactMap { $0["requestId"] as? String })
+        XCTAssertGreaterThan(saves.count, 1)
+        XCTAssertEqual(requestIDs.count, 1)
+        if let imageIntakeID { XCTAssertEqual(requestIDs, [imageIntakeID]) }
+        XCTAssertEqual((state["generations"] as? [Any])?.count, 0)
+        tapTab("Tasks")
+        XCTAssertTrue(app.staticTexts[suggestedTitle].firstMatch.waitForExistence(timeout: 10))
+        record("Photo conversation 07 Exactly one task in the plan")
     }
 
 }

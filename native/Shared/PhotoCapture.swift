@@ -6,6 +6,56 @@ enum PhotoCaptureError: LocalizedError {
     var errorDescription: String? { if case .message(let message) = self { return message }; return nil }
 }
 
+enum PhotoDraftEvidence {
+    static func projects(in source: String, from projects: [FTProject]) -> [FTProject] {
+        let text = " " + normalized(source) + " "
+        return projects.filter { project in
+            ([project.name, project.label] + project.aliases).contains { label in
+                mentions(label, in: text)
+            }
+        }
+    }
+
+    static func repeatedProject(in source: String, among matches: [FTProject]) -> FTProject? {
+        guard matches.count == 1, let project = matches.first else { return nil }
+        let lines = Set(source.split(whereSeparator: \.isNewline)
+            .map { " " + normalized(String($0)) + " " })
+        let labels = [project.name, project.label] + project.aliases
+        // A lone mention can be app chrome. Require the full name and a second
+        // distinct line referring to the same project before filling a blank.
+        guard lines.contains(where: { mentions(project.name, in: $0) }),
+              lines.filter({ line in labels.contains { mentions($0, in: line) } }).count > 1 else { return nil }
+        return project
+    }
+
+    private static func mentions(_ label: String, in normalizedText: String) -> Bool {
+        let keyword = normalized(label)
+        return !keyword.isEmpty && normalizedText.contains(" " + keyword + " ")
+    }
+
+    private static func normalized(_ value: String) -> String {
+        // Emoji presentation selectors can survive the alphanumeric split.
+        ProjectKeywords.normalized(value.replacingOccurrences(of: "[\\uFE0E\\uFE0F]", with: "", options: .regularExpression))
+    }
+
+    static func calendarDays(in source: String) -> Set<String> {
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue) else { return [] }
+        // A clock time is interpreted as a date on the current day by NSDataDetector.
+        let text = source.replacingOccurrences(
+            of: #"(?i)\b(?:\d{1,2}:\d{2}(?::\d{2})?(?:[ \t]*[ap]\.?m\.?)?|\d{1,2}[ \t]*[ap]\.?m\.?)\b"#,
+            with: " ", options: .regularExpression
+        ).replacingOccurrences(
+            // "Due December 12" can otherwise be detected as a range starting today.
+            of: #"(?i)\bdue(?:[ \t]+on)?[ \t]*:?[ \t]+"#, with: " ", options: .regularExpression
+        )
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        formatter.timeZone = .current
+        return Set(detector.matches(in: text, range: NSRange(text.startIndex..., in: text))
+            .compactMap { $0.date.map { formatter.string(from: $0) } })
+    }
+}
+
 /// Images remain in the device inbox for Apple Intelligence; they are never uploaded.
 struct PhotoCaptureIntake: Codable, Identifiable, Equatable, Sendable {
     var id = UUID().uuidString
@@ -19,6 +69,7 @@ struct PhotoCaptureIntake: Codable, Identifiable, Equatable, Sendable {
     var interpretation: String?
     var interpretationWarnings: [String]?
     var draftOrigin: String?
+    var approvedInShareSheet: Bool?
 }
 
 struct PhotoTaskDraft: Codable, Identifiable, Equatable, Sendable {

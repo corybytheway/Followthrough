@@ -119,16 +119,24 @@ struct RootView: View {
         .sheet(item: $store.selectedTask) { TaskEditor(store: store, task: $0) }
         .sheet(isPresented: $store.photoReviewPresented) { PhotoCaptureReviewView(store: store) }
         .safeAreaInset(edge: .top, spacing: 0) {
-            if !store.photoCaptures.isEmpty {
+            if store.hasRejectedPhotoDrafts || !store.photoCaptures.isEmpty {
                 HStack {
                     Label {
-                        if store.photoCaptures.count == 1 { Text("1 photo intake ready to review") }
-                        else { Text("\(store.photoCaptures.count) photo intakes ready to review") }
+                        if store.hasRejectedPhotoDrafts {
+                            Text("Photo tasks need review")
+                        } else if store.photoCaptures.contains(where: { $0.drafts?.isEmpty == false }) {
+                            Text("Task drafts ready to review")
+                        } else {
+                            Text("Shared photos ready to review")
+                        }
                     } icon: { Image(systemName: "photo") }
                     .font(.callout)
                     Spacer()
-                    Button("Review") { store.reviewNextPhoto() }
-                        .disabled(store.selectedTask != nil || store.captureFocused)
+                    Button("Review") {
+                        if store.hasRejectedPhotoDrafts { store.editRejectedPhotoDrafts() }
+                        else { store.reviewNextPhoto() }
+                    }
+                        .disabled(store.selectedTask != nil || store.captureFocused || (store.hasRejectedPhotoDrafts && store.syncing))
                         .accessibilityIdentifier("reviewSharedPhotos")
                 }
                 .padding().background(.thinMaterial)
@@ -426,7 +434,7 @@ private struct WorkspaceSaveDetails: View {
                 Button("Review saved task") { store.reviewSavedTask() }
                     .accessibilityIdentifier("reviewSavedTask")
             }
-            if store.blockedMutation && !store.pending.isEmpty {
+            if store.blockedMutation && !store.pending.isEmpty && !store.hasRejectedPhotoDrafts {
                 Button("Discard saved edit", role: .destructive) { confirmingDiscard = true }
             }
         }

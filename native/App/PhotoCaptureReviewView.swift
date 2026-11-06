@@ -12,42 +12,12 @@ struct PhotoCaptureReviewView: View {
                 if let receipt = store.photoSaveReceipt {
                     PhotoSaveStatus(receipt: receipt, retry: { store.retry() }, edit: { store.editRejectedPhotoDrafts() })
                 } else if let intake = store.reviewingPhotoCapture {
-                    Section {
-                        if intake.imageNames?.isEmpty == false {
-                            Text("Apple Intelligence interprets what your photos show and proposes tasks. Review the interpretation before choosing Add to plan.")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("This older intake contains text only. Share the photos again to use Apple Intelligence image understanding.")
-                                .foregroundStyle(.secondary)
-                        }
-                        ForEach(intake.warnings, id: \.self) { warning in
-                            Label(warning, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
-                        }
-                    }
-                    if intake.imageNames?.isEmpty == false {
-                        Section("Image understanding") {
-                            Label {
-                                if intake.imageNames?.count == 1 { Text("1 photo saved on this device") }
-                                else { Text("\(intake.imageNames?.count ?? 0) photos saved on this device") }
-                            } icon: { Image(systemName: "photo") }
-                            Text(PhotoImageUnderstanding.availabilityMessage).font(.callout).foregroundStyle(.secondary)
-                        }
-                    }
-                    if let interpretation = intake.interpretation {
-                        Section("Apple Intelligence interpretation") {
-                            Text(interpretation).textSelection(.enabled).accessibilityIdentifier("photoInterpretation")
-                            ForEach(intake.interpretationWarnings ?? [], id: \.self) { Text($0).foregroundStyle(.secondary) }
-                        }
-                    }
                     if let drafts = intake.drafts {
-                        Section {
-                            if intake.draftOrigin == "appleIntelligence" { Label("Drafts from image understanding", systemImage: "sparkles") }
-                            else if intake.draftOrigin == "basic" { Label("Basic draft — fill in the details", systemImage: "pencil") }
-                            else { Label("Text-only drafts — OCR fallback", systemImage: "text.viewfinder") }
-                        }
-                        Section("Original text & context") {
-                            Text(intake.source).textSelection(.enabled)
-                            Button("Edit text & generate again") { confirmRegenerate = true }
+                        if intake.draftOrigin != "appleIntelligence" {
+                            Section {
+                                if intake.draftOrigin == "basic" { Label("Basic draft", systemImage: "pencil") }
+                                else { Label("Drafts from extracted text", systemImage: "text.viewfinder") }
+                            }
                         }
                         ForEach(Array(drafts.enumerated()), id: \.element.id) { index, draft in
                             PhotoDraftFields(
@@ -62,7 +32,24 @@ struct PhotoCaptureReviewView: View {
                                 .disabled(validationError != nil || store.generatingPhotoDrafts)
                             if let validationError { Text(validationError).foregroundStyle(.red) }
                         }
+                        Section {
+                            PhotoDraftSource(intake: intake, edit: { confirmRegenerate = true })
+                        }
                     } else {
+                        Section {
+                            if intake.interpretation != nil {
+                                Text("No clear task found. Add context and try again.")
+                                    .foregroundStyle(.secondary)
+                            } else if intake.imageNames?.isEmpty == false {
+                                Text(PhotoImageUnderstanding.availabilityMessage).foregroundStyle(.secondary)
+                            } else {
+                                Text("Only text was saved. Share the photo again to find tasks in the image.")
+                                    .foregroundStyle(.secondary)
+                            }
+                            ForEach(intake.warnings, id: \.self) { warning in
+                                Label(warning, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                            }
+                        }
                         Section("Context & supporting OCR") {
                             TextEditor(text: Binding(get: { store.reviewingPhotoCapture?.source ?? "" }, set: { value in
                                 store.updatePhotoCapture { $0.source = value; $0.interpretation = nil; $0.interpretationWarnings = nil }
@@ -102,7 +89,7 @@ struct PhotoCaptureReviewView: View {
                 }
             }
             .disabled(store.generatingPhotoDrafts)
-            .navigationTitle("Review shared photos")
+            .navigationTitle(store.reviewingPhotoCapture?.drafts == nil ? "Review shared photos" : "Review task drafts")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { store.photoReviewPresented = false }
@@ -155,6 +142,25 @@ struct PhotoCaptureReviewView: View {
     }
 }
 
+private struct PhotoDraftSource: View {
+    let intake: PhotoCaptureIntake
+    let edit: () -> Void
+
+    var body: some View {
+        DisclosureGroup("Photo context") {
+            if let interpretation = intake.interpretation {
+                Text(interpretation).textSelection(.enabled).accessibilityIdentifier("photoInterpretation")
+            }
+            ForEach(intake.interpretationWarnings ?? [], id: \.self) { Text($0).foregroundStyle(.secondary) }
+            ForEach(intake.warnings, id: \.self) { Text($0).foregroundStyle(.secondary) }
+            if !intake.source.isEmpty && intake.source != intake.interpretation {
+                Text(intake.source).textSelection(.enabled)
+            }
+            Button("Edit context and generate again", action: edit)
+        }
+    }
+}
+
 private struct PhotoDraftFields: View {
     @Binding var draft: PhotoTaskDraft
     let index: Int
@@ -164,36 +170,33 @@ private struct PhotoDraftFields: View {
 
     var body: some View {
         Section("Task \(index + 1)") {
-            if draft.captureMode == "basic" {
-                Label("Basic draft — check the task and estimate", systemImage: "pencil")
-                    .foregroundStyle(.secondary)
-            }
             TextField("Task name", text: $draft.title, axis: .vertical)
                 .accessibilityIdentifier("photoDraftTitle\(index)")
-            Picker("Project", selection: $draft.projectId) {
-                Text("No project").tag(String?.none)
-                ForEach(projects) { Text($0.name).tag(Optional($0.id)) }
-            }
-            Picker("Priority", selection: $draft.priority) {
-                ForEach(Priority.allCases) { Text($0.title).tag($0.rawValue) }
-            }
-            Picker("Estimated time", selection: $draft.estimateMinutes) {
-                ForEach(FTTask.durationOptions([draft.estimateMinutes]), id: \.self) { minutes in
-                    Text(FTTask.duration(minutes)).tag(minutes)
+            DisclosureGroup("Details") {
+                Picker("Project", selection: $draft.projectId) {
+                    Text("No project").tag(String?.none)
+                    ForEach(projects) { Text($0.name).tag(Optional($0.id)) }
                 }
+                Picker("Priority", selection: $draft.priority) {
+                    ForEach(Priority.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                Picker("Estimated time", selection: $draft.estimateMinutes) {
+                    ForEach(FTTask.durationOptions([draft.estimateMinutes]), id: \.self) { minutes in
+                        Text(FTTask.duration(minutes)).tag(minutes)
+                    }
+                }
+                OptionalDayField(title: "Deadline", value: $draft.dueDate)
+                OptionalDayField(title: "Start on or after", value: $draft.notBefore)
+                Text("Checklist (one step per line)").font(.caption).foregroundStyle(.secondary)
+                TextEditor(text: Binding(get: { draft.steps.joined(separator: "\n") }, set: { draft.steps = $0.components(separatedBy: "\n") }))
+                    .frame(minHeight: 100)
+                    .accessibilityLabel("Checklist for task \(index + 1)")
+                TextField("Notes", text: $draft.notes, axis: .vertical)
+                if !prerequisites.isEmpty {
+                    LabeledContent("Blocked by", value: prerequisites.formatted())
+                }
+                if let remove { Button("Remove draft", role: .destructive, action: remove) }
             }
-            OptionalDayField(title: "Deadline", value: $draft.dueDate)
-            OptionalDayField(title: "Start on or after", value: $draft.notBefore)
-            Text("Checklist (one step per line)").font(.caption).foregroundStyle(.secondary)
-            TextEditor(text: Binding(get: { draft.steps.joined(separator: "\n") }, set: { draft.steps = $0.components(separatedBy: "\n") }))
-                .frame(minHeight: 100)
-                .accessibilityLabel("Checklist for task \(index + 1)")
-            TextField("Notes", text: $draft.notes, axis: .vertical)
-            if !prerequisites.isEmpty {
-                LabeledContent("Blocked by", value: prerequisites.formatted())
-            }
-            if !draft.rationale.isEmpty { Text(draft.rationale).font(.caption).foregroundStyle(.secondary) }
-            if let remove { Button("Remove draft", role: .destructive, action: remove) }
         }
     }
 }

@@ -95,7 +95,7 @@ model=['Shared/Models.swift','Shared/BrandColors.swift']
 widget=model+['Widgets/FollowthroughWidget.swift']
 target('FollowthroughWidgetsMac','mac','widgets',widget)
 target('FollowthroughWidgetsIOS','ios','widgets',widget)
-target('FollowthroughShare','ios','share',model+['Shared/PhotoCapture.swift','Share/PhotoTextExtractor.swift','Share/ShareViewController.swift'])
+target('FollowthroughShare','ios','share',model+['Shared/PhotoCapture.swift','App/PhotoImageUnderstanding.swift','Share/PhotoTextExtractor.swift','Share/ShareViewController.swift'])
 app=[f for f in allfiles if f.startswith('App/') or f.startswith('Shared/')]
 watchname='FollowthroughWatch'
 watchproduct=add(watchname+'product','PBXFileReference',explicitFileType='wrapper.application',path='Followthrough Watch.app',sourceTree='BUILT_PRODUCTS_DIR')

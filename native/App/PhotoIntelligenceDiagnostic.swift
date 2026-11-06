@@ -31,7 +31,7 @@ enum PhotoIntelligenceDiagnostic {
             try jpeg.write(to: url, options: .atomic)
             // Deliberately provide no OCR: correct selection requires inspecting the image's checkmark state.
             let report = try await PhotoImageUnderstanding.interpret(images: [url], context: "Help me plan the unfinished work shown here.", projects: [], localDate: "2026-11-04")
-            result["observedOutcomes"] = report.observedOutcomes
+            result["observedOutcomes"] = report.drafts.map(\.title)
             result["summary"] = report.summary
             result["uncertainties"] = report.uncertainties
             result["tasks"] = report.drafts.map { ["title": $0.title, "notes": $0.notes, "steps": $0.steps] as [String: Any] }
