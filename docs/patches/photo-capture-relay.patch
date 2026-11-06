@@ -1,0 +1,55 @@
+diff --git a/native-api.mjs b/native-api.mjs
+index 4792a90..903cccb 100644
+--- a/native-api.mjs
++++ b/native-api.mjs
+@@ -4,6 +4,7 @@ const ROUTES = new Map([
+   ['/api/native/session', new Set(['POST', 'DELETE'])],
+   ['/api/native/workspace', new Set(['GET', 'POST'])],
+   ['/api/native/inbox', new Set(['POST'])],
++  ['/api/native/capture', new Set(['POST'])],
+   ['/api/native/handoff', new Set(['POST'])],
+   ['/api/native/calendars', new Set(['GET', 'POST'])],
+   ['/api/native/suggestions', new Set(['GET', 'POST'])],
+diff --git a/tests/native-api.test.mjs b/tests/native-api.test.mjs
+index 8645e19..d5f183f 100644
+--- a/tests/native-api.test.mjs
++++ b/tests/native-api.test.mjs
+@@ -150,3 +150,38 @@ test('calendar selection POST requires a device token and forwards JSON with the
+     assert.equal(calls, 1);
+   } finally { globalThis.fetch = original; }
+ });
++
++
++test('photo draft generation allows only authenticated POST and preserves the text-only request', async () => {
++  const original = globalThis.fetch;
++  const body = JSON.stringify({ source: 'Send the invoice to Alex\nOnly prepare a draft.' });
++  let calls = 0;
++  globalThis.fetch = async (url, options) => {
++    calls++;
++    assert.equal(url, 'https://followthrough.link/api/native/capture');
++    assert.equal(options.method, 'POST');
++    assert.equal(options.redirect, 'manual');
++    assert.equal(options.headers.get('Authorization'), bearer);
++    assert.equal(options.headers.get('OAI-Sites-Authorization'), 'Bearer test-server-only-gateway');
++    assert.equal(options.headers.has('Cookie'), false);
++    assert.equal(options.headers.has('oai-authenticated-user-id'), false);
++    assert.equal(new TextDecoder().decode(options.body), body);
++    return Response.json({ drafts: [{ title: 'Send invoice to Alex', captureMode: 'ai' }] });
++  };
++  try {
++    const unauthorized = request('/api/native/capture', 'POST', body);
++    unauthorized.headers.delete('Authorization');
++    assert.equal((await worker.fetch(unauthorized, env)).status, 401);
++    assert.equal((await worker.fetch(request('/api/native/capture', 'GET'), env)).status, 405);
++    assert.equal((await worker.fetch(request('/api/native/capture?owner=someone', 'POST', body), env)).status, 404);
++    assert.equal(calls, 0);
++    const value = request('/api/native/capture', 'POST', body);
++    value.headers.set('Cookie', 'untrusted-browser-session');
++    value.headers.set('oai-authenticated-user-id', 'another-workspace');
++    const response = await worker.fetch(value, env);
++    assert.equal(response.status, 200);
++    assert.equal((await response.json()).drafts[0].captureMode, 'ai');
++    assert.equal(response.headers.get('Cache-Control'), 'no-store');
++    assert.equal(calls, 1);
++  } finally { globalThis.fetch = original; }
++});
