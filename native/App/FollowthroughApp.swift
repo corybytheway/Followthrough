@@ -1945,7 +1945,9 @@ struct MenuBarContent: View {
     @State private var submittedCaptureID: String?
     @State private var captureError: String?
     @State private var openingHandoff = false
+    @State private var preparedHandoff: TaskHandoff?
     @State private var handoffError: String?
+    @State private var handoffNotice: String?
     private var nextTask: FTTask? { store.presentationWorkspace?.todayTasks.first }
     private var submitting: Bool { submittedCaptureID != nil }
 
@@ -1966,11 +1968,13 @@ struct MenuBarContent: View {
                     onComplete: { store.complete(task) },
                     onHandoff: { handoff(task) }
                 )
+                .taskHandoffInstructions(handoff: $preparedHandoff, onOpen: openPreparedHandoff)
             } else {
                 Text(store.workspace == nil ? "Connect your workspace to get started." : "That’s it for today!")
                     .font(.headline)
             }
             if let handoffError { Text(handoffError).font(.callout).foregroundStyle(.red) }
+            if let handoffNotice { Text(handoffNotice).font(.callout).foregroundStyle(.secondary) }
             Divider()
             if store.selectedTask != nil, let receipt = store.captureReceipt {
                 MenuBarCaptureReceipt(receipt: receipt, connected: store.connected,
@@ -2042,19 +2046,33 @@ struct MenuBarContent: View {
         guard !openingHandoff else { return }
         openingHandoff = true
         handoffError = nil
+        handoffNotice = nil
         Task {
             do {
                 let handoff = try await store.handoff(task)
-                openURL(handoff.appURL) { accepted in
-                    if accepted { openingHandoff = false }
-                    else if handoff.appURL != handoff.browserURL {
-                        openURL(handoff.browserURL) { browserAccepted in
-                            openingHandoff = false
-                            if !browserAccepted { handoffError = "Could not open ChatGPT. Try again." }
-                        }
-                    } else {
+                openingHandoff = false
+                if handoff.requiresPaste { preparedHandoff = handoff }
+                else { openPreparedHandoff(handoff) }
+            } catch {
+                openingHandoff = false
+                handoffError = error.localizedDescription
+            }
+        }
+    }
+    private func openPreparedHandoff(_ handoff: TaskHandoff) {
+        guard !openingHandoff else { return }
+        openingHandoff = true
+        Task {
+            do {
+                try handoff.prepareForOpening()
+                if handoff.requiresPaste {
+                    handoffNotice = String(localized: handoff.pasteInstructions)
+                }
+                if await handoff.openApp() { openingHandoff = false }
+                else {
+                    openURL(handoff.browserURL) { accepted in
                         openingHandoff = false
-                        handoffError = "Could not open ChatGPT. Try again."
+                        if !accepted { handoffError = String(localized: "Could not open \(handoff.assistant.displayName). Try again.") }
                     }
                 }
             } catch {
@@ -2063,6 +2081,7 @@ struct MenuBarContent: View {
             }
         }
     }
+
 }
 
 private struct MenuBarCaptureReceipt: View {

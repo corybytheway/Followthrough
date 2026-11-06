@@ -1,7 +1,8 @@
 // Created by Cory McCabe
 import ICAL from 'ical.js';
 import { hash } from './calendar-security';
-import { taskLabel, type Block, type Task, type Project } from './model';
+import type { Block, Task, Project } from './model';
+import { calendarEventTitle } from './calendar-event-title';
 import { calendarDescription } from './google-calendar';
 import { InputError } from './validation';
 
@@ -50,7 +51,7 @@ export async function reconcileIcloudObjects(
     event.updatePropertyWithValue('dtstamp', ICAL.Time.fromJSDate(new Date(task.updatedAt), true));
     event.updatePropertyWithValue('dtstart', ICAL.Time.fromJSDate(new Date(block.start), true));
     event.updatePropertyWithValue('dtend', ICAL.Time.fromJSDate(new Date(block.end), true));
-    event.updatePropertyWithValue('summary', taskLabel(task.title, projects.find(p => p.id === task.projectId)));
+    event.updatePropertyWithValue('summary', calendarEventTitle(task, block, blocks, projects.find(p => p.id === task.projectId)));
     event.updatePropertyWithValue('description', plainCalendarDescription(await calendarDescription(task, actionLinks)));
     event.updatePropertyWithValue('transp', task.priority === 'high' || task.priority === 'top' ? 'OPAQUE' : 'TRANSPARENT');
     desired.set(uid, root.toString());

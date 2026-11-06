@@ -13,6 +13,7 @@ struct TaskEditor: View {
     @State private var confirmDiscard = false
     @State private var handoffError: String?
     @State private var openingHandoff = false
+    @State private var preparedHandoff: TaskHandoff?
 
     init(store: WorkspaceStore, task: FTTask) {
         self.store = store
@@ -35,9 +36,11 @@ struct TaskEditor: View {
                         active: task.active,
                         canComplete: store.canComplete(task),
                         openingHandoff: openingHandoff,
+                        assistant: handoffAssistant,
                         onComplete: { if store.complete(task) { dismiss() } },
                         onHandoff: handoff
                     )
+                    .taskHandoffInstructions(handoff: $preparedHandoff, onOpen: openPreparedHandoff)
                     if let handoffError { Text(handoffError).foregroundStyle(.red) }
                     TaskIdentityFields(draft: $draft, projects: store.workspace?.projectsAlphabetically ?? [])
                     TaskSecondaryActions(
@@ -136,6 +139,15 @@ struct TaskEditor: View {
         else { dismiss() }
     }
 
+    private var handoffAssistant: AIAssistant {
+        for operation in store.pending.reversed() where operation.body["action"] == .string("update_settings") {
+            if case .object(let settings)? = operation.body["settings"],
+               case .string(let value)? = settings["aiAssistant"],
+               let assistant = AIAssistant(rawValue: value) { return assistant }
+        }
+        return AIAssistant(rawValue: store.workspace?.settings.aiAssistant ?? "") ?? .chatgpt
+    }
+
     private func handoff() {
         guard !openingHandoff else { return }
         openingHandoff = true
@@ -143,17 +155,28 @@ struct TaskEditor: View {
         Task {
             do {
                 let handoff = try await store.handoff(task)
-                openURL(handoff.appURL) { accepted in
-                    if accepted {
+                openingHandoff = false
+                if handoff.requiresPaste { preparedHandoff = handoff }
+                else { openPreparedHandoff(handoff) }
+            } catch {
+                openingHandoff = false
+                handoffError = error.localizedDescription
+            }
+        }
+    }
+
+
+    private func openPreparedHandoff(_ handoff: TaskHandoff) {
+        guard !openingHandoff else { return }
+        openingHandoff = true
+        Task {
+            do {
+                try handoff.prepareForOpening()
+                if await handoff.openApp() { openingHandoff = false }
+                else {
+                    openURL(handoff.browserURL) { accepted in
                         openingHandoff = false
-                    } else if handoff.appURL != handoff.browserURL {
-                        openURL(handoff.browserURL) { browserAccepted in
-                            openingHandoff = false
-                            if !browserAccepted { handoffError = "Could not open ChatGPT. Try again." }
-                        }
-                    } else {
-                        openingHandoff = false
-                        handoffError = "Could not open ChatGPT. Try again."
+                        if !accepted { handoffError = String(localized: "Could not open \(handoff.assistant.displayName). Try again.") }
                     }
                 }
             } catch {
@@ -162,7 +185,6 @@ struct TaskEditor: View {
             }
         }
     }
-
     private func save() {
         guard validDraft && hasChanges else { return }
         if store.updateTask(task, fields: editableFields(draft)) { dismiss() }
@@ -182,12 +204,13 @@ private struct TaskPrimaryActions: View {
     let active: Bool
     let canComplete: Bool
     let openingHandoff: Bool
+    let assistant: AIAssistant
     let onComplete: () -> Void
     let onHandoff: () -> Void
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 completeButton
                 handoffButton
             }
@@ -212,17 +235,25 @@ private struct TaskPrimaryActions: View {
     }
 
     private var handoffButton: some View {
-        Button(action: onHandoff) {
-            HStack(spacing: 8) {
-                if openingHandoff { ProgressView().controlSize(.small) }
-                Label(openingHandoff ? "Opening…" : "Do this for me", systemImage: "sparkles")
+        VStack(alignment: .leading, spacing: 6) {
+            Button(action: onHandoff) {
+                HStack(spacing: 8) {
+                    if openingHandoff { ProgressView().controlSize(.small) }
+                    Label(openingHandoff ? "Opening…" : "Do this for me", systemImage: "sparkles")
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(maxWidth: .infinity)
             }
-            .fixedSize(horizontal: true, vertical: false)
-            .frame(maxWidth: .infinity)
-        }
         .buttonStyle(FollowthroughActionButtonStyle(fill: .followViolet, foreground: .white))
-        .disabled(!active || openingHandoff)
-        .accessibilityIdentifier("taskHandoff")
+            .disabled(!active || openingHandoff)
+            .accessibilityIdentifier("taskHandoff")
+            if active && !assistant.supportsBrowserDraft {
+                Text("Copy task details and open \(assistant.displayName)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 }
 
@@ -542,4 +573,98 @@ struct ChecklistStyle: ToggleStyle {
 extension ToggleStyle where Self == ChecklistStyle {
     static var checklist: ChecklistStyle { ChecklistStyle() }
     static var completedChecklist: ChecklistStyle { ChecklistStyle(strikeWhenChecked: true) }
+}
+
+
+private struct TaskHandoffInstructions: ViewModifier {
+    @Binding var handoff: TaskHandoff?
+    let onOpen: (TaskHandoff) -> Void
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content.sheet(isPresented: Binding(
+            get: { handoff != nil },
+            set: { if !$0 { handoff = nil } }
+        )) {
+            if let prepared = handoff {
+                TaskHandoffConfirmation(prepared: prepared) {
+                    handoff = nil
+                } onOpen: {
+                    handoff = nil
+                    onOpen(prepared)
+                }
+            }
+        }
+        #else
+        content.alert("Task details copied", isPresented: Binding(
+            get: { handoff != nil },
+            set: { if !$0 { handoff = nil } }
+        ), presenting: handoff) { prepared in
+            Button("Open \(prepared.assistant.displayName)") { onOpen(prepared) }
+                .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {}
+        } message: { prepared in
+            Text(prepared.pasteInstructions)
+        }
+        #endif
+    }
+}
+
+#if os(iOS)
+private struct TaskHandoffConfirmation: View {
+    let prepared: TaskHandoff
+    let onCancel: () -> Void
+    let onOpen: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("Task details copied")
+                    .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
+                Text(prepared.pasteInstructions)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) { cancelButton; openButton }
+                    VStack(spacing: 12) { openButton; cancelButton }
+                }
+            }
+            .padding(24)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .background(Color.card)
+        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.height(320), .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var cancelButton: some View {
+        Button(role: .cancel, action: onCancel) {
+            Text("Cancel")
+                .font(.body.weight(.semibold))
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(FollowthroughActionButtonStyle(fill: .primary.opacity(0.1), foreground: .primary))
+        .accessibilityIdentifier("handoffCancel")
+    }
+
+    private var openButton: some View {
+        Button(action: onOpen) {
+            Text("Open \(prepared.assistant.displayName)")
+                .font(.body.weight(.semibold))
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(FollowthroughActionButtonStyle(fill: .followViolet, foreground: .white))
+        .accessibilityIdentifier("handoffOpen")
+    }
+}
+#endif
+
+extension View {
+    func taskHandoffInstructions(handoff: Binding<TaskHandoff?>, onOpen: @escaping (TaskHandoff) -> Void) -> some View {
+        modifier(TaskHandoffInstructions(handoff: handoff, onOpen: onOpen))
+    }
 }

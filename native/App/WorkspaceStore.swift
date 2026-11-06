@@ -916,9 +916,31 @@ import Security
     }
 
     func handoff(_ task: FTTask) async throws -> TaskHandoff {
-        struct HandoffResponse: Decodable, Sendable { var prompt: String }
-        let response: HandoffResponse = try await authorized("api/native/handoff",method:"POST",body:["id":.string(task.id),"expectedUpdatedAt":.string(task.updatedAt)])
-        return try TaskHandoff(prompt: response.prompt)
+        let preferenceWaiting = {
+            self.pending.contains { operation in
+                guard operation.body["action"] == .string("update_settings"),
+                      case .object(let settings)? = operation.body["settings"] else { return false }
+                return settings["aiAssistant"] != nil
+            }
+        }
+        if preferenceWaiting() {
+            await sync()
+            for _ in 0..<100 {
+                if !preferenceWaiting() || blockedMutation || !connected { break }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            guard !preferenceWaiting() else {
+                throw APIError.response(503, "Your AI assistant choice is still waiting to sync. Try again after it is saved.")
+            }
+        }
+        struct HandoffResponse: Decodable, Sendable { var prompt: String; var assistant: String? }
+        let response: HandoffResponse = try await authorized("api/native/handoff",method:"POST",body:["id":.string(task.id),"expectedUpdatedAt":.string(task.updatedAt),"supportedAssistants":.array(AIAssistant.allCases.map { .string($0.rawValue) })])
+        guard let selected = AIAssistant(rawValue: response.assistant ?? AIAssistant.chatgpt.rawValue) else {
+            throw APIError.response(409, "Update Followthrough to use the selected AI assistant.")
+        }
+        let handoff = try TaskHandoff(prompt: response.prompt, assistant: selected)
+        try handoff.prepareForOpening()
+        return handoff
     }
     func open(_ url: URL) {
         if url.host == "auth" { Task { await completeSignIn(url) }; return }
