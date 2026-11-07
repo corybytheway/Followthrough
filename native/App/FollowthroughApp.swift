@@ -74,6 +74,12 @@ private struct WorkspaceWindowContent: View {
             .tint(.followAccent)
             .onOpenURL { store.open($0) }
             .task {
+                #if DEBUG && os(iOS)
+                if ProcessInfo.processInfo.arguments.contains("--verify-photo-intelligence") {
+                    await PhotoIntelligenceDiagnostic.run()
+                    return
+                }
+                #endif
                 await store.start()
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(20))
@@ -111,6 +117,31 @@ struct RootView: View {
         }
         .modifier(CapturePresentation(store: store))
         .sheet(item: $store.selectedTask) { TaskEditor(store: store, task: $0) }
+        .sheet(isPresented: $store.photoReviewPresented) { PhotoCaptureReviewView(store: store) }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if store.hasRejectedPhotoDrafts || !store.photoCaptures.isEmpty {
+                HStack {
+                    Label {
+                        if store.hasRejectedPhotoDrafts {
+                            Text("Photo tasks need review")
+                        } else if store.photoCaptures.contains(where: { $0.drafts?.isEmpty == false }) {
+                            Text("Task drafts ready to review")
+                        } else {
+                            Text("Shared photos ready to review")
+                        }
+                    } icon: { Image(systemName: "photo") }
+                    .font(.callout)
+                    Spacer()
+                    Button("Review") {
+                        if store.hasRejectedPhotoDrafts { store.editRejectedPhotoDrafts() }
+                        else { store.reviewNextPhoto() }
+                    }
+                        .disabled(store.selectedTask != nil || store.captureFocused || (store.hasRejectedPhotoDrafts && store.syncing))
+                        .accessibilityIdentifier("reviewSharedPhotos")
+                }
+                .padding().background(.thinMaterial)
+            }
+        }
         .onChange(of: phase) { _, value in
             if value == .active { Task { await store.sync(); store.synchronizeDeviceTimeZone() } }
         }
@@ -403,7 +434,7 @@ private struct WorkspaceSaveDetails: View {
                 Button("Review saved task") { store.reviewSavedTask() }
                     .accessibilityIdentifier("reviewSavedTask")
             }
-            if store.blockedMutation && !store.pending.isEmpty {
+            if store.blockedMutation && !store.pending.isEmpty && !store.hasRejectedPhotoDrafts {
                 Button("Discard saved edit", role: .destructive) { confirmingDiscard = true }
             }
         }
