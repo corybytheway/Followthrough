@@ -125,7 +125,7 @@ enum PhotoImageUnderstanding {
             }
             "Projects named in the source text:\n\(catalog)"
             "Match each task to its own project using the source context. Repository names and project headings can identify which product the work concerns. A photo can contain work for several projects. Keep those tasks separate and leave uncertain project matches unset. Ignore timestamps and UI clock times when assigning deadlines."
-            "Return only the distinct unfinished outcomes as ready-to-review task drafts."
+            "Return only distinct unfinished outcomes grounded in the source. When the image is blank, unreadable, or provides no clear task, omit the single action and leave the actions list empty. Do not propose a placeholder such as None or a generic follow-up to identify project context, clarify intent, or review the photo itself."
         }
         let summary: String
         let uncertainties: [String]

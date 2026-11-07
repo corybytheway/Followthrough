@@ -9,6 +9,7 @@ struct PhotoTextResult: Sendable {
     var uncertain: Bool
     var imageData: Data? = nil
     var warning: String? = nil
+    var isVisuallyBlank = false
 }
 
 enum PhotoTextExtractor {
@@ -70,6 +71,28 @@ enum PhotoTextExtractor {
         guard text.utf16.count <= 16000 else {
             return PhotoTextResult(text: "", uncertain: true, imageData: jpeg as Data, warning: "There is too much text for the OCR fallback. The image is saved for Apple Intelligence.")
         }
-        return PhotoTextResult(text: text, uncertain: candidates.contains { $0.confidence < 0.65 }, imageData: jpeg as Data)
+        return PhotoTextResult(text: text, uncertain: candidates.contains { $0.confidence < 0.65 }, imageData: jpeg as Data,
+            isVisuallyBlank: text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && looksBlank(image))
+    }
+
+    private static func looksBlank(_ image: CGImage) -> Bool {
+        let side = 64
+        guard let sample = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8,
+              bytesPerRow: side * 4, space: CGColorSpaceCreateDeviceRGB(),
+              bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue),
+              let pixels = sample.data?.assumingMemoryBound(to: UInt8.self) else { return false }
+        sample.interpolationQuality = .high
+        sample.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
+        var lows = [255, 255, 255]
+        var highs = [0, 0, 0]
+        for offset in stride(from: 0, to: side * side * 4, by: 4) {
+            for channel in 0..<3 {
+                let value = Int(pixels[offset + channel])
+                lows[channel] = min(lows[channel], value)
+                highs[channel] = max(highs[channel], value)
+            }
+        }
+        // Keep text-free photos eligible unless the thumbnail is flat or nearly black.
+        return highs.allSatisfy { $0 <= 16 } || zip(lows, highs).allSatisfy { $1 - $0 <= 4 }
     }
 }

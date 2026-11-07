@@ -17,6 +17,7 @@ import UniformTypeIdentifiers
             let result = try PhotoTextExtractor.extract(from: url)
             precondition(result.text.localizedCaseInsensitiveContains("invoice"), "OCR must read the real generated image in \(type).")
             precondition(result.text.localizedCaseInsensitiveContains("booking"))
+            precondition(!result.isVisuallyBlank)
             print("PASS \(type.identifier) OCR")
         }
         let context = CIContext()
@@ -42,8 +43,16 @@ import UniformTypeIdentifiers
         let blankURL = folder.appendingPathComponent("no-text.png")
         try write(image(""), type: .png, to: blankURL)
         let blank = try PhotoTextExtractor.extract(from: blankURL)
-        precondition(blank.text.isEmpty)
-        print("PASS no-text image yields no invented task text")
+        precondition(blank.text.isEmpty && blank.isVisuallyBlank)
+        let canvas = CGRect(x: 0, y: 0, width: 640, height: 480)
+        let background = CIImage(color: .black).cropped(to: canvas)
+        let subjectRect = CGRect(x: 160, y: 120, width: 320, height: 240)
+        let visualURL = folder.appendingPathComponent("text-free-visual.png")
+        let subject = CIImage(color: .red).cropped(to: subjectRect).composited(over: background)
+        try write(context.createCGImage(subject, from: canvas)!, type: .png, to: visualURL)
+        let visual = try PhotoTextExtractor.extract(from: visualURL)
+        precondition(visual.text.isEmpty && !visual.isVisuallyBlank)
+        print("PASS blank photos are detected and text-free visual content stays eligible")
         let corruptURL = folder.appendingPathComponent("corrupt.png")
         try Data("not an image".utf8).write(to: corruptURL)
         try rejects("corrupt image") { _ = try PhotoTextExtractor.extract(from: corruptURL) }
@@ -124,6 +133,12 @@ import UniformTypeIdentifiers
         same.dueDate = "2026-11-05"
         precondition(PhotoDraftConsolidation.merge([first, same]).count == 2)
         precondition(PhotoDraftConsolidation.merge([first, second]).count == 2)
+        var placeholder = first
+        placeholder.title = " NONE. "
+        precondition(PhotoDraftConsolidation.merge([placeholder]).isEmpty)
+        precondition(PhotoDraftConsolidation.merge([placeholder, first]) == [first])
+        placeholder.title = "Identify project context"
+        precondition(PhotoDraftConsolidation.merge([placeholder]).isEmpty)
         print("PASS image task consolidation preserves steps and distinct outcomes/dates")
         let group = "capture_" + String(repeating: "a", count: 64)
         let payload: JSONValue = .object([

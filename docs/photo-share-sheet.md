@@ -6,7 +6,7 @@ Created by Cory McCabe.
 
 1. Share 1–5 JPEG, PNG, or HEIC/HEIF photos or screenshots into Followthrough. The share extension automatically passes the prepared images to the on-device Apple Intelligence model and shows **Suggested tasks** as soon as it has drafts.
 2. Each suggestion shows its project color and name, estimated duration, and any deadline. Tap **+** to add a task or **×** to dismiss it. The toolbar shows **Add** for one remaining suggestion and **Add all** for multiple. Followthrough syncs approved tasks when it opens. A durable outbox preserves approvals offline and reuses stable intake, group, and task IDs on retry.
-3. If suggestions are unavailable or there's no clear task, **Save photo** keeps the image for **Review** in Followthrough. Add context and try again. Task names are editable, and **Details** and **Photo context** hold the optional fields and source information.
+3. When the model finds no clear task, the share sheet shows **No tasks could be determined** and **Try adding more context**. Cancel returns to the source app. Photos are queued only when a task is added.
 4. One multimodal response per photo drafts its distinct unfinished outcomes. Related conversation details and design states become checklist steps for one task. Completed items and interface labels are excluded. Identical outcomes with the same project and dates are consolidated across photos.
 5. A successful sync confirms the complete batch and removes its image intake. If the server rejects the batch, **Photo tasks need review** lets you edit or discard it.
 
@@ -14,7 +14,7 @@ Created by Cory McCabe.
 
 ## Apple Intelligence and fallback
 
-The share extension and the review screen use the same `SystemLanguageModel.default` pipeline. It checks runtime availability and `.vision` capability, and supplies `Attachment(imageURL:)` to a session with structured `@Generable` output. Image understanding requires iOS/macOS 27 APIs and a supported, enabled, ready Apple Intelligence model. The share sheet offers a save-for-later path when no drafts are available. The app's review screen has the specific availability reason and explicit fallback options.
+The share extension and the review screen use the same `SystemLanguageModel.default` pipeline. It checks runtime availability and `.vision` capability, and supplies `Attachment(imageURL:)` to a session with structured `@Generable` output. Image understanding requires iOS/macOS 27 APIs and a supported, enabled, ready Apple Intelligence model. The app's review screen offers explicit fallback options for existing photo intakes.
 
 **Generate from OCR text only** is an explicit, labeled fallback using the existing connected text-generation service; it cannot see images. This optional fallback still needs the prepared native relay deployment described below. **Make a basic draft** requires meaningful text/context and lets the user fill in details without model generation. Apple image drafts, OCR text-only drafts, and basic drafts have separate visible provenance labels.
 
@@ -53,7 +53,7 @@ node --import tsx --test tests/capture-dependencies.test.ts tests/shortcut-captu
 
 The native verifier runs real OCR/retained-image preparation for PNG/JPEG/HEIC, EXIF orientation, blur, ambiguous text, and blank images, along with invalid input/storage/schema/prerequisite checks and task consolidation. The contract verifier consumes an actual Swift-exported approved payload and applies the real server action, including duplicate replay. Mocked model checks cover text-only fallback and failures; they are not evidence of visual understanding.
 
-For UI checks, run `python3 native/Scripts/serve-photo-capture-fixture.py` (loopback `127.0.0.1:4539`), import synthetic images into the dedicated simulator, and run the `testPhotoShare...` tests in `FollowthroughUITests` with parallel testing disabled and simulator ad-hoc signing enabled. They check the share-sheet preview, retained JPEGs, and approval and retry. When Apple Intelligence is unavailable, the tests exercise the labeled text or manual fallback.
+For UI checks, run `python3 native/Scripts/serve-photo-capture-fixture.py` (loopback `127.0.0.1:4539`), import synthetic images into the dedicated simulator, and run the `testPhotoShare...` tests in `FollowthroughUITests` with parallel testing disabled and simulator ad-hoc signing enabled. Use a blank image as the newest photo for the no-task test. Pass the dedicated simulator inbox with `--photo-inbox` to check stored JPEGs and seed older intakes for review and retry tests.
 
 For a real image-model check, a Debug iPhone build accepts `--verify-photo-intelligence`. It supplies a synthetic screenshot with a green checked “Send invoice” and an unchecked “Review quote”, with no OCR input. It records only the synthetic result and model availability in `Documents/photo-intelligence-check.json`, invokes no workspace API, and creates no tasks. A successful result must propose one unfinished quote-review outcome and exclude the completed invoice item. Launch normally afterward to restore the normal workspace UI.
 

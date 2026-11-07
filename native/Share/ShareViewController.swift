@@ -23,7 +23,7 @@ final class ShareViewController: UIViewController {
     var imageCount = 0
     var loading = true
     var error: String?
-    var photoIssue: String?
+    private(set) var suggestionsUnavailable = false
     private(set) var photoIntake: PhotoCaptureIntake?
     private(set) var projects: [FTProject] = []
     private(set) var timeZone: TimeZone = .current
@@ -40,7 +40,7 @@ final class ShareViewController: UIViewController {
     var drafts: [PhotoTaskDraft] { photoIntake?.drafts ?? [] }
     var canSave: Bool {
         guard !loading && !saved else { return false }
-        if imageCount > 0 { return photoIntake != nil }
+        if imageCount > 0 { return !drafts.isEmpty }
         return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.utf16.count <= 8000
     }
 
@@ -64,6 +64,7 @@ final class ShareViewController: UIViewController {
         var sharedFragments = items.compactMap { $0.attributedContentText?.string }
         var photoFragments: [String] = []
         var photoHints: [String] = []
+        var blankPhotos = Set<URL>()
         var warnings: [String] = []
         var photoIndex = 0
         for provider in providers {
@@ -81,6 +82,7 @@ final class ShareViewController: UIViewController {
                     try data.write(to: file, options: .atomic)
                     imageFiles.append(file)
                     photoHints.append(result.text)
+                    if result.isVisuallyBlank { blankPhotos.insert(file) }
                     if let warning = result.warning { warnings.append("Photo \(photoIndex): \(warning)") }
                     if !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         photoFragments.append(imageCount == 1 ? result.text : "Photo \(photoIndex):\n\(result.text)")
@@ -110,6 +112,9 @@ final class ShareViewController: UIViewController {
             error = warnings.first ?? "Couldn’t read the shared photos."
             return
         }
+        let hasSharedContext = sharedFragments.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let inferenceIndexes = imageFiles.indices.filter { hasSharedContext || !blankPhotos.contains(imageFiles[$0]) }
+        guard !inferenceIndexes.isEmpty else { return }
         var intake = PhotoCaptureIntake(identity: identity,
             source: String(decoding: source.utf16.prefix(8000), as: UTF16.self),
             imageCount: imageCount, warnings: warnings, imageNames: imageFiles.map(\.lastPathComponent))
@@ -123,16 +128,13 @@ final class ShareViewController: UIViewController {
         let context = multiplePhotos ? String(decoding: sharedFragments.joined(separator: "\n\n").utf16.prefix(8000), as: UTF16.self) : intake.source
         do {
             let result = try await PhotoImageUnderstanding.interpret(
-                images: imageFiles, context: context, projects: projects, localDate: formatter.string(from: .now),
-                photoHints: multiplePhotos ? photoHints : [])
+                images: inferenceIndexes.map { imageFiles[$0] }, context: context, projects: projects,
+                localDate: formatter.string(from: .now), photoHints: multiplePhotos ? inferenceIndexes.map { photoHints[$0] } : [])
             try Task.checkCancellation()
             try intake.applyImageUnderstanding(result, projects: projects)
-            if intake.drafts == nil {
-                photoIssue = "No clear task found. Save the photo to add context in Followthrough."
-            }
         } catch {
             guard !Task.isCancelled else { return }
-            photoIssue = "Suggestions are unavailable. Save the photo to continue in Followthrough."
+            suggestionsUnavailable = true
         }
         photoIntake = intake
     }
@@ -147,7 +149,8 @@ final class ShareViewController: UIViewController {
         if saved { return true }
         guard canSave else { return false }
         do {
-            if var photoIntake {
+            if imageCount > 0 {
+                guard var photoIntake, !drafts.isEmpty else { return false }
                 guard PhotoCaptureInbox.boundIdentity() == photoIntake.identity else {
                     throw PhotoCaptureError.message("Your connected workspace changed. Share the photo again for the current workspace.")
                 }
@@ -157,7 +160,7 @@ final class ShareViewController: UIViewController {
                     photoIntake.drafts = [draft]
                 }
                 let images = try imageFiles.map { try Data(contentsOf: $0, options: .mappedIfSafe) }
-                photoIntake.approvedInShareSheet = photoIntake.drafts?.isEmpty == false ? true : nil
+                photoIntake.approvedInShareSheet = true
                 try PhotoCaptureInbox.save(photoIntake, images: images)
                 if let draftID {
                     hasAddedTasks = true
@@ -204,16 +207,15 @@ struct ShareCaptureView: View {
                 if model.loading {
                     ProgressView(model.imageCount > 0 ? "Finding tasks…" : "Reading shared content…")
                         .accessibilityIdentifier("shareReading")
-                } else if model.imageCount > 0 {
+                } else if !model.drafts.isEmpty {
                     SharePhotoSuggestions(drafts: model.drafts, projects: model.projects, timeZone: model.timeZone,
-                        issue: model.photoIssue,
                         somePhotosUnreadable: (model.photoIntake?.imageNames?.count ?? model.imageCount) < model.imageCount,
                         onAdd: { if model.save($0) { finish() } },
                         onDismiss: {
                             model.dismiss($0)
                             if model.drafts.isEmpty { finish() }
                         })
-                } else {
+                } else if model.imageCount == 0 {
                     Section("Your request") {
                         TextEditor(text: $model.text)
                             .frame(minHeight: 180)
@@ -226,6 +228,17 @@ struct ShareCaptureView: View {
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 if let error = model.error { Text(error).foregroundStyle(.red).accessibilityIdentifier("shareError") }
+            }
+            .overlay {
+                if !model.loading && model.imageCount > 0 && model.drafts.isEmpty && model.error == nil {
+                    if model.suggestionsUnavailable {
+                        ContentUnavailableView("Suggestions unavailable", systemImage: "photo")
+                            .accessibilityIdentifier("sharePhotoUnavailable")
+                    } else {
+                        ContentUnavailableView("No tasks could be determined", systemImage: "photo",
+                            description: Text("Try adding more context"))
+                    }
+                }
             }
             .navigationTitle("Followthrough")
             .toolbar {
@@ -247,8 +260,8 @@ struct ShareCaptureView: View {
                         .foregroundStyle(Color.followNavy)
                         .disabled(!model.canSave)
                         .accessibilityIdentifier("shareSave")
-                    } else {
-                        Button(model.imageCount == 0 ? "Save" : "Save photo") {
+                    } else if model.imageCount == 0 {
+                        Button("Save") {
                             if model.save() { finish() }
                         }
                         .disabled(!model.canSave)
@@ -266,7 +279,6 @@ private struct SharePhotoSuggestions: View {
     let drafts: [PhotoTaskDraft]
     let projects: [FTProject]
     let timeZone: TimeZone
-    let issue: String?
     let somePhotosUnreadable: Bool
     let onAdd: (UUID) -> Void
     let onDismiss: (UUID) -> Void
@@ -283,9 +295,6 @@ private struct SharePhotoSuggestions: View {
             } footer: {
                 Text("Syncs when you open Followthrough.")
             }
-        }
-        if let issue {
-            Text(issue).accessibilityIdentifier("sharePhotoIssue")
         }
         if somePhotosUnreadable {
             Text("Some photos couldn’t be read.").foregroundStyle(.secondary)

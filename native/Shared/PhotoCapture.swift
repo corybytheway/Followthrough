@@ -249,6 +249,9 @@ enum PhotoDraftConsolidation {
         for draft in drafts {
             let title = draft.title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
                 .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            let placeholder = title.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            guard !["", "none", "n/a", "no task", "no tasks", "no clear task", "no actionable task",
+                    "no tasks found", "no tasks could be determined", "identify project context"].contains(placeholder) else { continue }
             let key = Key(title: title, project: draft.projectId, due: draft.dueDate, start: draft.notBefore)
             if let index = indexes[key] {
                 result[index].steps = unique(result[index].steps + draft.steps)
