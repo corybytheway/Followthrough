@@ -91,6 +91,10 @@ struct PhotoTaskDraft: Codable, Identifiable, Equatable, Sendable {
     var blockedByTaskIndexes: [Int]
     var captureMode: String
 
+    static func nonblankSteps(_ steps: [String]) -> [String] {
+        steps.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
     static func basic() -> Self {
         .init(title: "Review shared photo", steps: ["Check the extracted text and clarify the action to take."],
               estimateMinutes: 30, estimateProvisional: true, priority: "medium", notes: "",
@@ -219,9 +223,14 @@ enum PhotoCaptureInbox {
         guard FileManager.default.fileExists(atPath: folder.path) else { return [] }
         return try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).compactMap { file in
             guard file.pathExtension == "json", let data = try? Data(contentsOf: file),
-                  let intake = try? JSONDecoder().decode(PhotoCaptureIntake.self, from: data),
+                  var intake = try? JSONDecoder().decode(PhotoCaptureIntake.self, from: data),
                   intake.identity == identity, UUID(uuidString: intake.id) != nil,
                   file.lastPathComponent == intake.id + ".json" else { return nil }
+            intake.drafts = intake.drafts?.map { draft in
+                var draft = draft
+                draft.steps = PhotoTaskDraft.nonblankSteps(draft.steps)
+                return draft
+            }
             return intake
         }.sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
     }

@@ -76,9 +76,14 @@ import UniformTypeIdentifiers
         precondition(loaded.count == 1 && loaded[0].source == text && loaded[0].imageCount == 3)
         intake.source += "\nOnly prepare a draft."
         intake.drafts = [.basic()]
+        intake.drafts?[0].steps = ["", "  \t"]
         try PhotoCaptureInbox.save(intake, directory: storage)
         loaded = try PhotoCaptureInbox.load(identity: intake.identity, directory: storage)
         precondition(loaded.count == 1 && loaded[0].source == intake.source && loaded[0].drafts?.first?.captureMode == "basic")
+        let clearedDraft = loaded[0].drafts![0]
+        precondition(clearedDraft.steps.isEmpty)
+        try PhotoTaskDraft.validate([clearedDraft], source: intake.source, projects: [])
+        precondition(PhotoTaskDraft.nonblankSteps(["First", "", "  ", "Second", ""]) == ["First", "Second"])
         print("PASS durable source/draft edits, stable intake ID, and workspace isolation")
         var invalid = intake; invalid.id = "../outside"
         try rejects("unsafe intake filename") { try PhotoCaptureInbox.save(invalid, directory: storage) }

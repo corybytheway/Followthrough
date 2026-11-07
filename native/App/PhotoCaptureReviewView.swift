@@ -163,6 +163,7 @@ private struct PhotoDraftSource: View {
 
 private struct PhotoDraftFields: View {
     @Binding var draft: PhotoTaskDraft
+    @State private var checklistText: String? = nil
     let index: Int
     let projects: [FTProject]
     let prerequisites: [String]
@@ -188,7 +189,11 @@ private struct PhotoDraftFields: View {
                 OptionalDayField(title: "Deadline", value: $draft.dueDate)
                 OptionalDayField(title: "Start on or after", value: $draft.notBefore)
                 Text("Checklist (one step per line)").font(.caption).foregroundStyle(.secondary)
-                TextEditor(text: Binding(get: { draft.steps.joined(separator: "\n") }, set: { draft.steps = $0.components(separatedBy: "\n") }))
+                TextEditor(text: Binding(get: { checklistText ?? draft.steps.joined(separator: "\n") }, set: { text in
+                    checklistText = text
+                    let steps = PhotoTaskDraft.nonblankSteps(text.components(separatedBy: .newlines))
+                    if steps != draft.steps { draft.steps = steps }
+                }))
                     .frame(minHeight: 100)
                     .accessibilityLabel("Checklist for task \(index + 1)")
                 TextField("Notes", text: $draft.notes, axis: .vertical)
