@@ -43,7 +43,7 @@
 		<true/>
 	</dict>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>Check which calendars are available on this device. No events are changed by this check.</string>
+	<string>Use busy times from calendars you choose to plan tasks around existing events. Followthrough does not change those events.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>Check access to your device calendars.</string>
 	<key>UIApplicationSceneManifest</key>

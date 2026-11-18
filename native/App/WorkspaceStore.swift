@@ -21,7 +21,17 @@ import Security
     var error: String?
     var syncing = false
     var connected = false
+    var loggingOut = false
     var authorizing = false
+    var showsSignInPage = false
+    var calendarOnboarding: CalendarOnboarding?
+
+    struct CalendarOnboarding: Identifiable {
+        let provider: SignInProvider
+        let googleAccount: NativeGoogleAccount?
+        let email: String?
+        var id: SignInProvider { provider }
+    }
     var captureFocused = false
     private(set) var captureFocusRequestID = UUID()
     var captureText = ""
@@ -49,9 +59,16 @@ import Security
     }()
     @ObservationIgnored private var session: NativeSession?
     @ObservationIgnored private var authSession: ASWebAuthenticationSession?
+    @ObservationIgnored private var googleCalendarAuthSession: ASWebAuthenticationSession?
+    @ObservationIgnored private var googleCalendarAuthState: String?
+    @ObservationIgnored private var appleAuthorization: ASAuthorizationController?
     @ObservationIgnored private var verifier = ""
     @ObservationIgnored private var authState = ""
     @ObservationIgnored private var authorizationServer: String?
+    @ObservationIgnored private var signInDestination: String?
+    @ObservationIgnored private var finishingSignIn = false
+    @ObservationIgnored private let deviceCalendars = DeviceCalendars()
+    @ObservationIgnored private var lastDeviceAvailabilityUpload: Date?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var loaded = false
     @ObservationIgnored private var refreshTask: Task<NativeSession, Error>?
@@ -136,6 +153,7 @@ import Security
                 pending = queue.operations
                 acceptedWatchActions = queue.acceptedWatchActions ?? []
             }
+            restoreLoggedOutChanges()
             importPhotoCaptures()
             openPendingTask()
             NativeSyncLog.record("outbox_loaded", count: pending.count)
@@ -264,10 +282,40 @@ import Security
         do { suggestions = try await authorized("api/native/suggestions", method: "POST", body: ["action": .string("reset_feedback")]); suggestionsError = nil }
         catch { suggestionsError = error.localizedDescription }
     }
+    enum SignInProvider: String, CaseIterable {
+        case google, apple, chatGPT = "chatgpt"
+
+        var title: LocalizedStringKey {
+            switch self {
+            case .google: "Continue with Google"
+            case .apple: "Continue with Apple"
+            case .chatGPT: "Continue with ChatGPT"
+            }
+        }
+    }
+
     func connect(to destination: String? = nil) {
+        let target = destination ?? server
+        if (try? APIClient(server: target).baseURL.absoluteString) == APIClient.liveServer {
+            guard !loggingOut, !authorizing, !syncing, refreshTask == nil else { return }
+            signInDestination = target
+            showsSignInPage = true
+        } else {
+            beginSignIn(to: target, provider: nil)
+        }
+    }
+
+    func chooseSignInProvider(_ provider: SignInProvider) {
+        let alreadyLive = (try? client.baseURL.absoluteString) == APIClient.liveServer
+        let target = signInDestination ?? (alreadyLive ? server : APIClient.liveServer)
+        signInDestination = nil
+        showsSignInPage = false
+        beginSignIn(to: target, provider: provider)
+    }
+
+    private func beginSignIn(to target: String, provider: SignInProvider?) {
         do {
-            guard !authorizing, !syncing, refreshTask == nil else { return }
-            let target = destination ?? server
+            guard !loggingOut, !authorizing, !syncing, refreshTask == nil else { return }
             if session != nil { importSharedCaptures() }
             if target != server && !pending.isEmpty {
                 error = "Sync your saved changes before switching workspaces. They are still safe on this device."
@@ -279,12 +327,22 @@ import Security
             error = nil
             verifier = try Self.random(); authState = try Self.random()
             let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64EncodedString().urlSafe
-            var components = URLComponents(url: api.baseURL.appendingPathComponent("native/connect"), resolvingAgainstBaseURL: false)!
-            components.queryItems = [URLQueryItem(name:"challenge",value:challenge),URLQueryItem(name:"state",value:authState)]
+            if provider == .apple {
+                authorizing = true
+                let attempt = authState
+                Task { await self.beginAppleSignIn(api: api, challenge: challenge, attempt: attempt) }
+                return
+            }
+            let path = provider == nil ? "native/connect" : "api/native/sign-in"
+            var components = URLComponents(url: api.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+            var query = [URLQueryItem(name: "challenge", value: challenge), URLQueryItem(name: "state", value: authState)]
+            if let provider { query.append(URLQueryItem(name: "provider", value: provider.rawValue)) }
+            if provider == .google { query.append(URLQueryItem(name: "mode", value: "direct")) }
+            components.queryItems = query
             let session = ASWebAuthenticationSession(url: components.url!, callbackURLScheme: "followthrough") { [weak self] url, failure in
                 Task { @MainActor in
                     guard let self else { return }
-                    if let url { await self.completeSignIn(url) }
+                    if let url { await self.receiveSignIn(url) }
                     else {
                         self.authorizing = false; self.authorizationServer = nil
                         if let failure, (failure as NSError).code != ASWebAuthenticationSessionError.canceledLogin.rawValue { self.error = failure.localizedDescription }
@@ -299,8 +357,117 @@ import Security
             if !session.start() { authorizing = false; authorizationServer = nil; error = "Could not open sign-in. Try again." }
         } catch { authorizing = false; authorizationServer = nil; self.error = error.localizedDescription }
     }
-    func completeSignIn(_ url: URL) async {
-        guard url.host == "auth", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+    private func beginAppleSignIn(api: APIClient, challenge: String, attempt: String) async {
+        struct Request: Decodable, Sendable { let nonce: String; let state: String }
+        do {
+            let result: Request = try await api.send("api/auth/native-apple", method: "POST",
+                body: ["action": .string("start"), "challenge": .string(challenge)])
+            guard authorizing, authState == attempt, !loggingOut else { return }
+            authState = result.state
+            let request = ASAuthorizationAppleIDProvider().createRequest()
+            request.requestedScopes = [.fullName, .email]
+            request.nonce = result.nonce
+            request.state = result.state
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            appleAuthorization = controller
+            controller.performRequests()
+        } catch {
+            guard authState == attempt else { return }
+            cancelDeviceSignIn()
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func finishAppleSignIn(_ credential: ASAuthorizationAppleIDCredential) async {
+        struct Result: Decodable, Sendable { let code: String; let email: String? }
+        guard let codeData = credential.authorizationCode, let code = String(data: codeData, encoding: .utf8),
+              let tokenData = credential.identityToken, let token = String(data: tokenData, encoding: .utf8),
+              let target = authorizationServer, !verifier.isEmpty else {
+            cancelDeviceSignIn()
+            error = "Apple sign-in could not be verified. Try again."
+            return
+        }
+        finishingSignIn = true
+        defer { finishingSignIn = false }
+        do {
+            let api = try APIClient(server: target)
+            var body: [String: JSONValue] = [
+                "action": .string("finish"), "state": .string(authState), "verifier": .string(verifier),
+                "code": .string(code), "identityToken": .string(token)
+            ]
+            if let name = credential.fullName {
+                body["name"] = .string(PersonNameComponentsFormatter().string(from: name))
+            }
+            let result: Result = try await api.send("api/auth/native-apple", method: "POST", body: body)
+            guard !loggingOut else { return }
+            await completeProviderSignIn(code: result.code, email: result.email, provider: .apple)
+        } catch {
+            cancelDeviceSignIn()
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func receiveSignIn(_ url: URL) async {
+        guard !loggingOut, authorizing, !finishingSignIn,
+              url.scheme == "followthrough", url.host == "auth",
+              let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              parts.queryItems?.first(where: { $0.name == "state" })?.value == authState else { return }
+        if let reason = parts.queryItems?.first(where: { $0.name == "error" })?.value {
+            cancelDeviceSignIn()
+            if reason != "cancelled" {
+                error = reason == "expired" ? "Sign-in expired. Choose a sign-in method to try again."
+                    : "Google sign-in could not be verified. Try again."
+            }
+        } else if let proof = parts.queryItems?.first(where: { $0.name == "googleProof" })?.value {
+            await finishGoogleSignIn(proof)
+        } else {
+            await completeSignIn(url)
+        }
+    }
+
+    private func finishGoogleSignIn(_ proof: String) async {
+        struct Approval: Decodable, Sendable { let code: String; let email: String?; let calendarAdded: Bool? }
+        guard let target = authorizationServer else { return }
+        finishingSignIn = true
+        defer { finishingSignIn = false }
+        do {
+            let response: Approval = try await APIClient(server: target).send("api/auth/native-google", method: "POST",
+                body: ["action": .string("approve"), "proof": .string(proof), "verifier": .string(verifier),
+                       "create": .bool(true)])
+            guard !loggingOut else { return }
+            await completeProviderSignIn(code: response.code, email: response.email, provider: .google, calendarAdded: response.calendarAdded == true)
+        } catch {
+            cancelDeviceSignIn()
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func completeProviderSignIn(code: String, email: String?, provider: SignInProvider, calendarAdded: Bool = false) async {
+        var callback = URLComponents()
+        callback.scheme = "followthrough"
+        callback.host = "auth"
+        callback.queryItems = [.init(name: "code", value: code), .init(name: "state", value: authState)]
+        var details = URLComponents()
+        details.queryItems = [.init(name: "label", value: email ?? ""), .init(name: "calendar", value: provider.rawValue)]
+        if calendarAdded { details.queryItems?.append(.init(name: "calendarAdded", value: "1")) }
+        callback.percentEncodedFragment = details.percentEncodedQuery
+        if let url = callback.url { await completeSignIn(url) }
+    }
+
+    func cancelDeviceSignIn() {
+        appleAuthorization = nil
+        authorizationServer = nil
+        verifier = ""
+        authState = ""
+        authorizing = false
+    }
+
+    private func completeSignIn(_ url: URL) async {
+        finishingSignIn = true
+        defer { finishingSignIn = false }
+        guard url.scheme == "followthrough", url.host == "auth", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
               parts.queryItems?.first(where: {$0.name == "state"})?.value == authState,
               let code = parts.queryItems?.first(where: {$0.name == "code"})?.value, !verifier.isEmpty,
               let target = authorizationServer else {
@@ -326,7 +493,28 @@ import Security
             UserDefaults.standard.set(target, forKey: "server")
             verifier = ""; authState = ""; authorizationServer = nil
             try accept(result)
+            restoreLoggedOutChanges()
             authorizing = false
+            var fragment = URLComponents()
+            fragment.percentEncodedQuery = parts.percentEncodedFragment
+            if let value = fragment.queryItems?.first(where: { $0.name == "calendar" })?.value,
+               let provider = SignInProvider(rawValue: value), provider != .chatGPT {
+                let email = fragment.queryItems?.first(where: { $0.name == "label" })?.value
+                if provider == .google, fragment.queryItems?.contains(where: { $0.name == "calendarAdded" && $0.value == "1" }) == true {
+                    let status: NativeCalendarStatus? = try? await authorized("api/native/calendar-onboarding")
+                    if let account = status?.googleAccounts.first(where: { $0.email.caseInsensitiveCompare(email ?? "") == .orderedSame }),
+                       account.calendars.count > 1 {
+                        calendarOnboarding = CalendarOnboarding(provider: .google, googleAccount: account, email: email)
+                    } else {
+                        try? await refreshOnboardingCalendars()
+                    }
+                } else if provider == .apple, selectedDeviceCalendars.isEmpty {
+                    let status: NativeCalendarStatus? = try? await authorized("api/native/calendar-onboarding")
+                    if status?.icloudConnected != true {
+                        calendarOnboarding = CalendarOnboarding(provider: .apple, googleAccount: nil, email: email)
+                    }
+                }
+            }
             await sync()
             synchronizeDeviceTimeZone()
         } catch { authorizing = false; authorizationServer = nil; self.error = error.localizedDescription }
@@ -397,7 +585,7 @@ import Security
     }
 
     func sync() async {
-        guard connected, !authorizing else { return }
+        guard connected, !authorizing, !loggingOut else { return }
         guard !syncing else { syncRequested = true; return }
         syncing = true
         defer {
@@ -460,6 +648,12 @@ import Security
                         if failure.status == 409 || failure.status == 400 || (failure.status == 413 && operation.body["action"] == .string("capture_tasks")) { blockedMutation = true }
                         throw failure
                     }
+                }
+            }
+            if !selectedDeviceCalendars.isEmpty,
+               lastDeviceAvailabilityUpload.map({ Date().timeIntervalSince($0) > 300 }) ?? true {
+                if (try? await uploadDeviceAvailability(selectedDeviceCalendars)) != nil {
+                    lastDeviceAvailabilityUpload = .now
                 }
             }
             workspace = try await authorized("api/native/workspace")
@@ -649,7 +843,7 @@ import Security
         return enqueue(.init(endpoint:"api/native/workspace",body:body,title:title))
     }
     @discardableResult private func enqueue(_ operation: PendingMutation, startSync: Bool = true) -> Bool {
-        guard !authorizing else { error = "Finish connecting your workspace before saving a task."; return false }
+        guard !authorizing, !loggingOut else { error = "Finish changing your sign-in before saving a task."; return false }
         pending.append(operation)
         guard persist() else { pending.removeLast(); return false }
         if startSync { Task { await sync() } }
@@ -743,17 +937,62 @@ import Security
         return true
     }
     func retry() { blockedMutation = false; Task { await sync() } }
-    func disconnect() async {
-        do {
-            let _: [String: Bool] = try await client.send("api/native/session",method:"DELETE",token:try await access())
-        } catch {
-            // A 401 already means this credential is unusable. For other failures,
-            // retain the session so disconnection cannot falsely report revocation.
-            if (error as? APIError)?.status != 401 { self.error = "Connect to the server to disconnect this device securely. " + error.localizedDescription; return }
+    func logOut() async {
+        guard !loggingOut else { return }
+        loggingOut = true
+        defer { loggingOut = false }
+
+        authSession?.cancel()
+        googleCalendarAuthSession?.cancel()
+        cancelDeviceSignIn()
+        while syncing || refreshTask != nil || finishingSignIn {
+            try? await Task.sleep(for: .milliseconds(50))
         }
-        Keychain.remove(server); session = nil; connected = false; clearLocalData(); updateWidget(); publishWatchWorkspace()
+        if session != nil {
+            importSharedCaptures()
+            if !pending.isEmpty {
+                do {
+                    let outbox = CachedOutbox(identity: identity, operations: pending, acceptedWatchActions: acceptedWatchActions)
+                    try JSONEncoder().encode(outbox).write(to: loggedOutQueueURL, options: .atomic)
+                } catch {
+                    self.error = "Could not save your pending changes before logging out. Try again."
+                    return
+                }
+            }
+            if !selectedDeviceCalendars.isEmpty { try? await uploadDeviceAvailability([]) }
+            do {
+                let _: [String: Bool] = try await client.send("api/native/session", method: "DELETE", token: try await access())
+            } catch {
+                // An offline device can still remove its local sign-in.
+                NativeSyncLog.record("logout_revocation_unavailable", status: (error as? APIError)?.status)
+            }
+        }
+        Keychain.remove(server)
+        session = nil
+        connected = false
+        calendarOnboarding = nil
+        clearLocalData()
+        updateWidget()
+        publishWatchWorkspace()
     }
+
+    private var loggedOutQueueURL: URL {
+        let key = SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
+        return SharedStorage.directory.appendingPathComponent("outbox-\(key).json")
+    }
+
+    private func restoreLoggedOutChanges() {
+        guard let data = try? Data(contentsOf: loggedOutQueueURL),
+              let outbox = try? JSONDecoder().decode(CachedOutbox.self, from: data),
+              outbox.identity == identity else { return }
+        let activeIDs = Set(pending.map(\.id))
+        pending = outbox.operations.filter { !activeIDs.contains($0.id) } + pending
+        acceptedWatchActions = Array((outbox.acceptedWatchActions ?? []) + acceptedWatchActions).suffix(2048).map { $0 }
+        if persist() { try? FileManager.default.removeItem(at: loggedOutQueueURL) }
+    }
+
     private func clearLocalData() {
+        lastDeviceAvailabilityUpload = nil
         suggestions = nil; suggestionsError = nil; suggestionsConnected = false
         suggestionAcceptanceFeedback = [:]
         lastSuggestionRevision = nil
@@ -938,10 +1177,118 @@ import Security
         WidgetCenter.shared.reloadAllTimelines()
         publishWatchWorkspace()
     }
-    func calendars() async throws -> NativeCalendarStatus { try await authorized("api/native/calendars") }
+    private var deviceCalendarPreference: String { "deviceCalendars.\(identity)" }
+
+    var selectedDeviceCalendars: Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: deviceCalendarPreference) ?? [])
+    }
+
+    func saveDeviceCalendars(_ selection: Set<String>) async throws {
+        try await uploadDeviceAvailability(selection)
+        UserDefaults.standard.set(Array(selection).sorted(), forKey: deviceCalendarPreference)
+        lastDeviceAvailabilityUpload = .now
+        await sync()
+    }
+
+    private func uploadDeviceAvailability(_ selection: Set<String>) async throws {
+        let defaults = UserDefaults.standard
+        let key = "calendarAvailabilityDeviceID"
+        let device = defaults.string(forKey: key) ?? UUID().uuidString
+        defaults.set(device, forKey: key)
+        let periods = deviceCalendars.busyPeriods(in: selection)
+        let payload: [JSONValue] = periods.map { period in
+            .object(["start": .string(period.start.ISO8601Format()), "end": .string(period.end.ISO8601Format())])
+        }
+        let _: [String: Bool] = try await authorized("api/native/device-availability", method: "POST", body: [
+            "deviceId": .string(device), "periods": .array(payload)
+        ])
+    }
+
+    func saveOnboardingGoogleCalendars(account: NativeGoogleAccount, selected: Set<String>) async throws {
+        let _: [String: NativeCalendarStatus] = try await authorized("api/native/calendar-onboarding", method: "POST", body: [
+            "action": .string("select_google_onboarding"), "accountId": .string(account.id),
+            "selected": .array(selected.sorted().map(JSONValue.string))
+        ])
+        try await refreshOnboardingCalendars()
+        await sync()
+    }
+
+    func connectOnboardingICloud(email: String, password: String) async throws -> NativeCalendarStatus {
+        struct Result: Decodable, Sendable { let status: NativeCalendarStatus }
+        let response: Result = try await authorized("api/native/calendar-onboarding", method: "POST", body: [
+            "action": .string("connect_icloud"), "email": .string(email), "password": .string(password)
+        ])
+        return response.status
+    }
+
+    func saveOnboardingICloudCalendars(_ selection: Set<String>) async throws {
+        let _: [String: NativeCalendarStatus] = try await authorized("api/native/calendar-onboarding", method: "POST", body: [
+            "action": .string("select_icloud_onboarding"), "selected": .array(selection.sorted().map(JSONValue.string))
+        ])
+        try await refreshOnboardingCalendars()
+        await sync()
+    }
+
+    private func refreshOnboardingCalendars() async throws {
+        struct Result: Decodable, Sendable { let status: NativeCalendarStatus }
+        let _: Result = try await authorized("api/native/calendar-onboarding", method: "POST", body: ["action": .string("sync")])
+    }
+
+    func calendars() async throws -> NativeCalendarStatus { try await authorized("api/native/calendar-onboarding") }
+
+    func connectGoogleCalendar(accountID: String? = nil) async throws -> NativeCalendarStatus? {
+        guard session != nil, !loggingOut, !authorizing, googleCalendarAuthState == nil else { return nil }
+        let workspaceIdentity = identity
+        let state = try Self.random()
+        googleCalendarAuthState = state
+        defer {
+            googleCalendarAuthSession = nil
+            googleCalendarAuthState = nil
+        }
+
+        struct Authorization: Decodable, Sendable { let authorizationUrl: URL }
+        var fields: [String: JSONValue] = [
+            "action": .string("connect_google"), "deviceState": .string(state),
+        ]
+        if let accountID { fields["accountId"] = .string(accountID) }
+        let authorization: Authorization = try await authorized("api/native/calendar-onboarding", method: "POST", body: fields)
+        guard !loggingOut, identity == workspaceIdentity else { return nil }
+        guard authorization.authorizationUrl.scheme == "https", authorization.authorizationUrl.host == "accounts.google.com" else {
+            throw APIError.response(0, "Could not open Google Calendar setup.")
+        }
+
+        let callback: URL? = try await withCheckedThrowingContinuation { continuation in
+            let session = ASWebAuthenticationSession(url: authorization.authorizationUrl, callbackURLScheme: "followthrough") { [weak self] url, failure in
+                Task { @MainActor in
+                    guard let self, self.googleCalendarAuthState == state, self.googleCalendarAuthSession != nil else { return }
+                    self.googleCalendarAuthSession = nil
+                    if let failure, (failure as NSError).code != ASWebAuthenticationSessionError.canceledLogin.rawValue {
+                        continuation.resume(throwing: failure)
+                    } else {
+                        continuation.resume(returning: url)
+                    }
+                }
+            }
+            session.presentationContextProvider = self
+            googleCalendarAuthSession = session
+            if !session.start() {
+                googleCalendarAuthSession = nil
+                continuation.resume(throwing: APIError.response(0, "Could not open Google Calendar setup. Try again."))
+            }
+        }
+        guard let callback, !loggingOut, identity == workspaceIdentity else { return nil }
+        let query = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems
+        guard callback.scheme == "followthrough", callback.host == "calendar",
+              query?.first(where: { $0.name == "state" })?.value == state,
+              query?.first(where: { $0.name == "result" })?.value == "connected" else {
+            throw APIError.response(0, "Google Calendar wasn’t connected. Try again.")
+        }
+        return try await calendars()
+    }
+
     func saveCalendars(_ fields: [String: JSONValue]) async throws -> NativeCalendarStatus {
         struct Response: Decodable, Sendable { var status: NativeCalendarStatus }
-        let response: Response = try await authorized("api/native/calendars", method: "POST", body: fields)
+        let response: Response = try await authorized("api/native/calendar-onboarding", method: "POST", body: fields)
         return response.status
     }
 
@@ -973,7 +1320,7 @@ import Security
         return handoff
     }
     func open(_ url: URL) {
-        if url.host == "auth" { Task { await completeSignIn(url) }; return }
+        if url.host == "auth" { Task { await receiveSignIn(url) }; return }
         if url.host == "capture" { focusCapture() }
         let id = URLComponents(url:url,resolvingAgainstBaseURL:false)?.queryItems?.first(where:{$0.name == "task"})?.value ?? (url.host == "task" ? url.lastPathComponent : nil)
         if let id { pendingTaskID = id; openPendingTask() }
@@ -995,8 +1342,38 @@ import Security
         #endif
     }
 }
+extension WorkspaceStore: ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        signInPresentationAnchor
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard controller === appleAuthorization else { return }
+        appleAuthorization = nil
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+              credential.state == authState else {
+            cancelDeviceSignIn()
+            error = "Apple sign-in could not be verified. Try again."
+            return
+        }
+        Task { await self.finishAppleSignIn(credential) }
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError failure: any Error) {
+        guard controller === appleAuthorization else { return }
+        cancelDeviceSignIn()
+        if (failure as NSError).code != ASAuthorizationError.canceled.rawValue {
+            error = failure.localizedDescription
+        }
+    }
+}
+
 extension WorkspaceStore: ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        signInPresentationAnchor
+    }
+
+    private var signInPresentationAnchor: ASPresentationAnchor {
         #if os(macOS)
         return NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first ?? ASPresentationAnchor()
         #else

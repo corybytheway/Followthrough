@@ -42,7 +42,9 @@ struct APIClient: Sendable {
         }
     }
     func url(for path: String) -> URL {
-        let destination = path.hasPrefix("api/native/") ? transportURL : baseURL
+        // The planner owns the calendar consent callback and its current onboarding API.
+        let usesRelay = path.hasPrefix("api/native/") && path != "api/native/calendar-onboarding" && path != "api/native/device-availability"
+        let destination = usesRelay ? transportURL : baseURL
         return destination.appendingPathComponent(path)
     }
     func send<T: Decodable & Sendable>(_ path: String, method: String = "GET", body: [String: JSONValue]? = nil, token: String? = nil) async throws -> T {

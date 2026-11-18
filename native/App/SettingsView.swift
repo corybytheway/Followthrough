@@ -1,138 +1,411 @@
 // Created by Cory McCabe
 import SwiftUI
 import EventKit
+#if os(iOS)
+import SafariServices
+#endif
 
 struct SettingsView: View {
+    private enum Category: String, CaseIterable {
+        case workHours, assistant, calendars, suggestions, account
+        #if os(macOS)
+        case menuBar
+        #endif
+
+        var title: LocalizedStringKey {
+            switch self {
+            case .workHours: "Work hours"
+            case .assistant: "AI assistant"
+            case .calendars: "Calendars"
+            case .suggestions: "Task suggestions"
+            case .account: "Account"
+            #if os(macOS)
+            case .menuBar: "Menu bar"
+            #endif
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .workHours: "clock"
+            case .assistant: "wand.and.sparkles"
+            case .calendars: "calendar"
+            case .suggestions: "sparkles"
+            case .account: "person.crop.circle"
+            #if os(macOS)
+            case .menuBar: "menubar.rectangle"
+            #endif
+            }
+        }
+    }
+
     let store: WorkspaceStore
     let settings: FTSettings
-    @State private var calendarAccess = DeviceCalendars()
-    @State private var calendarStatus: NativeCalendarStatus?
-    @State private var calendarError: String?
-    @State private var confirmDisconnect = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var category: Category?
+    @State private var compactColumn: NavigationSplitViewColumn = .sidebar
+
+    private var selectedCategory: Category? {
+        category ?? (horizontalSizeClass == .regular ? .workHours : nil)
+    }
+
+    var body: some View {
+        NavigationSplitView(preferredCompactColumn: $compactColumn) {
+            List(selection: Binding(get: { selectedCategory }, set: { category = $0 })) {
+                ForEach(Category.allCases.filter { $0 != .suggestions || store.suggestions?.status.available == true }, id: \.self) { item in
+                    NavigationLink(value: item) {
+                        Label(item.title, systemImage: item.icon)
+                    }
+                    .accessibilityIdentifier("settings_\(item.rawValue)")
+                }
+            }
+            .navigationTitle("Settings")
+            .navigationSplitViewColumnWidth(min: 175, ideal: 210)
+        } detail: {
+            if let category = selectedCategory {
+                NavigationStack {
+                    detail(category)
+                        .navigationTitle(category.title)
+                        .toolbar {
+                            WorkspaceSaveToolbar(store: store)
+                            #if os(macOS)
+                            ToolbarItem {
+                                Button { store.focusCapture() } label: {
+                                    Label("New task", systemImage: "plus")
+                                }
+                                .disabled(!store.connected)
+                                .accessibilityIdentifier("newTask")
+                            }
+                            #endif
+                        }
+                }
+                .id(category)
+            }
+        }
+        .tint(.primary)
+        .onChange(of: store.sectionReselectionIDs["settings"]) {
+            category = nil
+            compactColumn = .sidebar
+        }
+    }
+
+    @ViewBuilder
+    private func detail(_ category: Category) -> some View {
+        switch category {
+        case .workHours:
+            Form { WorkHoursSettings(store: store, settings: settings) }
+                .formStyle(.grouped)
+        case .assistant:
+            Form { AIAssistantSettings(store: store, savedAssistant: settings.aiAssistant) }
+                .formStyle(.grouped)
+        case .calendars:
+            CalendarSettingsView(store: store)
+        case .suggestions:
+            SuggestionSettingsView(store: store)
+        case .account:
+            AccountSettingsView(store: store)
+        #if os(macOS)
+        case .menuBar:
+            Form { MenuBarAppearanceSettings() }
+                .formStyle(.grouped)
+        #endif
+        }
+    }
+}
+
+private struct SuggestionSettingsView: View {
+    let store: WorkspaceStore
+    #if os(iOS)
+    @State private var browserDelegate = GmailSettingsBrowserDelegate()
+    #else
+    @Environment(\.openURL) private var openURL
+    #endif
 
     var body: some View {
         Form {
-            WorkHoursSettings(store: store, settings: settings)
-            AIAssistantSettings(store: store, savedAssistant: settings.aiAssistant)
-            if store.suggestions?.status.available == true {
-                Section("Task suggestions") {
-                    Text("Suggestions recognize your routines, remember workflows, and help with tasks that keep moving later. Review each before changing your plan.").font(.callout).foregroundStyle(.secondary)
-                    if let status = store.suggestions?.status {
-                        if let accounts = status.googleAccounts, !accounts.isEmpty {
-                            ForEach(accounts) { account in
-                                LabeledContent(account.email, value: account.gmailEnabled ? String(localized: "Gmail on") : String(localized: "Gmail off"))
-                            }
-                        } else {
-                            LabeledContent("Gmail review", value: status.gmailEnabled ? status.googleAccount : "Off")
+            if let status = store.suggestions?.status {
+                Section("Inboxes") {
+                    if let accounts = status.googleAccounts, !accounts.isEmpty {
+                        ForEach(accounts) { account in
+                            LabeledContent(account.email, value: account.gmailEnabled ? String(localized: "On") : String(localized: "Off"))
                         }
-                        if let error = status.error { Text(error).font(.caption).foregroundStyle(.secondary) }
-                    }
-                    if let base = try? store.client.baseURL {
-                        Link("Manage Gmail suggestions", destination: base.appendingPathComponent("settings"))
-                    }
-                    Text("Optional read-only Gmail review sends selected email text to OpenAI. Read the notice and opt in before connecting.").font(.caption).foregroundStyle(.secondary)
-                    Button("Reset suggestion preferences") { Task { await store.resetSuggestionFeedback() } }.disabled(store.suggestions?.status.feedbackCount == 0)
-                }
-            }
-            #if os(macOS)
-            MenuBarAppearanceSettings()
-            #endif
-            Section("Calendar connections") {
-                if let status = calendarStatus {
-                    if status.googleAccounts.isEmpty {
-                        CalendarAccountRow(name: "Google Calendar", account: nil, connected: false)
                     } else {
-                        ForEach(status.googleAccounts) { account in
-                            CalendarAccountRow(name: "Google Calendar", account: account.email, connected: true)
-                        }
+                        LabeledContent("Gmail review", value: status.gmailEnabled ? status.googleAccount : "Off")
                     }
-                    CalendarAccountRow(name: "Apple Calendar", account: status.icloudAccount, connected: status.icloudConnected)
-                    CalendarAccountRow(name: "Zoho Calendar", account: status.zohoAccount, connected: status.zohoConnected)
-                    NavigationLink {
-                        TaskCalendarPicker(store: store, status: status) { calendarStatus = $0 }
-                    } label: {
-                        LabeledContent("Task calendar", value: status.outputTitle)
-                    }
-                    .accessibilityIdentifier("taskCalendarPicker")
-                    NavigationLink {
-                        ConflictCalendarSettings(store: store, status: status) { calendarStatus = $0 }
-                    } label: {
-                        LabeledContent("Calendars that block your tasks", value: "\(status.selectedCount) selected")
-                    }
-                    .accessibilityIdentifier("conflictCalendarPicker")
-                    if let error = status.lastError, !error.isEmpty {
-                        Text(error).font(.callout).foregroundStyle(.orange)
-                    }
-                } else if calendarError == nil {
-                    ProgressView("Loading calendars…")
-                }
-                if let calendarError {
-                    Text(calendarError).font(.callout).foregroundStyle(.secondary)
-                    Button("Try again") { Task { await loadCalendars() } }
-                        .buttonStyle(.plain).foregroundStyle(Color.followSettingsAccent)
+                    if let error = status.error { Text(error).foregroundStyle(.secondary) }
                 }
                 if let base = try? store.client.baseURL {
-                    Link(destination: base.appendingPathComponent("settings")) {
-                        HStack {
-                            Text("Add or manage accounts")
-                            Spacer()
-                            Image(systemName: "arrow.up.right").font(.callout)
+                    Section {
+                        let url = base.appendingPathComponent("settings")
+                        Button {
+                            #if os(iOS)
+                            openGmailSettings(url)
+                            #else
+                            openURL(url)
+                            #endif
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text("Manage Gmail suggestions")
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption.weight(.semibold))
+                                    .accessibilityHidden(true)
+                            }
+                            .foregroundStyle(Color.followAccent)
                         }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .tint(Color.followAccent)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     }
-                    .foregroundStyle(Color.followSettingsAccent)
-                    .accessibilityIdentifier("manageCalendarConnections")
                 }
             }
-            Section {
-                NavigationLink {
-                    DeviceCalendarAccessView(access: calendarAccess)
-                } label: {
-                    LabeledContent("Device calendar access", value: calendarAccess.statusTitle)
-                }
-                .accessibilityIdentifier("deviceCalendarAccess")
-            }
+        }
+        .formStyle(.grouped)
+    }
+
+    #if os(iOS)
+    private func openGmailSettings(_ url: URL) {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .filter { $0.activationState == .foregroundActive }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)
+        guard var presenter = window?.rootViewController else { return }
+        while let presented = presenter.presentedViewController { presenter = presented }
+
+        let browser = SFSafariViewController(url: url)
+        browser.dismissButtonStyle = .close
+        browserDelegate.onDismiss = { [weak store] in
+            Task { await store?.refreshSuggestions() }
+        }
+        browser.delegate = browserDelegate
+        presenter.present(browser, animated: true)
+    }
+    #endif
+}
+
+#if os(iOS)
+private final class GmailSettingsBrowserDelegate: NSObject, SFSafariViewControllerDelegate {
+    var onDismiss: (() -> Void)?
+
+    func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+        onDismiss?()
+        onDismiss = nil
+    }
+}
+#endif
+
+private struct AccountSettingsView: View {
+    let store: WorkspaceStore
+
+    var body: some View {
+        Form {
             if !SharedStorage.extensionsAvailable {
                 Section("Local build") {
                     Text("Task storage is working in the app. Shared widget and shortcut storage needs a development-signed App Group on this Mac.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
             }
-            Section("Your workspace") {
-                if store.isLocalWorkspace {
-                    Text("Local test workspace").font(.headline)
-                    Text("Connect your account to see your existing projects and tasks.")
-                        .font(.callout).foregroundStyle(.secondary)
-                    Button(store.authorizing ? "Connecting…" : "Connect my Followthrough account") { store.connectLiveWorkspace() }
-                        .buttonStyle(.plain).foregroundStyle(Color.followSettingsAccent)
-                        .disabled(store.authorizing || store.syncing || !store.pending.isEmpty)
-                } else {
-                    Button(store.authorizing ? "Connecting…" : "Switch account") { store.connect() }
-                        .buttonStyle(.plain).foregroundStyle(Color.followSettingsAccent)
-                        .disabled(store.authorizing || store.syncing || !store.pending.isEmpty)
+            Section {
+                Button(role: .destructive) {
+                    Task { await store.logOut() }
+                } label: {
+                    Text(store.loggingOut ? "Logging out…" : "Log out")
+                        .padding(.horizontal, 16)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
-                Button("Disconnect this device", role: .destructive) { confirmDisconnect = true }
-                    .buttonStyle(.plain).foregroundStyle(.red)
+                .disabled(store.loggingOut)
+                .buttonStyle(.plain)
+                .foregroundStyle(.red)
+                .listRowInsets(EdgeInsets())
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Settings")
-        .tint(.primary)
-        .confirmationDialog("Disconnect this device?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
-            Button(store.pending.isEmpty ? "Disconnect" : "Disconnect and remove \(store.pending.count) unsynced changes", role: .destructive) {
-                Task { await store.disconnect() }
+    }
+}
+
+private struct CalendarSettingsView: View {
+    let store: WorkspaceStore
+    @State private var calendarAccess = DeviceCalendars()
+    @State private var status: NativeCalendarStatus?
+    @State private var error: String?
+
+    var body: some View {
+        Form {
+            if let status = Binding($status) {
+                Section("Accounts") {
+                    ForEach(NativeCalendarProvider.allCases) { provider in
+                        NavigationLink {
+                            CalendarProviderSettings(store: store, provider: provider, status: status)
+                        } label: {
+                            LabeledContent(provider.title, value: status.wrappedValue.summary(for: provider))
+                        }
+                        .accessibilityIdentifier("calendarProvider_\(provider.rawValue)")
+                    }
+                }
+                Section {
+                    NavigationLink {
+                        TaskCalendarPicker(store: store, status: status.wrappedValue) { status.wrappedValue = $0 }
+                    } label: {
+                        LabeledContent("Task calendar", value: status.wrappedValue.outputTitle)
+                    }
+                    .accessibilityIdentifier("taskCalendarPicker")
+                    NavigationLink {
+                        ConflictCalendarSettings(store: store, status: status.wrappedValue) { status.wrappedValue = $0 }
+                    } label: {
+                        LabeledContent("Calendars that block your tasks", value: "\(status.wrappedValue.selectedCount) selected")
+                    }
+                    .accessibilityIdentifier("conflictCalendarPicker")
+                    if let error = status.wrappedValue.lastError, !error.isEmpty {
+                        Text(error).font(.callout).foregroundStyle(.orange)
+                    }
+                }
+            } else if let error {
+                Text(error).foregroundStyle(.secondary)
+                Button("Try again") { Task { await load() } }
+            } else {
+                ProgressView("Loading calendars…")
+            }
+            Section {
+                NavigationLink {
+                    DeviceCalendarAccessView(access: calendarAccess, store: store)
+                } label: {
+                    LabeledContent("Device calendar access", value: calendarAccess.statusTitle)
+                }
+                .accessibilityIdentifier("deviceCalendarAccess")
             }
         }
-        .task { await loadCalendars() }
-        // Form aligns section IDs to their first row. Aligning the first
-        // section to the bottom clamps at the top, revealing its header too.
-        .modifier(SectionScrollToTop(store: store, section: "settings", anchor: "settingsTop", alignment: .bottom))
+        .formStyle(.grouped)
+        .task { await load() }
     }
 
-    private func loadCalendars() async {
-        calendarError = nil
-        do { calendarStatus = try await store.calendars() }
-        catch { calendarError = error.localizedDescription }
+    private func load() async {
+        error = nil
+        do { status = try await store.calendars() }
+        catch { self.error = error.localizedDescription }
         calendarAccess.refresh()
+    }
+}
+
+private struct CalendarSettingsAccount: Identifiable {
+    let provider: NativeCalendarProvider
+    let address: String?
+    var googleID: String? = nil
+
+    var id: String { googleID ?? provider.rawValue }
+    var title: String { address ?? provider.title }
+}
+
+private struct CalendarProviderSettings: View {
+    private enum Setup: Identifiable {
+        case google(NativeGoogleAccount)
+        case iCloud
+        case zoho
+
+        var id: NativeCalendarProvider {
+            switch self {
+            case .google: .google
+            case .iCloud: .icloud
+            case .zoho: .zoho
+            }
+        }
+    }
+
+    let store: WorkspaceStore
+    let provider: NativeCalendarProvider
+    @Binding var status: NativeCalendarStatus
+    @State private var setup: Setup?
+    @State private var connecting = false
+    @State private var error: String?
+
+    private var accounts: [CalendarSettingsAccount] {
+        if provider == .google {
+            return status.googleAccounts.map { .init(provider: .google, address: $0.email, googleID: $0.id) }
+        }
+        return status.isConnected(provider) ? [.init(provider: provider, address: status.account(provider))] : []
+    }
+
+    var body: some View {
+        Form {
+            if !accounts.isEmpty {
+                Section {
+                    ForEach(accounts) { account in
+                        NavigationLink {
+                            ConflictCalendarSettings(store: store, status: status, account: account) { status = $0 }
+                        } label: {
+                            LabeledContent(account.title, value: "\(status.selected(provider, accountID: account.googleID).count) selected")
+                        }
+                        .accessibilityIdentifier("calendarAccount_\(account.id)")
+                    }
+                }
+            }
+            if accounts.isEmpty || (provider == .google && accounts.count < 5) {
+                Section {
+                    Button {
+                        connect()
+                    } label: {
+                        if connecting {
+                            ProgressView("Connecting…")
+                        } else {
+                            Text(accounts.isEmpty ? "Connect" : "Add account")
+                                .foregroundStyle(Color.followSettingsAccent)
+                        }
+                    }
+                    .disabled(connecting)
+                    .accessibilityIdentifier("connectCalendarAccount")
+                }
+            }
+            if let error { Text(error).foregroundStyle(.orange) }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(provider.title)
+        .sheet(item: $setup, onDismiss: { Task { await refresh() } }) { setup in
+            switch setup {
+            case .google(let account):
+                CalendarOnboardingView(store: store, setup: .init(provider: .google, googleAccount: account, email: account.email))
+            case .iCloud:
+                CalendarOnboardingView(store: store, setup: .init(provider: .apple, googleAccount: nil, email: nil), startsWithICloud: true)
+            case .zoho:
+                ZohoCalendarConnectionView(store: store) { status = $0 }
+            }
+        }
+    }
+
+    private func connect() {
+        error = nil
+        switch provider {
+        case .google: Task { await addGoogleAccount() }
+        case .icloud: setup = .iCloud
+        case .zoho: setup = .zoho
+        }
+    }
+
+    private func addGoogleAccount() async {
+        guard !connecting else { return }
+        connecting = true
+        defer { connecting = false }
+        let previousIDs = Set(status.googleAccounts.map(\.id))
+        do {
+            guard let updated = try await store.connectGoogleCalendar() else { return }
+            status = updated
+            let added = updated.googleAccounts.filter { !previousIDs.contains($0.id) }
+            guard added.count == 1, let account = added.first else { return }
+            if account.calendars.count > 1 {
+                setup = .google(account)
+            } else if let calendar = account.calendars.first {
+                try await store.saveOnboardingGoogleCalendars(account: account, selected: [calendar.id])
+                await refresh()
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func refresh() async {
+        do { status = try await store.calendars() }
+        catch { self.error = error.localizedDescription }
     }
 }
 
@@ -250,8 +523,6 @@ private struct WorkHoursSettings: View {
             if let message = validationMessage ?? saveError {
                 Text(message).font(.callout).foregroundStyle(.orange)
             }
-        } header: {
-            Text("Work hours").id("settingsTop")
         }
         .onChange(of: settings) { _, current in
             let queued = store.pending.contains { $0.body["action"] == .string("update_settings") }
@@ -363,43 +634,108 @@ private struct WorkDayPicker: View {
     }
 }
 
-private struct CalendarAccountRow: View {
-    let name: String
-    let account: String?
-    let connected: Bool
+private struct ZohoCalendarConnectionView: View {
+    let store: WorkspaceStore
+    let onConnect: (NativeCalendarStatus) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var email = ""
+    @State private var password = ""
+    @State private var server = ""
+    @State private var connecting = false
+    @State private var error: String?
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(name)
-                Text(connected ? account ?? "Connected" : "Not connected")
-                    .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Zoho email", text: $email)
+                        #if os(iOS)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                    SecureField("Password", text: $password)
+                } footer: {
+                    Link("Use an app password if you have two-factor authentication.", destination: URL(string: "https://accounts.zoho.com/home#security/app_password")!)
+                }
+                DisclosureGroup("Calendar server") {
+                    TextField("calendar.zoho.com", text: $server)
+                        .autocorrectionDisabled()
+                        #if os(iOS)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                }
+                if let error { Text(error).foregroundStyle(.red) }
             }
-            Spacer()
+            .formStyle(.grouped)
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle("Connect Zoho Calendar")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(connecting)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(connecting ? "Connecting…" : "Connect") {
+                        Task { await connect() }
+                    }
+                    .accessibilityIdentifier("submitZohoCalendar")
+                    .disabled(connecting || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.isEmpty)
+                }
+            }
         }
-        .padding(.vertical, 3)
-        .accessibilityElement(children: .combine)
+        .frame(minWidth: 300, minHeight: 380)
+        .interactiveDismissDisabled(connecting)
+    }
+
+    private func connect() async {
+        connecting = true
+        error = nil
+        defer {
+            password = ""
+            connecting = false
+        }
+        do {
+            let status = try await store.saveCalendars([
+                "action": .string("connect_zoho"),
+                "email": .string(email.trimmingCharacters(in: .whitespacesAndNewlines)),
+                "password": .string(password),
+                "server": .string(server.trimmingCharacters(in: .whitespacesAndNewlines)),
+            ])
+            onConnect(status)
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 }
 
 private struct ConflictCalendarSettings: View {
     let store: WorkspaceStore
+    let account: CalendarSettingsAccount?
     let onSave: (NativeCalendarStatus) -> Void
+    @Environment(\.dismiss) private var dismiss
     @State private var status: NativeCalendarStatus
     @State private var saving = false
     @State private var savingCalendarID: String?
     @State private var error: String?
     @State private var requiresReload = false
+    @State private var confirmingDisconnect = false
 
-    init(store: WorkspaceStore, status: NativeCalendarStatus, onSave: @escaping (NativeCalendarStatus) -> Void) {
+    init(
+        store: WorkspaceStore,
+        status: NativeCalendarStatus,
+        account: CalendarSettingsAccount? = nil,
+        onSave: @escaping (NativeCalendarStatus) -> Void
+    ) {
         self.store = store
+        self.account = account
         self.onSave = onSave
         _status = State(initialValue: status)
     }
 
     var body: some View {
         Form {
-            ForEach(status.googleAccounts) { account in
+            ForEach(status.googleAccounts.filter { account == nil || $0.id == account?.googleID }) { account in
                 Section {
                     ForEach(account.calendars) { calendar in
                         ConflictCalendarRow(calendar: calendar, selected: account.selected.contains(calendar.id), ignoreAllDay: account.ignoreAllDay.contains(calendar.id), required: status.outputOnPrimary && account.id == status.outputGoogleAccountId && calendar.id == status.outputCalendarId, enabled: !saving && !requiresReload, saving: savingCalendarID == "\(account.id):\(calendar.id)", onSelected: { selected in
@@ -412,7 +748,7 @@ private struct ConflictCalendarSettings: View {
                     CalendarProviderHeading(title: String(localized: "Google Calendar"), account: account.email)
                 }
             }
-            ForEach(NativeCalendarProvider.allCases.filter { $0 != .google }) { provider in
+            ForEach(NativeCalendarProvider.allCases.filter { $0 != .google && (account == nil || $0 == account?.provider) }) { provider in
                 if !status.calendars(provider).isEmpty {
                     Section {
                         ForEach(status.calendars(provider)) { calendar in
@@ -427,8 +763,17 @@ private struct ConflictCalendarSettings: View {
                     }
                 }
             }
-            if status.totalCalendars == 0 {
+            if account == nil, status.totalCalendars == 0 {
                 Text("Connect a calendar account to choose which calendars block task time.").foregroundStyle(.secondary)
+            }
+            if let account {
+                Section {
+                    if let googleID = account.googleID {
+                        Button("Reconnect") { Task { await reconnectGoogle(googleID) } }
+                    }
+                    Button("Disconnect", role: .destructive) { confirmingDisconnect = true }
+                }
+                .disabled(saving)
             }
             if let error {
                 Section {
@@ -441,10 +786,47 @@ private struct ConflictCalendarSettings: View {
             }
         }
         .formStyle(.grouped).tint(Color.followMint)
-        .navigationTitle("Conflict calendars")
+        .navigationTitle(account?.title ?? String(localized: "Conflict calendars"))
+        .confirmationDialog("Disconnect calendar account?", isPresented: $confirmingDisconnect, titleVisibility: .visible) {
+            if let account {
+                Button("Disconnect", role: .destructive) { Task { await disconnect(account) } }
+            }
+        }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+    }
+
+    private func reconnectGoogle(_ id: String) async {
+        guard !saving else { return }
+        saving = true
+        error = nil
+        defer { saving = false }
+        do {
+            if let updated = try await store.connectGoogleCalendar(accountID: id) {
+                status = updated
+                onSave(updated)
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func disconnect(_ account: CalendarSettingsAccount) async {
+        guard !saving else { return }
+        saving = true
+        error = nil
+        defer { saving = false }
+        var fields: [String: JSONValue] = ["action": .string("disconnect_\(account.provider.rawValue)")]
+        if let id = account.googleID { fields["accountId"] = .string(id) }
+        do {
+            let updated = try await store.saveCalendars(fields)
+            onSave(updated)
+            await store.sync()
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     private func update(provider: NativeCalendarProvider, id: String, accountID: String? = nil, selected: Bool? = nil, ignored: Bool? = nil) {
@@ -729,6 +1111,30 @@ private struct TaskCalendarChoiceRow: View {
         calendars = authorization == .fullAccess ? events.calendars(for: .event) : []
     }
 
+    func busyPeriods(in selection: Set<String>) -> [DateInterval] {
+        refresh()
+        let selected = calendars.filter { selection.contains($0.calendarIdentifier) }
+        guard !selected.isEmpty else { return [] }
+        let start = Date().addingTimeInterval(-3600)
+        let end = start.addingTimeInterval(7 * 86_400)
+        let predicate = events.predicateForEvents(withStart: start, end: end, calendars: selected)
+        let periods = events.events(matching: predicate).compactMap { event -> DateInterval? in
+            guard event.status != .canceled, event.availability != .free else { return nil }
+            let from = max(start, event.startDate)
+            let to = min(end, event.endDate)
+            return from < to ? DateInterval(start: from, end: to) : nil
+        }.sorted { $0.start < $1.start }
+        var merged: [DateInterval] = []
+        for interval in periods {
+            if let last = merged.last, last.end >= interval.start {
+                merged[merged.count - 1] = DateInterval(start: last.start, end: max(last.end, interval.end))
+            } else {
+                merged.append(interval)
+            }
+        }
+        return merged
+    }
+
     func request() async {
         do {
             let allowed = try await events.requestFullAccessToEvents()
@@ -740,7 +1146,11 @@ private struct TaskCalendarChoiceRow: View {
 
 private struct DeviceCalendarAccessView: View {
     let access: DeviceCalendars
+    let store: WorkspaceStore
     @Environment(\.openURL) private var openURL
+    @State private var selected: Set<String> = []
+    @State private var saving = false
+    @State private var saveMessage: String?
 
     var body: some View {
         Form {
@@ -758,13 +1168,43 @@ private struct DeviceCalendarAccessView: View {
             if !access.calendars.isEmpty {
                 Section("On this device") {
                     ForEach(access.calendars, id: \.calendarIdentifier) { calendar in
-                        LabeledContent(calendar.title, value: calendar.source.title)
+                        Toggle(isOn: Binding(
+                            get: { selected.contains(calendar.calendarIdentifier) },
+                            set: { enabled in
+                                if enabled { selected.insert(calendar.calendarIdentifier) }
+                                else { selected.remove(calendar.calendarIdentifier) }
+                            }
+                        )) {
+                            LabeledContent(calendar.title, value: calendar.source.title)
+                        }
                     }
+                }
+            }
+            if !access.calendars.isEmpty || !store.selectedDeviceCalendars.isEmpty {
+                Section {
+                    Button(saving ? "Saving…" : "Save calendars") {
+                        Task {
+                            saving = true
+                            defer { saving = false }
+                            do {
+                                let available = Set(access.calendars.map(\.calendarIdentifier))
+                                try await store.saveDeviceCalendars(selected.intersection(available))
+                                saveMessage = "Calendar selection saved."
+                            } catch { saveMessage = error.localizedDescription }
+                        }
+                    }
+                    .disabled(saving)
+                    if let saveMessage { Text(saveMessage).font(.callout).foregroundStyle(.secondary) }
+                } footer: {
+                    Text("Followthrough uses only busy times from the calendars you select.")
                 }
             }
         }
         .formStyle(.grouped).navigationTitle("Device calendars")
-        .task { access.refresh() }
+        .task {
+            access.refresh()
+            selected = store.selectedDeviceCalendars
+        }
     }
 
     private func openPrivacySettings() {
@@ -883,6 +1323,20 @@ struct NativeCalendarStatus: Decodable, Sendable, Equatable {
     }
     fileprivate func account(_ provider: NativeCalendarProvider) -> String? {
         switch provider { case .google: googleAccount ?? googlePrimaryEmail; case .icloud: icloudAccount; case .zoho: zohoAccount }
+    }
+    fileprivate func isConnected(_ provider: NativeCalendarProvider) -> Bool {
+        switch provider {
+        case .google: googleConnected || !googleAccounts.isEmpty
+        case .icloud: icloudConnected
+        case .zoho: zohoConnected
+        }
+    }
+    fileprivate func summary(for provider: NativeCalendarProvider) -> String {
+        if !isConnected(provider) { return String(localized: "Not connected") }
+        if provider == .google, googleAccounts.count > 1 {
+            return String(localized: "\(googleAccounts.count) accounts")
+        }
+        return String(localized: "Connected")
     }
     fileprivate func selected(_ provider: NativeCalendarProvider, accountID: String? = nil) -> [String] {
         if provider == .google, let accountID { return googleAccounts.first { $0.id == accountID }?.selected ?? [] }

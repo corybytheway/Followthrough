@@ -91,10 +91,17 @@ private struct IOSWorkspaceTab: View {
     let section: String
 
     var body: some View {
-        NavigationStack {
-            WorkspaceSection(store: store, section: section)
-                .modifier(IOSWorkspaceContentInset(store: store))
-                .toolbar { WorkspaceSaveToolbar(store: store) }
+        Group {
+            if section == "settings" {
+                WorkspaceSection(store: store, section: section)
+                    .modifier(IOSWorkspaceContentInset(store: store))
+            } else {
+                NavigationStack {
+                    WorkspaceSection(store: store, section: section)
+                        .modifier(IOSWorkspaceContentInset(store: store))
+                        .toolbar { WorkspaceSaveToolbar(store: store) }
+                }
+            }
         }
         .background {
             if #available(iOS 27.1, *) {

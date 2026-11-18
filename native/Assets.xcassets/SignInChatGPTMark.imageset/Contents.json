@@ -1,0 +1,16 @@
+{
+  "images" : [
+    {
+      "filename" : "chatgpt-logo-black.svg",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "Cory McCabe",
+    "version" : 1
+  },
+  "properties" : {
+    "preserves-vector-representation" : true,
+    "template-rendering-intent" : "original"
+  }
+}

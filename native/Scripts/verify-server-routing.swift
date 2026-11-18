@@ -17,6 +17,7 @@ import Foundation
             let api = try APIClient(server: server)
             try expect("Canonical website for \(server)", api.baseURL.absoluteString == live)
             try expect("Sign-in uses current website", api.url(for: "native/connect").absoluteString == live + "/native/connect")
+            try expect("Calendar onboarding uses the planner", api.url(for: "api/native/calendar-onboarding").absoluteString == live + "/api/native/calendar-onboarding")
             try expect("Settings uses current website", api.url(for: "settings").absoluteString == live + "/settings")
             for path in ["api/native/session", "api/native/workspace", "api/native/inbox", "api/native/calendars", "api/native/suggestions"] {
                 try expect("Native route retains authenticated relay: \(path)", api.url(for: path).absoluteString == relay + "/" + path)

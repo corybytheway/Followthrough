@@ -52,6 +52,12 @@ final class FollowthroughUITests: XCTestCase {
         record("Tab " + name)
     }
 
+    private func openSettingsPage(_ name: String) {
+        let page = app.descendants(matching: .any)["settings_" + name].firstMatch
+        XCTAssertTrue(page.waitForExistence(timeout: 5))
+        page.tap()
+    }
+
     private func scrollTo(_ element: XCUIElement, maxSwipes: Int = 10) {
         func fullyVisible() -> Bool {
             let capture = app.buttons["newTask"]
@@ -633,6 +639,7 @@ final class FollowthroughUITests: XCTestCase {
         tapTab("Tasks")
         tapTab("Projects")
         tapTab("Settings")
+        openSettingsPage("workHours")
         let workStart = app.descendants(matching: .any)["workStartPicker"].firstMatch
         XCTAssertTrue(workStart.waitForExistence(timeout: 10))
         tab("New task").tap()
@@ -675,26 +682,19 @@ final class FollowthroughUITests: XCTestCase {
         record("Tab reselection Tasks restored top")
     }
 
-    func testSelectedSettingsTabReturnsToCompleteHeader() throws {
+    func testSelectedSettingsTabReturnsToCategoryList() throws {
         try launchTabReselectionFixture()
         tapTab("Settings")
+        openSettingsPage("workHours")
         let start = app.descendants(matching: .any)["workStartPicker"].firstMatch
         XCTAssertTrue(start.waitForExistence(timeout: 5))
-        XCTAssertTrue(tabContentIsVisible(start))
-        let disconnect = app.buttons["Disconnect this device"]
-        scrollTo(disconnect)
-        record("Tab reselection Settings scrolled")
-        XCTAssertFalse(tabContentIsVisible(start), "Settings must actually be scrolled before testing reselection.")
         tapTab("Today")
         tapTab("Settings")
-        XCTAssertFalse(tabContentIsVisible(start), "Switching tabs preserves the Settings scroll position.")
+        XCTAssertTrue(start.waitForExistence(timeout: 5), "Switching tabs preserves the open Settings page.")
         tapTab("Settings")
-        waitForTabContent(start)
-        record("Tab reselection Settings restored top")
-        let workHoursHeader = app.staticTexts["Work hours"].firstMatch
-        XCTAssertTrue(workHoursHeader.exists)
-        XCTAssertGreaterThanOrEqual(workHoursHeader.frame.minY, app.navigationBars["Settings"].frame.maxY,
-                                    "Returning to the top must reveal the section header below the navigation bar.")
+        let calendars = app.descendants(matching: .any)["settings_calendars"].firstMatch
+        XCTAssertTrue(calendars.waitForExistence(timeout: 5))
+        XCTAssertTrue(calendars.isHittable, "Reselecting Settings returns to the category list.")
     }
 
     func testSelectedProjectsTabReturnsToListThenTop() throws {
@@ -1324,6 +1324,7 @@ final class FollowthroughUITests: XCTestCase {
         try launchAuthenticated()
         XCTAssertTrue(app.descendants(matching: .any)["captureInput"].firstMatch.waitForExistence(timeout: 20))
         tapTab("Settings")
+        openSettingsPage("workHours")
         let status = app.buttons["workspaceSaveStatus"]
         func waitStatus(_ value: String, timeout: TimeInterval = 40) {
             let progress = app.descendants(matching: .any)["workspaceSavingProgress"].firstMatch
@@ -1431,6 +1432,7 @@ final class FollowthroughUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.descendants(matching: .any)["captureInput"].firstMatch.waitForExistence(timeout: 20))
         tapTab("Settings")
+        openSettingsPage("calendars")
         let conflicts = app.buttons["conflictCalendarPicker"]
         func reveal(_ element: XCUIElement) {
             for _ in 0..<12 {
@@ -1575,6 +1577,7 @@ final class FollowthroughUITests: XCTestCase {
         record("11 Project tasks")
 
         tapTab("Settings")
+        openSettingsPage("workHours")
         XCTAssertTrue(app.descendants(matching: .any)["workStartPicker"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["workEndPicker"].firstMatch.exists)
         XCTAssertFalse(app.buttons["Edit work hours"].exists)
@@ -2463,6 +2466,7 @@ final class FollowthroughUITests: XCTestCase {
             XCTAssertTrue(input.isHittable)
         }
         tapTab("Settings")
+        openSettingsPage("account")
         let localWorkspace = app.staticTexts["Local test workspace"]
         scrollTo(localWorkspace)
         XCTAssertTrue(localWorkspace.exists)
@@ -2515,6 +2519,7 @@ final class FollowthroughUITests: XCTestCase {
         }
 
         tapTab("Settings")
+        openSettingsPage("workHours")
         let start = app.descendants(matching: .any)["workStartPicker"].firstMatch
         let end = app.descendants(matching: .any)["workEndPicker"].firstMatch
         XCTAssertTrue(start.waitForExistence(timeout: 5))
@@ -2575,6 +2580,7 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertEqual(initialSettings["workStart"] as? String, "09:00")
         try launchAuthenticated()
         tapTab("Settings")
+        openSettingsPage("workHours")
         let start = app.descendants(matching: .any)["workStartPicker"].firstMatch
         let end = app.descendants(matching: .any)["workEndPicker"].firstMatch
         XCTAssertTrue(start.waitForExistence(timeout: 5))
@@ -2744,6 +2750,7 @@ final class FollowthroughUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["New task"].waitForExistence(timeout: 20))
         tapTab("Settings")
+        openSettingsPage("account")
         let localWorkspace = app.staticTexts["Local test workspace"]
         scrollTo(localWorkspace)
         XCTAssertTrue(localWorkspace.exists)
@@ -2830,13 +2837,12 @@ final class FollowthroughUITests: XCTestCase {
         record("Browser approval starting state")
         if app.buttons["New task"].waitForExistence(timeout: 5) {
             tapTab("Settings")
-            let disconnect = app.buttons["Disconnect this device"]
+            openSettingsPage("account")
+            let disconnect = app.buttons["Log out"]
             scrollTo(disconnect)
             XCTAssertTrue(app.staticTexts["Local test workspace"].exists, "Only the isolated local workspace may be disconnected by this test.")
             record("Local workspace before disconnect")
             disconnect.tap()
-            record("Local disconnect confirmation")
-            app.buttons["Disconnect"].tap()
             record("Local device disconnected")
         }
         let connect = app.buttons["Connect your workspace"]
@@ -2873,6 +2879,7 @@ final class FollowthroughUITests: XCTestCase {
         tapTab("Settings")
         XCTAssertTrue(app.navigationBars["Settings"].exists)
         record("Settings heading fits")
+        openSettingsPage("workHours")
         XCTAssertTrue(app.descendants(matching: .any)["workStartPicker"].firstMatch.exists)
         XCTAssertTrue(app.descendants(matching: .any)["workEndPicker"].firstMatch.exists)
         XCTAssertFalse(app.staticTexts["Time zone"].exists)
@@ -3084,6 +3091,7 @@ final class FollowthroughUITests: XCTestCase {
         record("Closed-app replan shifted work session")
 
         tapTab("Settings")
+        openSettingsPage("calendars")
         let check = app.buttons["deviceCalendarAccess"]
         scrollTo(check)
         record("Device calendar revoked before check")
@@ -3112,6 +3120,7 @@ final class FollowthroughUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["captureInput"].firstMatch.waitForExistence(timeout: 20))
         record("Device calendar starting state")
         tapTab("Settings")
+        openSettingsPage("calendars")
         let check = app.buttons["deviceCalendarAccess"]
         scrollTo(check)
         record("Device calendars before permission")

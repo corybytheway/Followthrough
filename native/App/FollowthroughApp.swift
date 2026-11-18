@@ -1,6 +1,8 @@
 // Created by Cory McCabe
 import SwiftUI
 import AppIntents
+import CoreText
+import EventKit
 
 @main struct FollowthroughApp: App {
     @State private var store = WorkspaceStore.shared
@@ -73,6 +75,12 @@ private struct WorkspaceWindowContent: View {
         RootView(store: store)
             .tint(.followAccent)
             .onOpenURL { store.open($0) }
+            .sheet(isPresented: $store.showsSignInPage) {
+                ConnectionView(store: store)
+            }
+            .sheet(item: $store.calendarOnboarding) { setup in
+                CalendarOnboardingView(store: store, setup: setup)
+            }
             .task {
                 #if DEBUG && os(iOS)
                 if ProcessInfo.processInfo.arguments.contains("--verify-photo-intelligence") {
@@ -86,6 +94,218 @@ private struct WorkspaceWindowContent: View {
                     if !Task.isCancelled { await store.sync() }
                 }
             }
+    }
+}
+
+struct CalendarOnboardingView: View {
+    private enum AppleSetup { case choose, iCloud, device }
+
+    let store: WorkspaceStore
+    let setup: WorkspaceStore.CalendarOnboarding
+    private let startsWithICloud: Bool
+    @Environment(\.dismiss) private var dismiss
+    @State private var appleSetup: AppleSetup
+    @State private var device = DeviceCalendars()
+    @State private var selected: Set<String> = []
+    @State private var iCloudCalendars: [NativeCalendarChoice]?
+    @State private var email = ""
+    @State private var password = ""
+    @State private var working = false
+    @State private var failure: String?
+
+    init(store: WorkspaceStore, setup: WorkspaceStore.CalendarOnboarding, startsWithICloud: Bool = false) {
+        self.store = store
+        self.setup = setup
+        self.startsWithICloud = startsWithICloud
+        _appleSetup = State(initialValue: startsWithICloud ? .iCloud : .choose)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(Color.followMint)
+                    .frame(width: 54, height: 54)
+                    .background(Color.followMint.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
+                Text(description)
+                    .foregroundStyle(.secondary)
+
+                if setup.provider == .apple && appleSetup == .choose {
+                    action("Connect iCloud Calendar") { appleSetup = .iCloud }
+                    Button("Use calendars on this device") {
+                        appleSetup = .device
+                        device.refresh()
+                        Task { await useOnlyCalendarIfAvailable() }
+                    }
+                } else if setup.provider == .apple && appleSetup == .iCloud && iCloudCalendars == nil {
+                    iCloudFields
+                    action(working ? "Connecting…" : "Connect iCloud Calendar") {
+                        Task { await connectICloud() }
+                    }
+                    .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.isEmpty)
+                } else {
+                    selectionControls
+                }
+
+                if let failure { Text(failure).foregroundStyle(.red) }
+                if appleSetup == .device, let message = device.message { Text(message).foregroundStyle(.secondary) }
+                Button(secondaryActionTitle) {
+                    if let account = setup.googleAccount, !account.selected.isEmpty {
+                        selected = Set(account.selected)
+                        Task { await save() }
+                    } else {
+                        dismiss()
+                    }
+                }
+                .disabled(working)
+            }
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 380)
+            .padding(28)
+            .frame(maxWidth: .infinity)
+        }
+        .defaultScrollAnchor(.center, for: .alignment)
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(minWidth: 280)
+        .interactiveDismissDisabled(working)
+        .onAppear {
+            selected = Set(setup.googleAccount?.selected ?? [])
+            if let value = setup.email, !value.hasSuffix("@privaterelay.appleid.com") { email = value }
+        }
+    }
+
+    private var secondaryActionTitle: LocalizedStringKey {
+        if let account = setup.googleAccount, !account.selected.isEmpty { return "Keep default calendar" }
+        if startsWithICloud && iCloudCalendars == nil { return "Cancel" }
+        return "Set up later"
+    }
+
+    private var title: LocalizedStringKey {
+        if setup.provider == .google { return "Choose Google calendars" }
+        switch appleSetup {
+        case .choose: return "Plan around your calendar"
+        case .iCloud: return iCloudCalendars == nil ? "Connect iCloud Calendar" : "Choose iCloud calendars"
+        case .device: return "Choose device calendars"
+        }
+    }
+
+    private var description: LocalizedStringKey {
+        if setup.provider == .google { return "Choose which calendars Followthrough should plan around." }
+        switch appleSetup {
+        case .choose: return "Apple requires an app-specific password for Followthrough to sync iCloud Calendar while the app is closed."
+        case .iCloud:
+            return iCloudCalendars == nil
+                ? "Enter your Apple Account email and the app-specific password you create for Followthrough."
+                : "Choose which calendars Followthrough should plan around."
+        case .device:
+            return "Followthrough shares busy times from the calendars you select while the app is running."
+        }
+    }
+
+    private var iCloudFields: some View {
+        VStack(spacing: 12) {
+            Link("Create an app-specific password", destination: URL(string: "https://support.apple.com/en-us/102654")!)
+                .font(.callout)
+            TextField("Apple Account email", text: $email)
+                .textFieldStyle(.roundedBorder)
+                #if os(iOS)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                #endif
+            SecureField("App-specific password", text: $password)
+                .textFieldStyle(.roundedBorder)
+        }
+        .multilineTextAlignment(.leading)
+    }
+
+    @ViewBuilder
+    private var selectionControls: some View {
+        if setup.provider == .apple && appleSetup == .device && device.authorization != .fullAccess {
+            action("Allow calendar access") { Task { await requestDeviceAccess() } }
+        } else if !choices.isEmpty {
+            VStack(spacing: 8) {
+                ForEach(choices) { choice in
+                    Toggle(choice.name, isOn: Binding(
+                        get: { selected.contains(choice.id) },
+                        set: { if $0 { selected.insert(choice.id) } else { selected.remove(choice.id) } }
+                    ))
+                    .tint(.followAccent)
+                    .padding(.vertical, 6)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            action(working ? "Saving…" : "Continue") { Task { await save() } }
+                .disabled(selected.isEmpty)
+        } else {
+            Text("There are no calendars available to select.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func action(_ title: LocalizedStringKey, perform: @escaping () -> Void) -> some View {
+        Button(action: perform) { Text(title).frame(maxWidth: .infinity) }
+            .buttonStyle(FollowthroughActionButtonStyle())
+            .disabled(working)
+    }
+
+    private var choices: [NativeCalendarChoice] {
+        if let google = setup.googleAccount { return google.calendars }
+        if let iCloudCalendars { return iCloudCalendars }
+        return device.calendars.map { NativeCalendarChoice(id: $0.calendarIdentifier, name: $0.title) }
+    }
+
+    private func requestDeviceAccess() async {
+        working = true
+        await device.request()
+        working = false
+        await useOnlyCalendarIfAvailable()
+    }
+
+    private func connectICloud() async {
+        working = true
+        failure = nil
+        do {
+            let status = try await store.connectOnboardingICloud(
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password
+            )
+            iCloudCalendars = status.icloudCalendars
+            selected = Set(status.selectedIcloud)
+        } catch {
+            failure = error.localizedDescription
+        }
+        password = ""
+        working = false
+        await useOnlyCalendarIfAvailable()
+    }
+
+    private func useOnlyCalendarIfAvailable() async {
+        if choices.count == 1, let calendar = choices.first {
+            selected = [calendar.id]
+            await save()
+        }
+    }
+
+    private func save() async {
+        working = true
+        failure = nil
+        defer { working = false }
+        do {
+            if let account = setup.googleAccount {
+                try await store.saveOnboardingGoogleCalendars(account: account, selected: selected)
+            } else if appleSetup == .iCloud {
+                try await store.saveOnboardingICloudCalendars(selected)
+            } else {
+                try await store.saveDeviceCalendars(selected)
+            }
+            dismiss()
+        } catch {
+            failure = error.localizedDescription
+        }
     }
 }
 
@@ -152,6 +372,7 @@ struct RootView: View {
 }
 struct ConnectionView: View {
     @Bindable var store: WorkspaceStore
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Group {
@@ -171,33 +392,127 @@ struct ConnectionView: View {
 
     private var connectionContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Image(systemName:"bolt.fill").font(.system(size:32, weight:.bold)).foregroundStyle(Color.followMint)
-                    .frame(width:64,height:64).background(Color.followNavy,in:RoundedRectangle(cornerRadius:18))
-                Text("Your tasks.\nPlanned for you.").font(.system(size:40,weight:.bold,design:.rounded))
-                Text("Your projects, your calendar, and one clear next step.").foregroundStyle(.secondary)
-                #if os(macOS)
-                MacCaptureShortcutLesson()
-                #endif
-                Button { store.connectLiveWorkspace() } label: {
-                    HStack { if store.authorizing { ProgressView() }; Text("Connect your workspace"); Image(systemName:"arrow.up.right") }.frame(maxWidth:.infinity).padding(.vertical,8)
-                }.buttonStyle(FollowthroughActionButtonStyle()).disabled(store.authorizing)
-                Text("Sign in securely in your browser and approve this device.").font(.callout).foregroundStyle(.secondary)
+            VStack(spacing: 24) {
+                VStack(spacing: 14) {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(Color.followMint)
+                        .frame(width: 60, height: 60)
+                        .background(Color.followNavy, in: RoundedRectangle(cornerRadius: 17))
+                        .accessibilityHidden(true)
+                    Text("Sign in to Followthrough")
+                        .font(.largeTitle.bold())
+                        .accessibilityAddTraits(.isHeader)
+                    Text("Create an account or sign in to your workspace.")
+                        .foregroundStyle(.secondary)
+                }
+                .multilineTextAlignment(.center)
+
+                VStack(spacing: 10) {
+                    ForEach(WorkspaceStore.SignInProvider.allCases, id: \.self) { provider in
+                        Button { store.chooseSignInProvider(provider) } label: {
+                            SignInProviderBadge(provider: provider)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text(provider.title))
+                        .disabled(store.authorizing)
+                    }
+                }
+                .frame(maxWidth: 300)
+                .background {
+                    Ellipse()
+                        .fill(EllipticalGradient(
+                            colors: [
+                                Color.followAccent.opacity(colorScheme == .dark ? 0.56 : 0.20),
+                                Color.followAccent.opacity(colorScheme == .dark ? 0.28 : 0.09),
+                                .clear
+                            ],
+                            startRadiusFraction: 0.10,
+                            endRadiusFraction: 0.5
+                        ))
+                        .frame(width: 420, height: 282)
+                        .allowsHitTesting(false)
+                }
+
+                if store.authorizing {
+                    ProgressView("Signing in…").font(.callout)
+                }
+                if let error = store.error {
+                    Text(error).font(.callout).foregroundStyle(.red)
+                        .accessibilityIdentifier("connectionError")
+                }
+                Link("Privacy", destination: URL(string: "https://followthrough.link/privacy")!)
+                    .font(.callout)
+
                 #if DEBUG && (os(macOS) || targetEnvironment(simulator))
                 DisclosureGroup("Local development") {
-                    TextField("Server", text:$store.server).textFieldStyle(.roundedBorder)
-                    Text("The local server uses an isolated workspace. Your live tasks are not imported.").font(.caption).foregroundStyle(.secondary)
-                    Button("Connect to development server") { store.connect() }.disabled(store.authorizing)
+                    TextField("Server", text: $store.server).textFieldStyle(.roundedBorder)
+                    Button("Connect to development server") { store.connect() }
+                        .disabled(store.authorizing)
                 }
+                .frame(maxWidth: 280)
                 #endif
-                if let error = store.error { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("connectionError") }
-            }.padding(36).frame(maxWidth:500).frame(maxWidth:.infinity)
+            }
+            .padding(28)
+            .frame(maxWidth: 480)
+            .frame(maxWidth: .infinity)
         }
         .defaultScrollAnchor(.center, for: .alignment)
         .scrollBounceBehavior(.basedOnSize)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
+
+private struct SignInProviderBadge: View {
+    let provider: WorkspaceStore.SignInProvider
+    private let border = Color(red: 116 / 255, green: 119 / 255, blue: 117 / 255)
+    private let label = Color(red: 31 / 255, green: 31 / 255, blue: 31 / 255)
+
+    private static let labelFont: Font = {
+        let size: CGFloat = 19
+        guard let data = NSDataAsset(name: "GoogleSignInFont")?.data,
+              let source = CGDataProvider(data: data as CFData),
+              let font = CGFont(source),
+              let name = font.postScriptName else { return .system(size: size, weight: .medium) }
+        CTFontManagerRegisterGraphicsFont(font, nil)
+        return .custom(name as String, fixedSize: size)
+    }()
+
+    var body: some View {
+        Text(provider.title)
+            .font(Self.labelFont)
+            .foregroundStyle(provider == .apple ? Color.black : label)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .padding(.horizontal, 40)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(.white)
+            .overlay(alignment: .leading) { providerLogo }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(border) }
+            .compositingGroup()
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var providerLogo: some View {
+        if provider == .apple {
+            Image("SignInAppleMark")
+                .resizable()
+                .frame(width: 31, height: 44)
+                .padding(.leading, 9)
+        } else {
+            Image(provider == .google ? "SignInGoogleMark" : "SignInChatGPTMark")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 18, height: 18)
+                .padding(.leading, 16)
+        }
+    }
+
+}
+
 #if os(macOS)
 struct SidebarView: View {
     @Bindable var store: WorkspaceStore
@@ -284,12 +599,7 @@ struct WorkspaceSection: View {
                         ProjectsView(store: store, projects: workspace.projectsAlphabetically)
                     }
                     if section == "settings" {
-                        MacWorkspacePage(store: store, active: true) {
-                            SettingsView(store: store, settings: workspace.settings)
-                                .toolbar {
-                                    ToolbarItem { Button { store.focusCapture() } label: { Label("New task", systemImage: "plus") }.disabled(!store.connected).accessibilityIdentifier("newTask") }
-                                }
-                        }
+                        SettingsView(store: store, settings: workspace.settings)
                     } else if !["today", "tasks", "projects"].contains(section) {
                         MacWorkspacePage(store: store, active: true, showsSaveStatus: false) {
                             TasksView(store: store, workspace: workspace, projectId: section)
