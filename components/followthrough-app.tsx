@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from 'react';
 import { flushSync } from 'react-dom';
+import { useTransientMessage } from '@/hooks/use-transient-message';
 import { TaskHandoffDialog } from '@/components/task-handoff-dialog';
 import { AIAssistantSettings } from '@/components/ai-assistant-settings';
 import { assistantDestination } from '@/lib/ai-assistant';
@@ -187,9 +188,9 @@ export default function FollowthroughApp({
 }) {
   const [state, setState] = useState<Snapshot>(empty),
     [loaded, setLoaded] = useState(false),
-    [saving, setSaving] = useState(false),
-    [error, setError] = useState(''),
-    [notice, setNotice] = useState('');
+    [saving, setSaving] = useState(false);
+  const [error, setError] = useTransientMessage(),
+    [notice, setNotice] = useTransientMessage();
   const [tab, setTab] = useState<WorkspaceTab>(initialTab),
     [source, setSource] = useState(''),
     [editing, setEditing] = useState<string | null>(null);
@@ -304,7 +305,7 @@ export default function FollowthroughApp({
           window.dispatchEvent(new Event('followthrough-workspace-change'));
       }
     },
-    [accept, refresh],
+    [accept, refresh, setError],
   );
   useEffect(() => {
     if (!loaded) return;
@@ -385,7 +386,7 @@ export default function FollowthroughApp({
     return () => {
       live = false;
     };
-  }, [refresh]);
+  }, [refresh, setError, setNotice]);
   useEffect(() => {
     if (!loaded) return;
     const location = new URL(window.location.href);
@@ -440,7 +441,7 @@ export default function FollowthroughApp({
     receiveCapture();
     window.addEventListener('hashchange', receiveCapture);
     return () => window.removeEventListener('hashchange', receiveCapture);
-  }, [loaded, navigateToTab]);
+  }, [loaded, navigateToTab, setNotice]);
   useEffect(() => {
     if (!loaded) return;
     let live = true;
@@ -495,7 +496,7 @@ export default function FollowthroughApp({
       window.removeEventListener('focus', changed);
       document.removeEventListener('visibilitychange', visible);
     };
-  }, [loaded, refresh]);
+  }, [loaded, refresh, setError]);
   useEffect(() => {
     const context = (
       document as Document & {
@@ -547,7 +548,7 @@ export default function FollowthroughApp({
       }
     }
     return () => lifecycle.abort();
-  }, [loaded, commit, refresh, navigateToTab]);
+  }, [loaded, commit, refresh, navigateToTab, setNotice]);
   async function capture() {
     if (busyRef.current || !source.trim()) return;
     const submittedSource = source;
