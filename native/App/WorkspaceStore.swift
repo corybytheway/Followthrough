@@ -934,7 +934,14 @@ import Security
     }
     private func updateWidget() {
         let next = workspace?.todayTasks.first
-        SharedStorage.savePreview(.init(title:next?.title ?? (connected ? "That’s it for today!" : "Open Followthrough"),taskId:next?.id,project:workspace?.project(next?.projectId)?.name,remaining:next?.remainingLabel,updatedAt:.now))
+        SharedStorage.savePreview(.init(
+            title: next?.title ?? (connected ? "That’s it for today!" : "Open Followthrough"),
+            taskId: next?.id,
+            project: workspace?.project(next?.projectId)?.label,
+            remaining: next?.remainingLabel,
+            updatedAt: .now,
+            hasSyncedWorkspace: workspace != nil
+        ))
         WidgetCenter.shared.reloadAllTimelines()
         publishWatchWorkspace()
     }
@@ -976,7 +983,22 @@ import Security
         if url.host == "auth" { Task { await completeSignIn(url) }; return }
         if url.host == "capture" { focusCapture() }
         let id = URLComponents(url:url,resolvingAgainstBaseURL:false)?.queryItems?.first(where:{$0.name == "task"})?.value ?? (url.host == "task" ? url.lastPathComponent : nil)
+        if url.host == "next-up" {
+            openLockScreenNextUp(taskID: id)
+            return
+        }
         if let id { pendingTaskID = id; openPendingTask() }
+    }
+    private func openLockScreenNextUp(taskID: String?) {
+        loadStoredWorkspace()
+        guard selectedTask == nil, !photoReviewPresented else { return }
+        pendingTaskID = nil
+        dismissCaptureFocus()
+        if let taskID, let task = presentationWorkspace?.tasks.first(where: { $0.id == taskID && $0.active }) {
+            selectedTask = task
+        } else {
+            showToday()
+        }
     }
     private func openPendingTask() {
         guard let id = pendingTaskID, let task = workspace?.tasks.first(where: { $0.id == id }) else { return }

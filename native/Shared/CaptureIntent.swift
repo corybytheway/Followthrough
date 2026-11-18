@@ -1,6 +1,9 @@
 // Created by Cory McCabe
 import AppIntents
 import Foundation
+#if os(iOS)
+import OSLog
+#endif
 
 struct CaptureTaskIntent: AppIntent {
     static let title: LocalizedStringResource = "Capture a task"
@@ -35,6 +38,26 @@ struct FollowthroughShortcuts: AppShortcutsProvider {
 }
 
 #if os(iOS)
+extension ControlCaptureIntent {
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let logger = Logger(subsystem: "com.ethos.followthrough", category: "ControlCapture")
+        logger.notice("Control capture action started")
+        let task: String
+        if let request {
+            task = request
+        } else {
+            do {
+                task = try await $request.requestValue("Talk or type your task.")
+            } catch {
+                logger.notice("Control capture did not receive input")
+                throw error
+            }
+        }
+        return try await CaptureTaskIntent(request: task).perform()
+    }
+}
+
 // Keep previously saved copies working; input is now supplied by Shortcuts.
 struct TalkOrTypeTaskIntent: AppIntent {
     static let title: LocalizedStringResource = "Talk or type a task"

@@ -94,7 +94,7 @@ def target(name,platform,kind,files,extensions=[],watch=None):
 model=['Shared/Models.swift','Shared/BrandColors.swift']
 widget=model+['Widgets/FollowthroughWidget.swift']
 target('FollowthroughWidgetsMac','mac','widgets',widget)
-target('FollowthroughWidgetsIOS','ios','widgets',widget)
+target('FollowthroughWidgetsIOS','ios','widgets',widget+['Widgets/LockScreenWidgets.swift','Shared/ControlCaptureIntent.swift'])
 target('FollowthroughShare','ios','share',model+['Shared/PhotoCapture.swift','App/PhotoImageUnderstanding.swift','Share/PhotoTextExtractor.swift','Share/ShareViewController.swift'])
 app=[f for f in allfiles if f.startswith('App/') or f.startswith('Shared/')]
 watchname='FollowthroughWatch'

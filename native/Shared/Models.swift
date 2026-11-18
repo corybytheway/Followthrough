@@ -280,6 +280,7 @@ struct CaptureReceipt: Identifiable, Sendable {
 }
 struct SharedPreview: Codable, Sendable {
     var title: String; var taskId: String?; var project: String?; var remaining: String?; var updatedAt: Date
+    var hasSyncedWorkspace: Bool? = nil
 }
 extension Date {
     static func iso(_ value: String) -> Date? {

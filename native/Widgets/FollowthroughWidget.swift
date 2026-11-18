@@ -32,9 +32,20 @@ struct TaskWidgetView: View {
             .widgetURL(URL(string:entry.preview?.taskId.map { "followthrough://task/\($0)" } ?? "followthrough://capture"))
     }
 }
-@main struct FollowthroughWidget: Widget {
+struct FollowthroughWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind:"FollowthroughNextTask",provider:TaskProvider()) { TaskWidgetView(entry:$0) }
             .configurationDisplayName("Your next move").description("Your last synced task, and a shortcut to capture what’s next.").supportedFamilies([.systemSmall,.systemMedium])
+    }
+}
+
+@main
+struct FollowthroughWidgetBundle: WidgetBundle {
+    var body: some Widget {
+        FollowthroughWidget()
+        #if os(iOS)
+        LockScreenNextUpWidget()
+        CaptureTaskControl()
+        #endif
     }
 }
