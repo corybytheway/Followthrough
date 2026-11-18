@@ -293,6 +293,9 @@ void test('Gmail analysis has no Google tools, accepts zero results, and treats 
       assert.equal(body.store, false);
       assert.equal(body.tools, undefined);
       assert.equal(body.text.format.strict, true);
+      assert.equal(body.text.format.schema.properties.groups.items.properties.tasks.items.properties.title.maxLength, 70);
+      assert.match(body.instructions, /fewer than 50 characters/);
+      assert.match(body.instructions, /never exceed 70 characters/);
       assert.equal(
         body.text.format.schema.properties.groups.minItems,
         undefined,

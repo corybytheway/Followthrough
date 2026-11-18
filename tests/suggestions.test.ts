@@ -171,10 +171,10 @@ void test('deferrals outweigh age, while recent progress reduces stale-work evid
   deferred.behavior!.lastProgressAt = new Date(now - 3_600_000).toISOString();
   assert.equal(smallerStartEvidence(deferred, w, now), null);
 });
-void test('a suggested first step keeps enough context to be actionable on its own', () => {
+void test('a suggested first step leaves parent context to the naming pass instead of appending it', () => {
   assert.equal(
     contextualStepTitle('Update the portfolio', 'Choose one example'),
-    'Choose one example for the portfolio',
+    'Choose 1 example',
   );
   assert.equal(
     contextualStepTitle('Update the portfolio', 'Choose a portfolio example'),
@@ -189,7 +189,7 @@ void test('a suggested first step keeps enough context to be actionable on its o
   const item = workspaceSuggestions(w, now).find(
     (i) => i.kind === 'smaller_start',
   );
-  assert.equal(item?.drafts[0].title, 'Choose one example for the portfolio');
+  assert.equal(item?.drafts[0].title, 'Choose 1 example');
   assert.match(item!.reason, /Update the portfolio[\s\S]*No progress/);
 });
 void test('stalled tasks without a concrete unfinished step do not get a vague suggestion', () => {
@@ -471,7 +471,7 @@ void test('five-day pilot threshold requires five full days of eligible inactivi
 
 void test('document starters remove setup friction while reasons distinguish age from postponements', () => {
   assert.equal(easierStartTitle('Fix Plan Your Year workbook', 'Locate the latest workbook source files & preserve backup copies before editing.'), 'Open the Plan Your Year workbook to review');
-  assert.equal(easierStartTitle('Update the portfolio', 'Choose one example'), 'Choose one example for the portfolio');
+  assert.equal(easierStartTitle('Update the portfolio', 'Choose one example'), 'Choose 1 example');
   const w = workspace();
   w.tasks = [task('Fix Plan Your Year workbook', { createdAt: new Date(now - 5 * DAY).toISOString(), steps: [{id:'open',title:'Locate the workbook files & preserve backup copies',done:false}] })];
   const [candidate] = workspaceSuggestions(w, now);

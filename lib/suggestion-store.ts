@@ -20,6 +20,8 @@ import type {
   SuggestionResponse,
 } from './suggestion-model';
 import type { GmailCheckpoint } from './gmail-client';
+import { openAIConnection } from './openai-connection';
+import { refreshSuggestionTitles, rewriteSuggestionTitles, SUGGESTION_TITLE_VERSION } from './suggestion-titles';
 export type GmailReviewState = GmailCheckpoint & {
   enabled: boolean;
   consentedAt?: string;
@@ -225,8 +227,16 @@ export async function mergeCandidates(
     if (suppressed.has(id) || (existing && existing.state !== 'pending'))
       continue;
     const { key: _key, pattern: _pattern, ...fields } = candidate;
+    // The smaller-start source is stable until its task changes. Keep its
+    // cached rewrite instead of renaming it on every background refresh.
+    if (candidate.kind === 'smaller_start' && existing?.titlePolicyVersion === SUGGESTION_TITLE_VERSION
+        && existing.expectedUpdatedAt === candidate.expectedUpdatedAt && existing.drafts.length === fields.drafts.length) {
+      fields.drafts = fields.drafts.map((draft, index) => ({ ...draft, title: existing.drafts[index].title }));
+      fields.titlePolicyVersion = SUGGESTION_TITLE_VERSION;
+    }
     const next: TaskSuggestion = {
       ...fields,
+      titlePolicyVersion: fields.titlePolicyVersion,
       id,
       patternId,
       version: existing?.version || 1,
@@ -355,6 +365,11 @@ export async function refreshWorkspaceSuggestions(owner: string) {
         item.kind === 'gmail' || item.state !== 'pending' || live.has(item.id),
     );
     await mergeCandidates(owner, state, candidates);
+    await refreshSuggestionTitles(state.items, workspace, async (requests) => {
+      const config = await openAIConnection(owner);
+      if (!config.key) throw new InputError('AI naming is unavailable.');
+      return rewriteSuggestionTitles(requests, workspace, config.key, config.model, owner);
+    });
     // Upgrade already-pending cards without rerunning AI or touching tasks.
     // Leave interrupted acceptances intact so their original stable IDs recover.
     state.items = (await Promise.all(state.items.map(async (item) => {

@@ -3,6 +3,7 @@ import type { Project, Task, Workspace } from './model';
 import type { SuggestionCandidate, SuggestionDraft } from './suggestion-model';
 import { hasExistingSuggestionProjects } from './suggestion-model';
 import { localDay } from './scheduler';
+import { fallbackSuggestionTitle } from './suggestion-titles';
 const DAY = 86_400_000;
 // Five-day pilot threshold for testing task-history suggestions with real work.
 const SMALLER_START_INACTIVE_DAYS = 5;
@@ -161,30 +162,8 @@ const source = (label: string, taskTitle: string) => ({
   taskTitle,
 });
 export function contextualStepTitle(taskTitle: string, stepTitle: string) {
-  const step = stepTitle.replace(/\s+/g, ' ').trim();
-  const subject = taskTitle.replace(/^\S+\s+/, '').trim();
-  const contextWords = normalizedAction(subject)
-    .split(' ')
-    .filter(
-      (word) =>
-        word.length > 3 &&
-        ![
-          'this',
-          'that',
-          'with',
-          'from',
-          'some',
-          'first',
-          'next',
-          'task',
-          'your',
-          'their',
-        ].includes(word),
-    );
-  const stepWords = new Set(normalizedAction(step).split(' '));
-  if (contextWords.some((word) => stepWords.has(word)) || !subject)
-    return step.slice(0, 200);
-  return `${step.slice(0, 130)} for ${subject.slice(0, 60)}`.slice(0, 200);
+  // Parent context is supplied to the naming pass rather than appended verbatim.
+  return fallbackSuggestionTitle(stepTitle || taskTitle);
 }
 export function easierStartTitle(taskTitle: string, stepTitle: string) {
   // Opening a named document is a smaller start than a combined locate/backup
@@ -192,7 +171,7 @@ export function easierStartTitle(taskTitle: string, stepTitle: string) {
   const subject = taskTitle.replace(/^(?:fix|update|edit|review|prepare|finish|revise)\s+(?:the\s+)?/i, '').trim();
   if (/\b(workbook|spreadsheet|document|presentation|brief)\b/i.test(subject)
       && /^(?:locate|find|open|review)\b/i.test(stepTitle.trim())) {
-    return `Open ${/^the\s/i.test(subject) ? '' : 'the '}${subject} to review`.slice(0, 200);
+    return fallbackSuggestionTitle(`Open ${/^the\s/i.test(subject) ? '' : 'the '}${subject} to review`);
   }
   return contextualStepTitle(taskTitle, stepTitle);
 }
@@ -355,7 +334,7 @@ export function workspaceSuggestions(
       drafts: [
         {
           ...draft(task),
-          title: easierStartTitle(task.title, step.title),
+          title: fallbackSuggestionTitle(easierStartTitle(task.title, step.title), workspace.projects.find((project) => project.id === task.projectId)),
           estimateMinutes: Math.max(1, Math.min(10, task.remainingMinutes)),
           steps: [],
           notes:

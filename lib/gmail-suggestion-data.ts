@@ -6,6 +6,7 @@ import { InputError, object, text, taskInput } from './validation';
 import { normalizedAction } from './suggestion-engine';
 import { assertAIChecklist } from './ai-checklist';
 import { suggestionSequenceIndexes } from './suggestion-groups';
+import { suggestionTitle, SUGGESTION_TITLE_VERSION } from './suggestion-titles';
 export type GmailMessage = {
   id: string;
   threadId?: string;
@@ -108,7 +109,7 @@ export function parseGmailSuggestions(
       follows = captureDependencyIndexes(group.tasks.map((raw) => ({ blockedByTaskIndexes: object(raw).followsTaskIndexes ?? [] }))),
       drafts = group.tasks.map((raw, index) => {
         const input = object(raw),
-          task = taskInput({ ...input, notes: '', status: 'ready' }, workspace);
+          task = taskInput({ ...input, title: suggestionTitle(input.title, workspace.projects.find((project) => project.id === input.projectId)), notes: '', status: 'ready' }, workspace);
         assertAIChecklist(input.steps);
         const waitingFor = input.waitingFor == null ? null : text(input.waitingFor, 'Prerequisite condition', 350, true);
         const existingBlockers = input.existingBlockers ?? [];
@@ -148,6 +149,7 @@ export function parseGmailSuggestions(
         key: `gmail:${account}:${conversation.id}:${message.id}`,
         pattern: `gmail:${remainingDrafts[0].projectId}:${normalizedAction(remainingDrafts[0].title)}`,
         kind: 'gmail' as const,
+        titlePolicyVersion: SUGGESTION_TITLE_VERSION,
         reason: `${text(group.reason, 'Reason', 350, true)}\n“${quote}”`,
         source: {
           kind: 'gmail' as const,

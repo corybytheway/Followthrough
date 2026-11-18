@@ -15,6 +15,7 @@ import * as engine from '../lib/suggestion-engine';
 import * as suggestionModel from '../lib/suggestion-model';
 import * as acceptance from '../lib/suggestion-acceptance';
 import * as groups from '../lib/suggestion-groups';
+import * as titles from '../lib/suggestion-titles';
 import { emptyCalendarConnection } from '../lib/calendar-model';
 import type * as WorkspaceStore from '../lib/store';
 import type * as SuggestionStore from '../lib/suggestion-store';
@@ -32,7 +33,7 @@ function load<T>(file: string, dependencies: Record<string, unknown>): T {
   return exports as T;
 }
 
-function fixture() {
+function fixture(naming = { openAIConnection: async () => ({ key: '', model: 'synthetic-model' }) }, titleTools = titles) {
   const database = new DatabaseSync(':memory:');
   const journal = JSON.parse(readFileSync(new URL('../drizzle/meta/_journal.json', import.meta.url), 'utf8')) as { entries: { tag: string }[] };
   for (const entry of journal.entries) database.exec(readFileSync(new URL(`../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8'));
@@ -60,6 +61,7 @@ function fixture() {
     'cloudflare:workers': { env }, './calendar-security': security, './calendar-store': calendar, './calendar-model': calendarModel,
     './store': workspaceStore, './validation': validation, './suggestion-engine': engine,
     './suggestion-model': suggestionModel, './suggestion-acceptance': acceptance, './suggestion-groups': groups,
+    './suggestion-titles': titleTools, './openai-connection': naming,
   });
   const route = load<{ POST: (request: Request) => Promise<Response> }>('../app/api/suggestions/route.ts', {
     '@/lib/calendar-model': calendarModel,
@@ -78,6 +80,46 @@ function fixture() {
   const nativeRoute = load<typeof route>('../app/api/native/suggestions/route.ts', { '../../suggestions/route': route });
   return { database, owner, workspaceStore, suggestions, route, nativeRoute };
 }
+
+void test('history titles stay cached across refreshes and reword when the source task changes', async () => {
+  let requests = 0;
+  const f = fixture({ openAIConnection: async () => ({ key: 'synthetic-key', model: 'synthetic-model' }) }, {
+    ...titles,
+    rewriteSuggestionTitles: async (inputs) => {
+      requests++;
+      assert.equal(inputs[0].stepTitle, 'Choose one example');
+      return [requests === 1 ? 'Choose a portfolio example' : 'Choose a case study example'];
+    },
+  });
+  try {
+    const workspace = model.newAccountWorkspace();
+    const task = validation.taskInput({ title: 'Update the portfolio', steps: ['Choose one example'] }, workspace);
+    task.createdAt = new Date(Date.now() - 8 * 86_400_000).toISOString();
+    workspace.tasks.push(task);
+    f.database.prepare('INSERT INTO workspaces VALUES (?,?,?,?)').run(f.owner, 1, JSON.stringify(workspace), new Date().toISOString());
+    await f.suggestions.refreshWorkspaceSuggestions(f.owner);
+    const first = (await f.suggestions.suggestionResponse(f.owner)).suggestions[0];
+    assert.equal(first.drafts[0].title, 'Choose a portfolio example');
+    assert.equal(first.titlePolicyVersion, titles.SUGGESTION_TITLE_VERSION);
+    await f.suggestions.refreshWorkspaceSuggestions(f.owner);
+    const cached = (await f.suggestions.suggestionResponse(f.owner)).suggestions[0];
+    assert.equal(requests, 1);
+    assert.equal(cached.version, first.version);
+    assert.equal(cached.drafts[0].title, first.drafts[0].title);
+    assert.equal(cached.id, first.id);
+
+    task.title = 'Update the case study';
+    task.updatedAt = new Date(Date.now() + 1000).toISOString();
+    f.database.prepare('UPDATE workspaces SET document = ? WHERE owner_id = ?').run(JSON.stringify(workspace), f.owner);
+    await f.suggestions.refreshWorkspaceSuggestions(f.owner);
+    const updated = (await f.suggestions.suggestionResponse(f.owner)).suggestions[0];
+    assert.equal(requests, 2);
+    assert.equal(updated.id, first.id);
+    assert.ok(updated.version > first.version);
+    assert.equal(updated.drafts[0].title, 'Choose a case study example');
+    assert.deepEqual((await f.workspaceStore.readWorkspace(f.owner)).workspace.tasks[0].steps, task.steps);
+  } finally { f.database.close(); }
+});
 
 for (const [path, edited] of [['/api/suggestions', false], ['/api/native/suggestions', false], ['/api/suggestions', true]] as const) {
   void test(`${path} accepts a generated smaller start with an empty checklist${edited ? ' and an edited title' : ''}`, async () => {

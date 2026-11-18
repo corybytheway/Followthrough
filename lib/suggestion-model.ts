@@ -29,6 +29,7 @@ export type SuggestionSource = {
   account?: string;
 };
 export type SuggestionCandidate = {
+  titlePolicyVersion?: number;
   key: string;
   pattern: string;
   kind: SuggestionKind;

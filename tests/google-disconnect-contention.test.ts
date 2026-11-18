@@ -19,6 +19,7 @@ import * as engine from '../lib/suggestion-engine';
 import * as suggestionModel from '../lib/suggestion-model';
 import * as acceptance from '../lib/suggestion-acceptance';
 import * as groups from '../lib/suggestion-groups';
+import * as titles from '../lib/suggestion-titles';
 import * as bounded from '../lib/bounded-workers';
 import * as gmailReplay from '../lib/gmail-replay';
 import * as gmailClient from '../lib/gmail-client';
@@ -96,6 +97,7 @@ function fixture(providers: {
     'cloudflare:workers': workers, './calendar-security': security, './calendar-store': calendar, './calendar-model': calendarModel,
     './store': workspace, './validation': validation, './suggestion-engine': engine,
     './suggestion-model': suggestionModel, './suggestion-acceptance': acceptance, './suggestion-groups': groups,
+    './suggestion-titles': titles, './openai-connection': { openAIConnection: async () => ({ key: '', model: 'synthetic-model' }) },
   });
   const google = {
     GOOGLE_SCOPES: ['calendar-access'],
