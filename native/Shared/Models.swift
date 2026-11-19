@@ -93,12 +93,22 @@ enum ProjectKeywords {
         return Array(unique(candidates).filter { !$0.isEmpty && $0.utf16.count <= 100 && !excluded.contains(normalized($0)) }.prefix(8))
     }
 }
+enum TaskSplitPreference: String, Codable, Sendable {
+    case automatic, single, allow
+    static let minimumMinutes = 60
+
+    func allowsSplitting(estimate: Int) -> Bool {
+        estimate >= Self.minimumMinutes && (self == .allow || (self == .automatic && estimate >= 90))
+    }
+}
+
 struct FTTask: Codable, Identifiable, Hashable, Sendable {
     var id: String; var title: String; var projectId: String?; var notes: String; var source: String
     var steps: [FTStep]; var estimateMinutes: Int; var remainingMinutes: Int; var priority: Priority
     var status: String; var dueDate: String?; var notBefore: String?; var blockers: [String]; var splittable: Bool
     var createdAt: String; var updatedAt: String; var completedAt: String?; var deletedAt: String?
     var estimateProvisional: Bool?
+    var splitPreference: TaskSplitPreference?
     var captureGroupId: String?
     var captureIndex: Int?
     var active: Bool { deletedAt == nil && status != "archived" && status != "done" }
@@ -121,7 +131,16 @@ struct FTTask: Codable, Identifiable, Hashable, Sendable {
     static let workdayMinutes = 8 * 60
     static let workweekMinutes = 5 * workdayMinutes
     static let maxTaskMinutes = 60000
-    static let durationPresets = [15, 30, 45, 60, 120, 180, 240, 360, workdayMinutes,
+    var savedSplitPreference: TaskSplitPreference {
+        if let splitPreference { return splitPreference }
+        if estimateMinutes < TaskSplitPreference.minimumMinutes { return .automatic }
+        return splittable ? .allow : .single
+    }
+    var allowsSplitting: Bool {
+        get { savedSplitPreference.allowsSplitting(estimate: estimateMinutes) }
+        set { splitPreference = newValue ? .allow : .single }
+    }
+    static let durationPresets = [15, 30, 45, 60, 90, 120, 180, 240, 360, workdayMinutes,
         2 * workdayMinutes, 3 * workdayMinutes, workweekMinutes]
     static func durationPreset(_ minutes: Int) -> Int {
         if minutes <= workdayMinutes { return durationPresets.first(where: { $0 >= minutes })! }
@@ -177,7 +196,12 @@ struct FTBlock: Codable, Identifiable, Hashable, Sendable {
     var endDate: Date { Date.iso(end) ?? .distantPast }
 }
 struct FTBusy: Codable, Identifiable, Hashable, Sendable { var id: String; var title: String; var start: String; var end: String; var source: String }
-struct FTWarning: Codable, Hashable, Sendable { var taskId: String; var reason: String; var message: String }
+struct FTWarning: Codable, Hashable, Sendable {
+    var taskId: String
+    var reason: String
+    var message: String
+    var splitActionLabel: String?
+}
 struct FTSettings: Codable, Hashable, Sendable {
     var timeZone: String; var workStart: String; var workEnd: String; var workDays: [Int]
     var maxBlockMinutes: Int; var breakEveryMinutes: Int; var breakMinutes: Int

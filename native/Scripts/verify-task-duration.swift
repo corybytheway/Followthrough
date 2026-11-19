@@ -6,12 +6,12 @@ import Foundation
 struct VerifyTaskDuration {
     static func main() {
         precondition(FTTask.durationPresets.map(FTTask.duration) == [
-            "15m", "30m", "45m", "1h", "2h", "3h", "4h", "6h", "1d", "2d", "3d", "1w"
+            "15m", "30m", "45m", "1h", "1h 30m", "2h", "3h", "4h", "6h", "1d", "2d", "3d", "1w"
         ])
         precondition(FTTask.workdayMinutes == 480 && FTTask.workweekMinutes == 2400)
         precondition(Set(FTTask.durationPresets).count == FTTask.durationPresets.count)
         for (minutes, expected) in [(1, 15), (15, 15), (16, 30), (46, 60),
-            (75, 120), (90, 120), (241, 360), (361, 480), (481, 720),
+            (75, 90), (90, 90), (91, 120), (241, 360), (361, 480), (481, 720),
             (1800, 1920), (2401, 2640), (10080, 10080), (59999, 60000), (60000, 60000)] {
             precondition(FTTask.durationPreset(minutes) == expected)
         }
@@ -20,7 +20,7 @@ struct VerifyTaskDuration {
             precondition(FTTask.durationPreset(rounded) == rounded)
             precondition(rounded >= minutes && rounded <= FTTask.maxTaskMinutes)
         }
-        for (estimate, remaining, roundedEstimate, roundedRemaining) in [(75, 30, 120, 75), (120, 75, 120, 75), (75, 75, 120, 120)] {
+        for (estimate, remaining, roundedEstimate, roundedRemaining) in [(75, 30, 90, 45), (120, 75, 120, 75), (75, 75, 90, 90)] {
             let rounded = FTTask.editorDurations(estimate: estimate, remaining: remaining)
             precondition(rounded.estimate == roundedEstimate && rounded.remaining == roundedRemaining)
         }
@@ -31,6 +31,11 @@ struct VerifyTaskDuration {
         for (minutes, label) in [(720, "1d 4h"), (960, "2d"), (1800, "3d 6h"), (2640, "1w 4h"), (60000, "25w"), (0, "0m")] {
             precondition(FTTask.duration(minutes) == label)
         }
-        print("PASS: workday/week labels, editor rounding, calendar-derived durations, and progress preservation on macOS and iOS")
+        for minutes in [59, 60, 89, 90, 120] {
+            precondition(TaskSplitPreference.allow.allowsSplitting(estimate: minutes) == (minutes >= 60))
+            precondition(TaskSplitPreference.automatic.allowsSplitting(estimate: minutes) == (minutes >= 90))
+            precondition(!TaskSplitPreference.single.allowsSplitting(estimate: minutes))
+        }
+        print("PASS: duration presets, split preferences, calendar-derived durations, and progress preservation")
     }
 }

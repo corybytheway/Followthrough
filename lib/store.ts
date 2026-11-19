@@ -2,6 +2,7 @@
 import { env } from 'cloudflare:workers';
 import {
   newAccountWorkspace,
+  normalizeTaskSplitting,
   type Snapshot,
   type Workspace,
   type BusyEvent,
@@ -32,7 +33,9 @@ export async function readWorkspace(
     .first<Row>();
   if (!row) return { workspace: newAccountWorkspace(), revision: 0 };
   const workspace: Workspace = JSON.parse(row.document);
-  workspace.tasks = workspace.tasks.map(normalizeCaptureStatus);
+  workspace.tasks = workspace.tasks.map((task) =>
+    normalizeTaskSplitting(normalizeCaptureStatus(task)),
+  );
   return { workspace, revision: row.revision };
 }
 export async function snapshot(ownerId: string): Promise<Snapshot> {
@@ -63,8 +66,9 @@ export async function mutate(
       ),
       { status: 409 },
     );
-  const { workspace, result } = applyAction(current.workspace, input),
-    schedule = plan(workspace);
+  const at = Date.now(),
+    { workspace, result } = applyAction(current.workspace, input, at),
+    schedule = plan(workspace, at);
   workspace.blocks = schedule.blocks;
   workspace.plannedAt = new Date().toISOString();
   workspace.recentRequests = [

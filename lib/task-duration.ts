@@ -2,11 +2,35 @@
 export const WORKDAY_MINUTES = 8 * 60;
 export const WORKWEEK_MINUTES = 5 * WORKDAY_MINUTES;
 export const MAX_TASK_MINUTES = 60000;
+export const MIN_SPLIT_MINUTES = 60;
+const DEFAULT_SPLIT_MINUTES = 90;
+export type SplitPreference = 'automatic' | 'single' | 'allow';
+
+export function allowsTaskSplitting(
+  estimate: number,
+  preference: SplitPreference,
+) {
+  if (estimate < MIN_SPLIT_MINUTES) return false;
+  return preference === 'automatic' ? estimate >= DEFAULT_SPLIT_MINUTES : preference === 'allow';
+}
+
+export function savedSplitPreference(task: {
+  estimateMinutes: number;
+  splittable: boolean;
+  splitPreference?: SplitPreference;
+}): SplitPreference {
+  if (task.splitPreference) return task.splitPreference;
+  // Older tasks stored only the checkbox. Preserve their eligible choices.
+  if (task.estimateMinutes < MIN_SPLIT_MINUTES) return 'automatic';
+  return task.splittable ? 'allow' : 'single';
+}
+
 export const TASK_DURATION_PRESETS = [
   15,
   30,
   45,
   60,
+  90,
   120,
   180,
   240,
