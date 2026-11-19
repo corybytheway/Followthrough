@@ -1,6 +1,7 @@
 // Created by Cory McCabe
 import type { Workspace } from './model';
 import { captureDependencyIndexes } from './capture-dependencies';
+import { plan } from './scheduler';
 import { recordTaskBehavior, eligibleTask, normalizedAction } from './suggestion-engine';
 import {
   InputError,
@@ -15,10 +16,11 @@ import {
 export function applyAction(
   workspace: Workspace,
   raw: unknown,
+  at = Date.now(),
 ): { workspace: Workspace; result: Record<string, unknown> } {
   const v = object(raw),
     w = structuredClone(workspace),
-    now = new Date().toISOString();
+    now = new Date(at).toISOString();
   let result: Record<string, unknown> = {};
   switch (v.action) {
     case 'delete_task': {
@@ -151,6 +153,17 @@ export function applyAction(
       const task = taskInput(v.task, w);
       w.tasks.push(task);
       result = { task };
+      break;
+    }
+    case 'split_for_deadline': {
+      const i = w.tasks.findIndex((t) => t.id === v.id);
+      const task = w.tasks[i];
+      // A calendar refresh or an offline retry can make a displayed offer stale.
+      const splitApplied = Boolean(task && task.updatedAt === v.expectedUpdatedAt &&
+        plan(w, at).warnings.some((warning) => warning.taskId === task.id && warning.splitActionLabel));
+      if (splitApplied)
+        w.tasks[i] = taskInput({ splitPreference: 'allow' }, w, task);
+      result = { splitApplied };
       break;
     }
     case 'update_task': {

@@ -1,7 +1,7 @@
 // Created by Cory McCabe
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialWorkspace, taskLabel } from '../lib/model';
+import { initialWorkspace, normalizeTaskSplitting, taskLabel } from '../lib/model';
 import { taskInput, settingsInput } from '../lib/validation';
 import { applyAction } from '../lib/actions';
 import { plan, localDay, nextWorkDay } from '../lib/scheduler';
@@ -348,6 +348,111 @@ await test('single-session tasks that cannot fit are reported', () => {
   const output = plan(w, NOW);
   assert.equal(output.blocks.length, 0);
   assert.ok(output.warnings.some((v) => v.reason === 'capacity'));
+});
+
+void test('task estimates control splitting by default and preserve explicit choices', () => {
+  const w = initialWorkspace();
+  for (const estimateMinutes of [30, 59, 60, 89, 90, 120]) {
+    const input = { title: 'Write a proposal', estimateMinutes };
+    assert.equal(taskInput(input, w).splittable, estimateMinutes >= 90);
+    assert.equal(taskInput({ ...input, splittable: true }, w).splittable, estimateMinutes >= 60);
+    assert.equal(taskInput({ ...input, splittable: false }, w).splittable, false);
+  }
+  const hour = taskInput({ title: 'Write a proposal', estimateMinutes: 60 }, w);
+  const ineligible = taskInput({ title: 'Quick edit', estimateMinutes: 45, splitPreference: 'allow' }, w);
+  assert.equal(taskInput({ estimateMinutes: 60 }, w, ineligible).splittable, false);
+  const longer = taskInput({ estimateMinutes: 90 }, w, hour);
+  assert.equal(longer.splittable, true);
+  assert.equal(taskInput({ remainingMinutes: 15 }, w, longer).splittable, true);
+  assert.equal(taskInput({ estimateMinutes: 60 }, w, longer).splittable, false);
+  const single = taskInput({ splitPreference: 'single' }, w, longer);
+  const shorter = taskInput({ estimateMinutes: 30 }, w, single);
+  assert.equal(taskInput({ estimateMinutes: 120 }, w, shorter).splittable, false);
+  const legacy = { ...hour, splitPreference: undefined, splittable: true };
+  assert.equal(normalizeTaskSplitting(legacy).splittable, true);
+  assert.equal(normalizeTaskSplitting({ ...legacy, estimateMinutes: 45 }).splittable, false);
+});
+
+function deadlineExample(minutes = 60) {
+  const workspace = example(minutes);
+  workspace.settings = { ...workspace.settings, timeZone: 'UTC', workStart: '13:00', workEnd: '15:00' };
+  const task = workspace.tasks[0];
+  task.dueDate = '2026-09-08';
+  workspace.busy = [{
+    id: 'appointment', title: 'Appointment', source: 'manual',
+    start: '2026-09-08T13:30:00Z', end: '2026-09-08T14:30:00Z',
+  }];
+  return { workspace, task, action: { action: 'split_for_deadline', id: task.id, expectedUpdatedAt: task.updatedAt } };
+}
+
+void test('the deadline warning offers two free half hours and accepting schedules both today', () => {
+  const { workspace, task, action } = deadlineExample();
+  const before = plan(workspace, NOW);
+  assert.equal(before.blocks.length, 1);
+  assert.equal(before.blocks[0].start, '2026-09-09T13:00:00.000Z');
+  assert.equal(before.warnings.find(w => w.reason === 'deadline')?.splitActionLabel, 'Split into 2 30-minute sessions');
+  workspace.blocks = before.blocks;
+  const accepted = applyAction(workspace, action, NOW);
+  assert.equal(accepted.result.splitApplied, true);
+  assert.equal(task.splittable, false);
+  assert.equal(accepted.workspace.tasks[0].splitPreference, 'allow');
+  const after = plan(accepted.workspace, NOW);
+  assert.deepEqual(after.blocks.map(b => [b.start, b.end]), [
+    ['2026-09-08T13:00:00.000Z', '2026-09-08T13:30:00.000Z'],
+    ['2026-09-08T14:30:00.000Z', '2026-09-08T15:00:00.000Z'],
+  ]);
+  assert.equal(after.warnings.length, 0);
+  assert.equal(applyAction(accepted.workspace, action, NOW).result.splitApplied, false);
+  accepted.workspace.blocks = after.blocks;
+  const duringSecondSession = plan(accepted.workspace, Date.parse('2026-09-08T14:40:00Z'));
+  assert.ok(duringSecondSession.blocks.some(b => b.id === after.blocks[1].id && b.start === after.blocks[1].start));
+  assert.equal(new Set(duringSecondSession.blocks.map(b => b.id)).size, duringSecondSession.blocks.length);
+});
+
+void test('only a complete on-time fit is offered, including after calendar or task changes', () => {
+  const { workspace, task, action } = deadlineExample();
+  const offer = () => plan(workspace, NOW).warnings.find(w => w.taskId === task.id)?.splitActionLabel;
+  workspace.busy[0].start = '2026-09-08T13:15:00Z';
+  assert.equal(offer(), undefined);
+  assert.equal(applyAction(workspace, action, NOW).result.splitApplied, false);
+  workspace.busy[0].end = '2026-09-08T14:15:00Z';
+  assert.equal(offer(), 'Split into 2 sessions');
+  assert.equal(applyAction(workspace, { ...action, expectedUpdatedAt: 'older edit' }, NOW).result.splitApplied, false);
+  const priority = taskInput({ title: 'Call customer', estimateMinutes: 15, priority: 'top' }, workspace);
+  workspace.tasks.push(priority);
+  assert.equal(offer(), undefined);
+  workspace.tasks.pop();
+  task.notBefore = '2026-09-09';
+  assert.equal(offer(), undefined);
+  workspace.busy = [];
+  task.notBefore = null;
+  assert.equal(offer(), undefined);
+  assert.equal(applyAction(workspace, action, NOW).result.splitApplied, false);
+});
+
+void test('an old short task cannot be fragmented by a busy period or a previously active partial session', () => {
+  const { workspace, task } = deadlineExample(45);
+  task.splittable = true;
+  workspace.blocks = [{ id: task.id + '-0', taskId: task.id, kind: 'task', start: '2026-09-08T13:00:00Z', end: '2026-09-08T13:15:00Z' }];
+  const result = plan(workspace, NOW);
+  assert.equal(result.blocks.length, 1);
+  assert.equal(result.blocks[0].start, '2026-09-09T13:00:00.000Z');
+  assert.equal(result.warnings.find(w => w.reason === 'deadline')?.splitActionLabel, undefined);
+});
+
+void test('a deadline split can overcome a capacity warning across local workdays', () => {
+  const { workspace, task, action } = deadlineExample();
+  workspace.settings = { ...workspace.settings, timeZone: 'America/Chicago', workStart: '19:00', workEnd: '19:30' };
+  workspace.busy = [];
+  task.dueDate = '2026-09-09';
+  const before = plan(workspace, NOW);
+  assert.equal(before.blocks.length, 0);
+  assert.equal(before.warnings[0].splitActionLabel, 'Split into 2 30-minute sessions');
+  assert.ok(before.warnings.some(w => w.reason === 'capacity'));
+  const accepted = applyAction(workspace, action, NOW).workspace;
+  const after = plan(accepted, NOW);
+  assert.deepEqual(after.blocks.map(b => b.start), ['2026-09-09T00:00:00.000Z', '2026-09-10T00:00:00.000Z']);
+  assert.equal(after.warnings.length, 0);
 });
 await test('progress reduces remaining work without changing task identity or steps', () => {
   const w = example(180);
