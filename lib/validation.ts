@@ -14,6 +14,12 @@ import {
 } from './project-keywords';
 import { AI_ASSISTANTS } from './ai-assistant';
 import { hasUnfinishedPrerequisites } from './task-prerequisites';
+import {
+  allowsTaskSplitting,
+  MIN_SPLIT_MINUTES,
+  savedSplitPreference,
+  type SplitPreference,
+} from './task-duration';
 export class InputError extends Error {
   status = 400;
 }
@@ -87,7 +93,7 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
         dueDate: null,
         notBefore: null,
         blockers: [],
-        splittable: true,
+        splittable: false,
         createdAt: now,
         updatedAt: now,
         completedAt: null,
@@ -183,11 +189,27 @@ export function taskInput(input: unknown, w: Workspace, existing?: Task): Task {
   if (v.notBefore !== undefined) t.notBefore = date(v.notBefore, 'Start date');
   if (t.dueDate && t.notBefore && t.dueDate < t.notBefore)
     throw new InputError('The deadline must be on or after the start date.');
-  if (v.splittable !== undefined) {
-    if (typeof v.splittable !== 'boolean')
-      throw new InputError('Multiple sessions must be true or false.');
-    t.splittable = v.splittable;
+  let preference: SplitPreference = existing
+    ? savedSplitPreference(existing)
+    : 'automatic';
+  if (v.splittable !== undefined && typeof v.splittable !== 'boolean')
+    throw new InputError('Multiple sessions must be true or false.');
+  if (v.splitPreference !== undefined) {
+    if (
+      v.splitPreference !== 'automatic' &&
+      v.splitPreference !== 'single' &&
+      v.splitPreference !== 'allow'
+    )
+      throw new InputError('Choose a valid calendar splitting preference.');
+    if (t.estimateMinutes >= MIN_SPLIT_MINUTES) preference = v.splitPreference;
+  } else if (
+    typeof v.splittable === 'boolean' &&
+    t.estimateMinutes >= MIN_SPLIT_MINUTES
+  ) {
+    preference = v.splittable ? 'allow' : 'single';
   }
+  t.splitPreference = preference;
+  t.splittable = allowsTaskSplitting(t.estimateMinutes, preference);
   if (v.blockers !== undefined) {
     if (
       !Array.isArray(v.blockers) ||

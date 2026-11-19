@@ -44,7 +44,7 @@ const taskFields = {
   blockers: { type: 'array', items: { type: 'string' } },
   splittable: {
     type: 'boolean',
-    description: 'Allow several calendar sessions for this same task.',
+    description: 'Allow several calendar sessions for a task estimated at 60 minutes or more. Omit to use the default on new tasks (enabled at 90 minutes).',
   },
   status: { type: 'string', enum: ['ready', 'waiting', 'done', 'archived'] },
 };

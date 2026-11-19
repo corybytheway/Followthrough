@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { newAccountWorkspace } from '../lib/model';
+import { newAccountWorkspace, normalizeTaskSplitting } from '../lib/model';
 import { applyAction } from '../lib/actions';
 import { InputError, object, text, taskInput } from '../lib/validation';
 import { plan, localDay } from '../lib/scheduler';
@@ -35,6 +35,7 @@ void test('a concurrent task appearing during a failed CAS save is rejected on m
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const dependencies: Record<string, unknown> = {
+    './model': { normalizeTaskSplitting },
     'cloudflare:workers': { env: { DB: { prepare() { return { bind() { return {
       first: async () => ({ document: JSON.stringify(workspace), revision }),
       run: async () => {

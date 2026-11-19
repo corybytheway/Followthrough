@@ -761,6 +761,11 @@ import Security
         patch["expectedUpdatedAt"] = .string(task.updatedAt)
         return enqueue(.init(endpoint: "api/native/workspace", body: ["action": .string("update_task"), "id": .string(task.id), "task": .object(patch)], title: task.title, baseTask: task))
     }
+    func splitForDeadline(_ task: FTTask) {
+        let action = "split_for_deadline"
+        guard !pending.contains(where: { $0.body["action"] == .string(action) && $0.body["id"] == .string(task.id) }) else { return }
+        mutate(action: action, title: task.title, fields: ["id": .string(task.id), "expectedUpdatedAt": .string(task.updatedAt)])
+    }
     @discardableResult func complete(_ task: FTTask) -> Bool {
         guard canComplete(task) else { return false }
         let before = TaskCompletionPresentation.task(task, operations: pending, blocked: blockedOperation)

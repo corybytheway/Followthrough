@@ -56,7 +56,7 @@ import {
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { NativeSelect } from '@/components/ui/native-select';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -67,12 +67,16 @@ import {
   COLORS,
   minutesLabel,
   taskDurationOptions,
-  taskEditorDurations,
   type Project,
   type Settings,
   type Snapshot,
   type Task,
 } from '@/lib/model';
+import {
+  allowsTaskSplitting,
+  MIN_SPLIT_MINUTES,
+  savedSplitPreference,
+} from '@/lib/task-duration';
 import { localDay } from '@/lib/scheduler';
 import { createPlanRefresh, PLAN_REFRESH_INTERVAL } from '@/lib/plan-refresh';
 import { normalizedTaskSearch, tasksForTaskList } from '@/lib/task-search';
@@ -704,6 +708,16 @@ export default function FollowthroughApp({
       });
     }
   };
+  const splitForDeadline = async (task: Task) => {
+    const result = await commit({
+      action: 'split_for_deadline',
+      id: task.id,
+      expectedUpdatedAt: task.updatedAt,
+    });
+    setNotice(result.splitApplied
+      ? 'Task split to meet its deadline.'
+      : 'The plan changed. Review the updated schedule.');
+  };
   const taskRow = (task: Task) => {
     const project = state.projects.find((p) => p.id === task.projectId),
       blocked =
@@ -756,60 +770,73 @@ export default function FollowthroughApp({
               }
             />
           )}
-          <button className="task-body" onClick={() => openTask(task.id)}>
-            <strong>
-              <SearchHighlightedText
-                text={taskLabel(task.title, project, showProjectPrefix)}
-                query={searchQuery}
-              />
-            </strong>
-            <span className="task-meta">
-              {project && (
-                <span style={{ color: project.color }}>
-                  <SearchHighlightedText
-                    text={project.name}
-                    query={searchQuery}
-                  />
-                </span>
-              )}
-              <span>
-                {task.estimateProvisional ? '~' : ''}
-                {minutesLabel(task.remainingMinutes)}
-                {task.estimateProvisional ? ' · temporary estimate' : ''}
-              </span>
-              {task.steps.length > 0 && (
+          <div className="min-w-0 flex-1">
+            <button className="task-body w-full" onClick={() => openTask(task.id)}>
+              <strong>
+                <SearchHighlightedText
+                  text={taskLabel(task.title, project, showProjectPrefix)}
+                  query={searchQuery}
+                />
+              </strong>
+              <span className="task-meta">
+                {project && (
+                  <span style={{ color: project.color }}>
+                    <SearchHighlightedText
+                      text={project.name}
+                      query={searchQuery}
+                    />
+                  </span>
+                )}
                 <span>
-                  {task.steps.filter((s) => s.done).length}/{task.steps.length}{' '}
-                  steps
+                  {task.estimateProvisional ? '~' : ''}
+                  {minutesLabel(task.remainingMinutes)}
+                  {task.estimateProvisional ? ' · temporary estimate' : ''}
                 </span>
-              )}
-              {blocked && (
-                <span className="pill">
-                  <Link2 size={11} />
-                  Blocked
-                </span>
-              )}
-              {task.dueDate && <span>Due {dayLabel(task.dueDate)}</span>}
-              {planned && (
-                <span>
-                  Planned{' '}
-                  {dayLabel(localDay(planned.start, state.settings.timeZone))} ·{' '}
-                  {time(planned.start)}
-                </span>
-              )}
-              {task.status === 'waiting' && (
-                <span className="pill">On hold</span>
-              )}
+                {task.steps.length > 0 && (
+                  <span>
+                    {task.steps.filter((s) => s.done).length}/{task.steps.length}{' '}
+                    steps
+                  </span>
+                )}
+                {blocked && (
+                  <span className="pill">
+                    <Link2 size={11} />
+                    Blocked
+                  </span>
+                )}
+                {task.dueDate && <span>Due {dayLabel(task.dueDate)}</span>}
+                {planned && (
+                  <span>
+                    Planned{' '}
+                    {dayLabel(localDay(planned.start, state.settings.timeZone))} ·{' '}
+                    {time(planned.start)}
+                  </span>
+                )}
+                {task.status === 'waiting' && (
+                  <span className="pill">On hold</span>
+                )}
 
-              {(task.priority === 'high' || task.priority === 'top') && (
-                <span className="urgent" data-priority={task.priority}>
-                  {task.priority === 'top' ? 'Top' : 'High'} priority
-                </span>
-              )}
-            </span>
-            <TaskSearchContext task={task} query={searchQuery} />
-            {warning && <span className="task-warning">{warning.message}</span>}
-          </button>
+                {(task.priority === 'high' || task.priority === 'top') && (
+                  <span className="urgent" data-priority={task.priority}>
+                    {task.priority === 'top' ? 'Top' : 'High'} priority
+                  </span>
+                )}
+              </span>
+              <TaskSearchContext task={task} query={searchQuery} />
+              {warning && <span className="task-warning">{warning.message}</span>}
+            </button>
+            {warning?.splitActionLabel && (
+              <Button
+                variant="link"
+                size="sm"
+                className="px-0"
+                disabled={saving}
+                onClick={() => void splitForDeadline(task).catch(() => {})}
+              >
+                {warning.splitActionLabel}
+              </Button>
+            )}
+          </div>
           <ArrowUpRight className="row-arrow" size={17} />
         </div>
       </div>
@@ -1370,30 +1397,26 @@ function TaskEditor({
   onRestore: () => Promise<void>;
 }) {
   const [saveId] = useState(() => crypto.randomUUID());
-  const [initialDurations] = useState(() =>
-    taskEditorDurations(
-      initial.estimateMinutes || 30,
-      initial.remainingMinutes || initial.estimateMinutes || 30,
-    ),
-  );
+  const initialEstimate = initial.estimateMinutes || 30;
+  const initialRemaining = initial.remainingMinutes || initialEstimate;
   const [title, setTitle] = useState(initial.title || ''),
     [projectId, setProjectId] = useState(initial.projectId || ''),
     [notes, setNotes] = useState(initial.notes || ''),
     [steps, setSteps] = useState(initial.steps || []);
-  const [estimate, setEstimate] = useState(initialDurations.estimateMinutes),
-    [remaining, setRemaining] = useState(initialDurations.remainingMinutes),
+  const [estimate, setEstimate] = useState(initialEstimate),
+    [remaining, setRemaining] = useState(initialRemaining),
     [priority, setPriority] = useState(initial.priority || 'medium'),
     [status, setStatus] = useState(initial.status || 'ready'),
     [due, setDue] = useState(initial.dueDate || ''),
     [start, setStart] = useState(initial.notBefore || ''),
-    [splittable, setSplittable] = useState(initial.splittable !== false),
+    [splitPreference, setSplitPreference] = useState(() => savedSplitPreference(initial)),
     [blockers, setBlockers] = useState(initial.blockers || []),
     [localError, setLocalError] = useState('');
   const [estimateOptions] = useState(() =>
-    taskDurationOptions(initialDurations.estimateMinutes),
+    taskDurationOptions(initialEstimate),
   );
   const [remainingOptions] = useState(() =>
-    taskDurationOptions(initialDurations.remainingMinutes),
+    taskDurationOptions(initialRemaining),
   );
   const [expectedUpdatedAt] = useState(initial.updatedAt);
   const prerequisiteGroups = taskPrerequisiteGroups(
@@ -1495,7 +1518,7 @@ function TaskEditor({
       status,
       due,
       start,
-      splittable,
+      splitPreference,
       blockers,
     ];
     const saved = [
@@ -1509,7 +1532,7 @@ function TaskEditor({
       initial.status || 'ready',
       initial.dueDate || '',
       initial.notBefore || '',
-      initial.splittable !== false,
+      savedSplitPreference(initial),
       initial.blockers || [],
     ];
     return JSON.stringify(current) !== JSON.stringify(saved);
@@ -1536,7 +1559,7 @@ function TaskEditor({
           status: nextStatus,
           dueDate: due || null,
           notBefore: start || null,
-          splittable,
+          splitPreference,
           blockers,
           expectedUpdatedAt,
         },
@@ -1670,6 +1693,7 @@ function TaskEditor({
         >
           <NativeSelect
             required
+            aria-label="Estimated time"
             value={estimate}
             onChange={(e) => {
               setEstimate(Number(e.target.value));
@@ -1686,6 +1710,7 @@ function TaskEditor({
         <Field label="Time remaining">
           <NativeSelect
             required
+            aria-label="Time remaining"
             value={remaining}
             onChange={(e) => setRemaining(Number(e.target.value))}
           >
@@ -1742,23 +1767,25 @@ function TaskEditor({
           />
         </Field>
       </div>
-      <div className="field">
-        <div className="check-field">
-          <Checkbox
-            id="multiple-sessions"
-            checked={splittable}
-            onCheckedChange={setSplittable}
-            aria-describedby="multiple-sessions-hint"
-          />
-          <label htmlFor="multiple-sessions">
-            Split task into shorter calendar events if needed
-          </label>
+      {estimate >= MIN_SPLIT_MINUTES && (
+        <div className="field">
+          <div className="check-field">
+            <Checkbox
+              id="multiple-sessions"
+              checked={allowsTaskSplitting(estimate, splitPreference)}
+              onCheckedChange={checked => setSplitPreference(checked ? 'allow' : 'single')}
+              aria-describedby="multiple-sessions-hint"
+            />
+            <label htmlFor="multiple-sessions">
+              Split task into shorter calendar events if needed
+            </label>
+          </div>
+          <small id="multiple-sessions-hint">
+            If the whole task can’t fit in one opening, Followthrough schedules
+            parts of it where available.
+          </small>
         </div>
-        <small id="multiple-sessions-hint">
-          If the whole task can't fit in one opening, Followthrough schedules
-          parts of it where available.
-        </small>
-      </div>
+      )}
       <div className="editor-section">
         <div className="section-heading">
           <h2>Suggested steps</h2>

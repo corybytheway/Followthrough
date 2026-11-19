@@ -545,13 +545,16 @@ private struct TaskSyncConflictView: View {
     private func label(_ key: String) -> String {
         ["title": "Task name", "projectId": "Project", "notes": "Notes", "estimateMinutes": "Estimated time",
          "remainingMinutes": "Time remaining", "priority": "Priority", "status": "Status", "dueDate": "Deadline",
-         "notBefore": "Start date", "splittable": "Multiple work sessions", "blockers": "Blocked by", "steps": "Suggested steps"][key] ?? key
+         "notBefore": "Start date", "splittable": "Multiple work sessions", "splitPreference": "Multiple work sessions", "blockers": "Blocked by", "steps": "Suggested steps"][key] ?? key
     }
     private func display(_ value: JSONValue, key: String) -> String {
         switch value {
         case .null: return key == "projectId" ? "No project" : "None"
         case .string(let string):
             if key == "projectId" { return store.workspace?.project(string)?.name ?? "Unavailable project" }
+            if key == "splitPreference" {
+                return ["automatic": "Use estimated time", "allow": "On", "single": "Off"][string] ?? string
+            }
             return string.isEmpty ? "Empty" : string
         case .number(let number): return FTTask.duration(Int(number))
         case .bool(let enabled): return enabled ? "On" : "Off"
@@ -825,7 +828,14 @@ struct TodayTaskList: View {
                 Button("View all tasks →") { store.selectedSection = "tasks" }.buttonStyle(.plain).foregroundStyle(Color.followAccent)
             } else {
                 VStack(spacing:0) { ForEach(workspace.todayTasks) { task in
-                    TaskRow(task:task,project:workspace.project(task.projectId),timeZone:workspace.settings.timeZone,completionStatus:store.completionStatus(for:task),completionEnabled:store.canComplete(task, in:workspace),blocked:workspace.hasUnfinishedPrerequisites(for:task),warning:workspace.warnings.first { $0.taskId == task.id && ["deadline", "capacity"].contains($0.reason) }?.message,onSelect:{store.selectedTask = task},onComplete:{store.complete(task)})
+                    TaskRow(
+                        task: task, project: workspace.project(task.projectId), timeZone: workspace.settings.timeZone,
+                        completionStatus: store.completionStatus(for: task), completionEnabled: store.canComplete(task, in: workspace),
+                        blocked: workspace.hasUnfinishedPrerequisites(for: task),
+                        warning: workspace.warnings.first { $0.taskId == task.id && ["deadline", "capacity"].contains($0.reason) },
+                        onSelect: { store.selectedTask = task }, onComplete: { store.complete(task) },
+                        onSplit: { store.splitForDeadline(task) }
+                    )
                     if task.id != workspace.todayTasks.last?.id { Divider().padding(.leading,70) }
                 } }
                 .background(Color.card,in:RoundedRectangle(cornerRadius:18))
@@ -843,10 +853,11 @@ struct TaskRow: View {
     var completionStatus: String? = nil
     var completionEnabled = true
     var blocked = false
-    let warning: String?
+    let warning: FTWarning?
     var searchQuery = ""
     let onSelect: () -> Void
     let onComplete: () -> Void
+    let onSplit: () -> Void
     private var completed: Bool { (completionStatus ?? task.status) == "done" }
     private var unavailable: Bool { blocked && !completed }
     var body: some View {
@@ -867,35 +878,49 @@ struct TaskRow: View {
             .accessibilityValue(completed ? "Completed" : unavailable ? "Blocked by unfinished tasks" : "Not completed")
             .accessibilityIdentifier("completeTask_" + task.id)
             .animation(reduceMotion ? nil : .easeInOut(duration:0.16), value:completed)
-            Button(action:onSelect) {
-                VStack(alignment:.leading,spacing:9) {
-                    SearchHighlightedText(text: task.displayTitle(project: project, scopedProjectID: scopedProjectID), query: searchQuery, muted: unavailable).font(.system(size:15,weight:.semibold)).foregroundStyle(unavailable ? Color.secondary : Color.primary).multilineTextAlignment(.leading).fixedSize(horizontal:false,vertical:true)
-                    if let project {
-                        HStack(spacing:6) {
-                            Image(systemName:"circle.fill").font(.system(size:6)).foregroundStyle(unavailable ? Color.secondary : Color(hex:project.color))
-                            SearchHighlightedText(text: project.name, query: searchQuery, muted: unavailable).foregroundStyle(unavailable ? Color.secondary : Color.primary).lineLimit(1)
-                        }.font(.system(size:12))
-                    }
-                    TaskRowMetadata(task: task, timeZone: timeZone, completed: completed, unavailable: unavailable)
-                    if let excerpt = TaskSearch.excerpt(for: task, query: searchQuery) {
-                        TaskSearchExcerptView(excerpt: excerpt, muted: unavailable)
-                            .accessibilityIdentifier("taskSearchExcerpt_\(task.id)")
-                    }
-                    if let warning {
-                        Label {
-                            Text(warning).foregroundStyle(unavailable ? Color.secondary : Color.primary)
-                        } icon: {
-                            Image(systemName:"exclamationmark.triangle.fill").foregroundStyle(unavailable ? Color.secondary : Color.orange)
+            VStack(alignment: .leading, spacing: 4) {
+                Button(action:onSelect) {
+                    VStack(alignment:.leading,spacing:9) {
+                        SearchHighlightedText(text: task.displayTitle(project: project, scopedProjectID: scopedProjectID), query: searchQuery, muted: unavailable).font(.system(size:15,weight:.semibold)).foregroundStyle(unavailable ? Color.secondary : Color.primary).multilineTextAlignment(.leading).fixedSize(horizontal:false,vertical:true)
+                        if let project {
+                            HStack(spacing:6) {
+                                Image(systemName:"circle.fill").font(.system(size:6)).foregroundStyle(unavailable ? Color.secondary : Color(hex:project.color))
+                                SearchHighlightedText(text: project.name, query: searchQuery, muted: unavailable).foregroundStyle(unavailable ? Color.secondary : Color.primary).lineLimit(1)
+                            }.font(.system(size:12))
                         }
-                        .font(.system(size:12))
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal:false,vertical:true)
-                        .accessibilityElement(children:.combine)
-                        .accessibilityLabel("Scheduling warning: \(warning)")
-                        .accessibilityIdentifier("taskSchedulingWarning_\(task.id)")
+                        TaskRowMetadata(task: task, timeZone: timeZone, completed: completed, unavailable: unavailable)
+                        if let excerpt = TaskSearch.excerpt(for: task, query: searchQuery) {
+                            TaskSearchExcerptView(excerpt: excerpt, muted: unavailable)
+                                .accessibilityIdentifier("taskSearchExcerpt_\(task.id)")
+                        }
+                        if let warning {
+                            Label {
+                                Text(warning.message).foregroundStyle(unavailable ? Color.secondary : Color.primary)
+                            } icon: {
+                                Image(systemName:"exclamationmark.triangle.fill").foregroundStyle(unavailable ? Color.secondary : Color.orange)
+                            }
+                            .font(.system(size:12))
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal:false,vertical:true)
+                            .accessibilityElement(children:.combine)
+                            .accessibilityLabel("Scheduling warning: \(warning.message)")
+                            .accessibilityIdentifier("taskSchedulingWarning_\(task.id)")
+                        }
+                    }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                if let label = warning?.splitActionLabel, !completed {
+                    Button(action: onSplit) {
+                        Text(label)
+                            #if os(iOS)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                            #endif
                     }
-                }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
-            }.buttonStyle(.plain)
+                    .buttonStyle(.borderless)
+                    .tint(.followAccent)
+                    .accessibilityIdentifier("splitForDeadline_\(task.id)")
+                }
+            }
             Image(systemName:"arrow.up.right").font(.system(size:12,weight:.medium)).foregroundStyle(.secondary).padding(.top,5)
         }.padding(.horizontal,14).padding(.vertical,14)
     }
@@ -1148,7 +1173,14 @@ struct TasksView: View {
                 Text("No tasks match these filters").foregroundStyle(.secondary)
             }
             ForEach(visibleTasks) { task in
-                TaskRow(task:task,project:workspace.project(task.projectId),timeZone:workspace.settings.timeZone,scopedProjectID:scopedProjectID,completionStatus:store.completionStatus(for:task),completionEnabled:store.canComplete(task, in:workspace),blocked:workspace.hasUnfinishedPrerequisites(for:task),warning:workspace.warnings.first { $0.taskId == task.id && ["deadline", "capacity"].contains($0.reason) }?.message,searchQuery:search,onSelect:{store.selectedTask = task},onComplete:{store.complete(task)}).listRowInsets(EdgeInsets())
+                TaskRow(
+                    task: task, project: workspace.project(task.projectId), timeZone: workspace.settings.timeZone,
+                    scopedProjectID: scopedProjectID, completionStatus: store.completionStatus(for: task),
+                    completionEnabled: store.canComplete(task, in: workspace), blocked: workspace.hasUnfinishedPrerequisites(for: task),
+                    warning: workspace.warnings.first { $0.taskId == task.id && ["deadline", "capacity"].contains($0.reason) },
+                    searchQuery: search, onSelect: { store.selectedTask = task }, onComplete: { store.complete(task) },
+                    onSplit: { store.splitForDeadline(task) }
+                ).listRowInsets(EdgeInsets())
                     .id(task.id)
             }
         }

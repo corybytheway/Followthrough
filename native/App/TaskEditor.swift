@@ -20,7 +20,9 @@ struct TaskEditor: View {
         self.task = task
         // Opening details must not edit a task. Include exact stored durations
         // in the pickers so legacy estimates and logged progress stay unchanged.
-        _draft = State(initialValue: task)
+        var draft = task
+        draft.splitPreference = task.savedSplitPreference
+        _draft = State(initialValue: draft)
         _estimateOptions = State(initialValue: FTTask.durationOptions([task.estimateMinutes]))
         _remainingOptions = State(initialValue: FTTask.durationOptions([task.remainingMinutes]))
     }
@@ -185,14 +187,16 @@ struct TaskEditor: View {
     }
     private func save() {
         guard validDraft && hasChanges else { return }
-        if store.updateTask(task, fields: editableFields(draft)) { dismiss() }
+        let original = editableFields(task)
+        let changes = editableFields(draft).filter { original[$0.key] != $0.value }
+        if store.updateTask(task, fields: changes) { dismiss() }
     }
 
     private func editableFields(_ task: FTTask) -> [String: JSONValue] {
         ["title": .string(task.title), "projectId": task.projectId.map(JSONValue.string) ?? .null,
          "notes": .string(task.notes), "estimateMinutes": .number(Double(task.estimateMinutes)), "remainingMinutes": .number(Double(task.remainingMinutes)),
          "priority": .string(task.priority.rawValue), "status": .string(task.status), "dueDate": task.dueDate.map(JSONValue.string) ?? .null,
-         "notBefore": task.notBefore.map(JSONValue.string) ?? .null, "splittable": .bool(task.splittable), "blockers": .array(task.blockers.map(JSONValue.string)),
+         "notBefore": task.notBefore.map(JSONValue.string) ?? .null, "splitPreference": .string(task.savedSplitPreference.rawValue), "blockers": .array(task.blockers.map(JSONValue.string)),
          "steps": .array(task.steps.map { .object(["id": .string($0.id), "title": .string($0.title), "done": .bool($0.done)]) })]
     }
 }
@@ -312,15 +316,17 @@ private struct TaskPlanningFields: View {
                 OptionalDayField(title: "Deadline", value: $draft.dueDate)
                 OptionalDayField(title: "Start on or after", value: $draft.notBefore)
             }
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle("Split task into shorter calendar events if needed", isOn: $draft.splittable)
-                    .tint(.followMint)
-                    .toggleStyle(.switch)
-                    .accessibilityHint("If the whole task can't fit in one opening, Followthrough schedules parts of it where available.")
-                Text("If the whole task can't fit in one opening, Followthrough schedules parts of it where available.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            if draft.estimateMinutes >= TaskSplitPreference.minimumMinutes {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Split task into shorter calendar events if needed", isOn: $draft.allowsSplitting)
+                        .tint(.followMint)
+                        .toggleStyle(.switch)
+                        .accessibilityHint("If the whole task can't fit in one opening, Followthrough schedules parts of it where available.")
+                    Text("If the whole task can't fit in one opening, Followthrough schedules parts of it where available.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(20)

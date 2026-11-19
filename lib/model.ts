@@ -1,4 +1,10 @@
 // Created by Cory McCabe
+import {
+  allowsTaskSplitting,
+  savedSplitPreference,
+  type SplitPreference,
+} from './task-duration';
+
 export function projectShortName(
   project: Pick<Project, 'name' | 'shortName'>,
 ): string {
@@ -79,10 +85,17 @@ export type Task = {
   notBefore: string | null;
   blockers: string[];
   splittable: boolean;
+  splitPreference?: SplitPreference;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
 };
+export function normalizeTaskSplitting(task: Task): Task {
+  const splitPreference = savedSplitPreference(task);
+  const splittable = allowsTaskSplitting(task.estimateMinutes, splitPreference);
+  return { ...task, splitPreference, splittable };
+}
+
 export type BusyEvent = {
   id: string;
   title: string;
@@ -123,6 +136,7 @@ export type PlanWarning = {
   taskId: string;
   reason: 'blocked' | 'waiting' | 'capacity' | 'deadline';
   message: string;
+  splitActionLabel?: string;
 };
 export type Snapshot = Workspace & {
   currentDate: string;

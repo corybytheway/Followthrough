@@ -1,5 +1,6 @@
 // Created by Cory McCabe
 import type { Block, PlanWarning, Task, Workspace } from './model';
+import { MIN_SPLIT_MINUTES } from './task-duration';
 const MINUTE = 60_000,
   QUANTUM = 15 * MINUTE,
   HORIZON_DAYS = 42;
@@ -118,6 +119,8 @@ export function plan(
       b.taskId === highestRankedTaskId &&
       (!rolloverTaskId || b.taskId === rolloverTaskId) &&
       t.remainingMinutes >= duration &&
+      (t.remainingMinutes === duration ||
+        (t.estimateMinutes >= MIN_SPLIT_MINUTES && t.splittable)) &&
       !t.blockers.some((id) => taskMap.get(id)?.status !== 'done') &&
       s.workDays.includes(c.weekday) &&
       c.minutes >= startMinute &&
@@ -174,17 +177,26 @@ export function plan(
     )
       slots.push({ start, day: c.day, minutes: c.minutes });
   }
-  for (const t of candidates) {
+  const activeBlock = blocks[0];
+  function placeTask(
+    t: Task,
+    split: boolean,
+    busy: typeof occupied,
+    dailyWork: Map<string, number>,
+    lastDay?: string,
+  ) {
+    const sessions: Block[] = [];
     let left = remaining.get(t.id) || 0;
+    let nextIndex = 0;
     for (const slot of slots) {
-      if (left <= 0) break;
+      if (left <= 0 || (lastDay && slot.day > lastDay)) break;
       const { start, day, minutes } = slot;
       if (t.notBefore && day < t.notBefore) continue;
-      let duration = t.splittable
+      let duration = split
         ? Math.min(left, s.maxBlockMinutes, endMinute - minutes)
         : left;
       if (minutes + duration > endMinute) continue;
-      const amount = worked.get(day) || 0,
+      const amount = dailyWork.get(day) || 0,
         cycle = s.maxBlockMinutes + s.breakMinutes,
         phase = amount % cycle;
       if (s.breakMinutes && phase >= s.maxBlockMinutes) {
@@ -192,61 +204,90 @@ export function plan(
           end = start + gap * MINUTE;
         if (
           minutes + gap <= endMinute &&
-          !occupied.some((o) => overlaps(start, end, o.start, o.end))
+          !busy.some((o) => overlaps(start, end, o.start, o.end))
         ) {
-          occupied.push({ start, end });
-          worked.set(day, amount + gap);
+          busy.push({ start, end });
+          dailyWork.set(day, amount + gap);
         }
         continue;
       }
-      if (t.splittable && s.breakMinutes)
+      if (split && s.breakMinutes)
         duration = Math.min(duration, s.maxBlockMinutes - phase);
-      const conflict = occupied
+      const conflict = busy
         .filter((o) =>
           overlaps(start, start + duration * MINUTE, o.start, o.end),
         )
         .sort((a, b) => a.start - b.start)[0];
       if (conflict) {
         const available = Math.floor((conflict.start - start) / QUANTUM) * 15;
-        if (!t.splittable || available < Math.min(left, 15)) continue;
+        if (!split || available < Math.min(left, 15)) continue;
         duration = Math.min(duration, available);
       }
       if (duration <= 0) continue;
       const end = start + duration * MINUTE;
       const finish = clock(end - 1);
       if (finish.day !== day || finish.minutes >= endMinute) continue;
-      blocks.push({
-        id: `${t.id}-${blocks.filter((b) => b.taskId === t.id).length}`,
+      if (`${t.id}-${nextIndex}` === activeBlock?.id) nextIndex++;
+      sessions.push({
+        id: `${t.id}-${nextIndex++}`,
         taskId: t.id,
         start: new Date(start).toISOString(),
         end: new Date(end).toISOString(),
         kind: 'task',
       });
-      occupied.push({ start, end });
-      worked.set(day, (worked.get(day) || 0) + duration);
+      busy.push({ start, end });
+      dailyWork.set(day, amount + duration);
       left -= duration;
     }
-    if (left > 0)
-      warnings.push({
-        taskId: t.id,
-        reason: 'capacity',
-        message: `${left} minutes do not fit in the next ${HORIZON_DAYS} days. Adjust availability or allow multiple sessions.`,
-      });
+    return { sessions, left };
+  }
+
+  for (const t of candidates) {
+    const eligible = t.estimateMinutes >= MIN_SPLIT_MINUTES;
+    const split = eligible && t.splittable;
+    // A suggested split must compete with the same higher-priority work and breaks.
+    const busyBefore = occupied.length;
+    const workBefore =
+      t.dueDate && eligible && !split ? new Map(worked) : undefined;
+    const { sessions, left } = placeTask(t, split, occupied, worked);
+    const last =
+      sessions.at(-1) ?? (activeBlock?.taskId === t.id ? activeBlock : undefined);
     if (
       t.dueDate &&
-      (left > 0 ||
-        blocks.some(
-          (b) =>
-            b.taskId === t.id &&
-            localDay(Date.parse(b.end) - 1, s.timeZone) > t.dueDate!,
-        ))
-    )
-      warnings.push({
+      (left > 0 || (last && localDay(Date.parse(last.end) - 1, s.timeZone) > t.dueDate))
+    ) {
+      const warning: PlanWarning = {
         taskId: t.id,
         reason: 'deadline',
         message:
           'This task may miss its deadline with the time currently available.',
+      };
+      if (workBefore) {
+        const trial = placeTask(
+          t, true, occupied.slice(0, busyBefore), workBefore, t.dueDate,
+        );
+        if (trial.left === 0 && trial.sessions.length >= 2) {
+          const durations = trial.sessions.map(
+            (b) => (Date.parse(b.end) - Date.parse(b.start)) / MINUTE,
+          );
+          const length = durations.every((minutes) => minutes === durations[0])
+            ? ` ${durations[0]}-minute` : '';
+          warning.splitActionLabel = `Split into ${durations.length}${length} sessions`;
+        }
+      }
+      warnings.push(warning);
+    }
+    if (left > 0) {
+      const advice = eligible && !split
+        ? 'Adjust availability or allow multiple sessions.'
+        : 'Adjust your work hours or calendar availability.';
+      warnings.push({
+        taskId: t.id,
+        reason: 'capacity',
+        message: `${left} minutes do not fit in the next ${HORIZON_DAYS} days. ${advice}`,
       });
+    }
+    blocks.push(...sessions);
   }
   blocks.sort(
     (a, b) =>

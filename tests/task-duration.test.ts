@@ -17,6 +17,7 @@ void test('task durations use an eight-hour day and forty-hour week without dupl
     '30m',
     '45m',
     '1h',
+    '1h 30m',
     '2h',
     '3h',
     '4h',
@@ -26,8 +27,8 @@ void test('task durations use an eight-hour day and forty-hour week without dupl
     '3d',
     '1w',
   ]);
-  assert.equal(TASK_DURATION_PRESETS[8], 8 * 60);
-  assert.equal(TASK_DURATION_PRESETS[11], 40 * 60);
+  assert.ok(TASK_DURATION_PRESETS.includes(8 * 60));
+  assert.ok(TASK_DURATION_PRESETS.includes(40 * 60));
   assert.equal(
     new Set(TASK_DURATION_PRESETS).size,
     TASK_DURATION_PRESETS.length,
@@ -40,8 +41,9 @@ void test('old estimates round upward; long estimates use half-workday increment
     [15, 15],
     [16, 30],
     [46, 60],
-    [75, 120],
-    [90, 120],
+    [75, 90],
+    [90, 90],
+    [91, 120],
     [241, 360],
     [361, 480],
     [481, 720],
@@ -58,16 +60,16 @@ void test('old estimates round upward; long estimates use half-workday increment
     assert.ok(rounded >= minutes && rounded <= MAX_TASK_MINUTES);
   }
   assert.deepEqual(taskEditorDurations(75, 30), {
-    estimateMinutes: 120,
-    remainingMinutes: 75,
+    estimateMinutes: 90,
+    remainingMinutes: 45,
   });
   assert.deepEqual(taskEditorDurations(120, 75), {
     estimateMinutes: 120,
     remainingMinutes: 75,
   });
   assert.deepEqual(taskEditorDurations(75, 75), {
-    estimateMinutes: 120,
-    remainingMinutes: 120,
+    estimateMinutes: 90,
+    remainingMinutes: 90,
   });
 });
 
@@ -75,8 +77,9 @@ void test('Add time graduates small tasks, doubles through a workday, then adds 
   for (const [minutes, expected] of [
     [15, 60],
     [30, 60],
-    [45, 120],
+    [45, 90],
     [60, 120],
+    [90, 180],
     [120, 240],
     [180, 360],
     [240, 480],
@@ -109,8 +112,8 @@ void test('Add time graduates small tasks, doubles through a workday, then adds 
 
 void test('generated durations survive switching presets and reopening without erasing progress', () => {
   assert.deepEqual(addedTaskTime(75, 30), {
-    estimateMinutes: 240,
-    remainingMinutes: 195,
+    estimateMinutes: 180,
+    remainingMinutes: 135,
   });
   const added = addedTaskTime(120, 30)!;
   const reopened = taskEditorDurations(
