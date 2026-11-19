@@ -9,7 +9,9 @@ import AppIntents
         _ = PhoneWatchCaptureRelay.shared
         #endif
     }
-    #if os(macOS)
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(FollowthroughIOSAppDelegate.self) private var appDelegate
+    #elseif os(macOS)
     @NSApplicationDelegateAdaptor(FollowthroughMacAppDelegate.self) private var appDelegate
     @State private var captureShortcut = MacCaptureShortcut()
     @State private var menuBarCapture = MacMenuBarCapture()

@@ -11,7 +11,7 @@ import subprocess
 
 APP_ID = "com.ethos.followthrough"
 APP_GROUP = "group.com.ethos.followthrough"
-EXTENSION_IDS = {APP_ID + ".widgets", APP_ID + ".share"}
+EXTENSION_IDS = {APP_ID + ".widgets", APP_ID + ".share", APP_ID + ".capture-notification"}
 
 
 def validate_bundle(path: Path, expected_id: str | None = None) -> dict:
@@ -43,7 +43,7 @@ def validate_app(path: Path) -> None:
     extensions = list((path / "PlugIns").glob("*.appex"))
     identifiers = [validate_bundle(extension).get("CFBundleIdentifier") for extension in extensions]
     if len(identifiers) != len(EXTENSION_IDS) or set(identifiers) != EXTENSION_IDS:
-        raise ValueError("Expected the device widget and share extensions with distinct bundle IDs.")
+        raise ValueError("Expected the device widget, share, and capture notification extensions with distinct bundle IDs.")
 
 
 def main() -> None:

@@ -246,6 +246,7 @@ struct PendingMutation: Codable, Identifiable, Sendable {
     var title: String
     var createdAt = Date()
     var baseTask: FTTask?
+    var sendsCaptureReceipt: Bool? = nil
 }
 struct MutationResult: Decodable, Sendable {
     struct Result: Decodable, Sendable { var tasks: [FTTask]? }

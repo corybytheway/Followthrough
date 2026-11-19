@@ -1,6 +1,9 @@
 // Created by Cory McCabe
 import SwiftUI
 import EventKit
+#if os(iOS)
+import UserNotifications
+#endif
 
 struct SettingsView: View {
     let store: WorkspaceStore
@@ -14,6 +17,9 @@ struct SettingsView: View {
         Form {
             WorkHoursSettings(store: store, settings: settings)
             AIAssistantSettings(store: store, savedAssistant: settings.aiAssistant)
+            #if os(iOS)
+            ControlCaptureSettings()
+            #endif
             if store.suggestions?.status.available == true {
                 Section("Task suggestions") {
                     Text("Suggestions recognize your routines, remember workflows, and help with tasks that keep moving later. Review each before changing your plan.").font(.callout).foregroundStyle(.secondary)
@@ -135,6 +141,60 @@ struct SettingsView: View {
         calendarAccess.refresh()
     }
 }
+
+#if os(iOS)
+private struct ControlCaptureSettings: View {
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var authorization = UNAuthorizationStatus.notDetermined
+    @State private var requesting = false
+    @State private var requestFailed = false
+
+    var body: some View {
+        Section {
+            if authorization == .notDetermined || authorization == .provisional {
+                Button("Allow Capture Notifications") {
+                    Task { await requestPermission() }
+                }
+                .disabled(requesting)
+                .accessibilityIdentifier("allowCaptureNotifications")
+            } else {
+                Button("Open Notification Settings") {
+                    if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                        openURL(url)
+                    }
+                }
+            }
+            if requestFailed {
+                Text("Couldn’t request notification access. Try again.")
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Control Center Capture")
+        } footer: {
+            Text("Tap the Followthrough lightning bolt, then press and hold the New Task notification to capture.")
+                .task(id: scenePhase) {
+                    if scenePhase == .active {
+                        authorization = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+                    }
+                }
+        }
+    }
+
+    private func requestPermission() async {
+        requesting = true
+        defer { requesting = false }
+        let center = UNUserNotificationCenter.current()
+        do {
+            _ = try await center.requestAuthorization(options: [.alert])
+            requestFailed = false
+        } catch {
+            requestFailed = true
+        }
+        authorization = await center.notificationSettings().authorizationStatus
+    }
+}
+#endif
 
 private struct AIAssistantSettings: View {
     let store: WorkspaceStore

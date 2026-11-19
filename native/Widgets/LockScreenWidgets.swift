@@ -99,12 +99,6 @@ private struct NextUpView: View {
     }
 }
 
-extension ControlCaptureIntent {
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        .result(dialog: "Task capture is unavailable on this version of iOS.")
-    }
-}
-
 struct CaptureTaskControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "com.ethos.followthrough.capture-task") {
@@ -113,6 +107,6 @@ struct CaptureTaskControl: ControlWidget {
             }
         }
         .displayName("Capture Task")
-        .description("Talk or type a task.")
+        .description("Type or dictate a new task from a Followthrough notification.")
     }
 }

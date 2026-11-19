@@ -141,6 +141,9 @@ import Security
             NativeSyncLog.record("outbox_loaded", count: pending.count)
         }
         publishWatchWorkspace()
+        #if os(iOS)
+        ControlCapturePreview.publish(controlCapturePreview())
+        #endif
     }
     private var identity: String { server + ":" + (session?.ownerId ?? "") }
     var watchWorkspaceID: String? {
@@ -413,6 +416,9 @@ import Security
                 while let operation = pending.first {
                     if captureReceipt?.id == operation.id { captureReceipt?.phase = .sending }
                     if photoSaveReceipt?.id == operation.id { photoSaveReceipt?.phase = .sending }
+                    #if os(iOS)
+                    let receiptWorkspaceID = operation.sendsCaptureReceipt == true ? watchWorkspaceID : nil
+                    #endif
                     do {
                         let result = try await sendQueued(operation)
                         var captured: [FTTask]?
@@ -430,6 +436,15 @@ import Security
                             }
                             captured = confirmed
                         }
+                        #if os(iOS)
+                        if let captured, let receiptWorkspaceID {
+                            guard watchWorkspaceID == receiptWorkspaceID, pending.first?.id == operation.id else { return }
+                            await ControlCaptureNotifications.showSavedReceipt(
+                                requestID: operation.id, workspaceID: receiptWorkspaceID, tasks: captured, workspace: result.state
+                            )
+                            guard watchWorkspaceID == receiptWorkspaceID, pending.first?.id == operation.id else { return }
+                        }
+                        #endif
                         let beforeAcknowledgment = pending
                         let acknowledged = pending.first ?? operation
                         workspace = result.state; pending.removeFirst()
@@ -458,6 +473,12 @@ import Security
                         }
                     } catch let failure as APIError {
                         if failure.status == 409 || failure.status == 400 || (failure.status == 413 && operation.body["action"] == .string("capture_tasks")) { blockedMutation = true }
+                        #if os(iOS)
+                        if blockedMutation, let receiptWorkspaceID, watchWorkspaceID == receiptWorkspaceID,
+                           pending.first?.id == operation.id {
+                            ControlCaptureNotifications.showCaptureProblem(requestID: operation.id)
+                        }
+                        #endif
                         throw failure
                     }
                 }
@@ -533,15 +554,7 @@ import Security
     }
     /// Shortcuts supplies input and owns its UI; share the app's durable queue.
     func captureFromShortcut(_ source: String) async throws -> Int? {
-        let source = source.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !source.isEmpty, source.utf16.count <= 8000 else {
-            throw APIError.response(400, "Enter a task with up to 8,000 characters.")
-        }
-        loadStoredWorkspace()
-        guard session != nil else {
-            throw APIError.response(401, "Open Followthrough and sign in before using this shortcut.")
-        }
-        let operation = PendingMutation(endpoint: "api/native/inbox", body: ["source": .string(source)], title: source)
+        let operation = try externalCaptureOperation(source)
         shortcutCaptureCounts[operation.id] = -1
         defer { shortcutCaptureCounts.removeValue(forKey: operation.id) }
         guard enqueue(operation) else {
@@ -560,13 +573,57 @@ import Security
         }
         return nil
     }
+
+    private func externalCaptureOperation(_ source: String) throws -> PendingMutation {
+        let source = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !source.isEmpty, source.utf16.count <= 8000 else {
+            throw APIError.response(400, "Enter a task with up to 8,000 characters.")
+        }
+        loadStoredWorkspace()
+        guard session != nil else {
+            throw APIError.response(401, "Open Followthrough and sign in before capturing a task.")
+        }
+        return PendingMutation(endpoint: "api/native/inbox", body: ["source": .string(source)], title: source)
+    }
+
+    #if os(iOS)
+    func captureFromControl(_ source: String) async throws {
+        var operation = try externalCaptureOperation(source)
+        operation.sendsCaptureReceipt = true
+        guard enqueue(operation) else {
+            throw APIError.response(0, error ?? "Could not save your request on this device.")
+        }
+        ControlCaptureNotifications.logger.notice("Control capture queued for sync")
+        // The notification action keeps the process running while an in-flight
+        // workspace sync finishes and the queued capture gets its turn.
+        for _ in 0..<200 {
+            guard pending.contains(where: { $0.id == operation.id }),
+                  !(blockedMutation && pending.first?.id == operation.id),
+                  !Task.isCancelled else { break }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
+    func openControlCaptureReceipt(_ target: ControlCaptureReceiptTarget) {
+        loadStoredWorkspace()
+        guard target.workspaceID == watchWorkspaceID, selectedTask == nil, !photoReviewPresented else { return }
+        if workspace?.tasks.contains(where: { $0.id == target.taskID && $0.deletedAt != nil }) == true { return }
+        dismissCaptureFocus()
+        pendingTaskID = target.taskID
+        openPendingTask()
+        if selectedTask?.id == target.taskID {
+            ControlCaptureNotifications.logger.notice("Capture receipt opened task details")
+        }
+    }
+    #endif
+
     /// A Watch acknowledgment transfers responsibility only after a durable save.
     func captureFromWatch(_ request: WatchCaptureRequest) throws {
         loadStoredWorkspace()
         guard session != nil else { throw WatchCaptureError.connectPhone }
         guard request.workspaceID == watchWorkspaceID else { throw WatchCaptureError.accountChanged }
         if let action = request.taskAction {
-            try acceptWatchAction(request, action: action)
+            try acceptTaskAction(action, requestID: request.id)
             return
         }
         if let existing = pending.first(where: { $0.id == request.id }) {
@@ -597,14 +654,14 @@ import Security
         return error ?? "This capture needs attention in Followthrough on your iPhone. Your request is saved."
     }
 
-    private func acceptWatchAction(_ request: WatchCaptureRequest, action: WatchTaskAction) throws {
-        if acceptedWatchActions.contains(request.id) { Task { await sync() }; return }
-        if let operation = pending.first(where: { $0.id == request.id }) {
+    private func acceptTaskAction(_ action: WatchTaskAction, requestID: String) throws {
+        if acceptedWatchActions.contains(requestID) { Task { await sync() }; return }
+        if let operation = pending.first(where: { $0.id == requestID }) {
             guard operation.endpoint == "api/native/workspace", case .string(let id) = operation.body["id"], id == action.taskID else {
                 throw WatchCaptureError.invalidRequest
             }
             let previous = acceptedWatchActions
-            acceptedWatchActions = Array((previous + [request.id]).suffix(2048))
+            acceptedWatchActions = Array((previous + [requestID]).suffix(2048))
             guard persist() else { acceptedWatchActions = previous; throw WatchCaptureError.storage }
             Task { await sync() }
             return
@@ -626,23 +683,64 @@ import Security
             fields["remainingMinutes"] = .number(Double(time.remaining))
         case .postpone, .nextWeek:
             guard task.status == "ready" else { throw WatchTaskActionError.unavailable }
-            let nextBlock = workspace.blocks.filter { $0.taskId == task.id && $0.endDate > .now }.sorted { $0.startDate < $1.startDate }.first
-            let until = try WatchTaskActionPolicy.postpone(from: nextBlock?.startDate ?? .now,
-                timeZone: workspace.settings.timeZone, workDays: workspace.settings.workDays, dueDate: task.dueDate,
-                nextWeek: action.kind == .nextWeek)
-            fields["notBefore"] = .string(until)
+            fields["notBefore"] = .string(try nextWorkday(for: task, in: workspace, nextWeek: action.kind == .nextWeek))
         case .trash: break
         }
         let body: [String: JSONValue] = action.kind == .trash
             ? ["action": .string("delete_task"), "id": .string(task.id), "expectedUpdatedAt": .string(action.updatedAt)]
             : ["action": .string("update_task"), "id": .string(task.id), "task": .object(fields)]
-        let operation = PendingMutation(id: request.id, endpoint: "api/native/workspace", body: body, title: task.title, baseTask: task)
+        let operation = PendingMutation(id: requestID, endpoint: "api/native/workspace", body: body, title: task.title, baseTask: task)
         let previous = acceptedWatchActions
-        acceptedWatchActions = Array((previous + [request.id]).suffix(2048))
+        acceptedWatchActions = Array((previous + [requestID]).suffix(2048))
         guard enqueue(operation) else {
             acceptedWatchActions = previous
             throw APIError.response(0, error ?? "Could not save this action on your iPhone.")
         }
+    }
+
+    #if os(iOS)
+    func applyControlCaptureAction(_ action: ControlCaptureTaskAction, target: ControlCaptureTarget, requestID: String) async throws -> Bool {
+        loadStoredWorkspace()
+        guard target.workspaceID == watchWorkspaceID else { throw WatchCaptureError.accountChanged }
+        if !acceptedWatchActions.contains(requestID) {
+            guard let preview = controlCapturePreview(), preview.target == target, preview.actions.contains(action) else {
+                throw WatchTaskActionError.stale
+            }
+        }
+        let taskAction = WatchTaskAction(taskID: target.taskID, updatedAt: target.updatedAt,
+                                         kind: action == .complete ? .complete : .postpone)
+        try acceptTaskAction(taskAction, requestID: requestID)
+        ControlCapturePreview.publish(controlCapturePreview())
+        await sync()
+        guard target.workspaceID == watchWorkspaceID else { throw WatchCaptureError.accountChanged }
+        if blockedMutation, pending.first?.id == requestID { throw WatchTaskActionError.stale }
+        return !pending.contains { $0.id == requestID }
+    }
+
+    private func controlCapturePreview() -> ControlCapturePreview? {
+        guard let workspace, let workspaceID = watchWorkspaceID,
+              let task = workspace.todayTasks.first, task.active,
+              !pending.contains(where: { $0.body["id"] == .string(task.id) }) else { return nil }
+
+        var actions: [ControlCaptureTaskAction] = []
+        if !workspace.hasUnfinishedPrerequisites(for: task) { actions.append(.complete) }
+        if task.status == "ready", (try? nextWorkday(for: task, in: workspace)) != nil { actions.append(.postpone) }
+        guard !actions.isEmpty else { return nil }
+
+        return ControlCapturePreview(
+            target: ControlCaptureTarget(workspaceID: workspaceID, taskID: task.id, updatedAt: task.updatedAt),
+            title: task.title, projectLabel: workspace.project(task.projectId)?.label, actions: actions
+        )
+    }
+    #endif
+
+    private func nextWorkday(for task: FTTask, in workspace: Workspace, nextWeek: Bool = false) throws -> String {
+        let nextBlock = workspace.blocks.filter { $0.taskId == task.id && $0.endDate > .now }
+            .min { $0.startDate < $1.startDate }
+        return try WatchTaskActionPolicy.postpone(
+            from: nextBlock?.startDate ?? .now, timeZone: workspace.settings.timeZone,
+            workDays: workspace.settings.workDays, dueDate: task.dueDate, nextWeek: nextWeek
+        )
     }
     @discardableResult func mutate(action: String, title: String, fields: [String: JSONValue] = [:]) -> Bool {
         var body = fields; body["action"] = .string(action)
@@ -705,6 +803,9 @@ import Security
         guard !pending.isEmpty else { return }
         let removed = pending.removeFirst()
         guard persist() else { pending.insert(removed, at: 0); return }
+        #if os(iOS)
+        if removed.sendsCaptureReceipt == true { ControlCaptureNotifications.removeCaptureStatus(requestID: removed.id) }
+        #endif
         if captureReceipt?.id == removed.id {
             captureText = captureReceipt?.source ?? captureText
             captureReceipt = nil
@@ -765,6 +866,10 @@ import Security
         photoCaptures = []; photoReviewPresented = false; reviewingPhotoID = nil; photoSaveReceipt = nil; photoReviewError = nil
         syncRequested = false
         try? FileManager.default.removeItem(at:cacheURL); try? FileManager.default.removeItem(at:queueURL)
+        #if os(iOS)
+        ControlCapturePreview.publish(nil)
+        ControlCaptureReceipt.clear()
+        #endif
         SharedStorage.unbind()
     }
     @discardableResult private func persist() -> Bool {
@@ -942,6 +1047,9 @@ import Security
             updatedAt: .now,
             hasSyncedWorkspace: workspace != nil
         ))
+        #if os(iOS)
+        ControlCapturePreview.publish(controlCapturePreview())
+        #endif
         WidgetCenter.shared.reloadAllTimelines()
         publishWatchWorkspace()
     }

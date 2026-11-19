@@ -19,9 +19,11 @@ Use the cached preview and task link as starting points. The existing “Your ne
 
 ## Capture Task
 
-Use a single button labeled “Capture Task” with the Followthrough lightning bolt. From either placement, require device authentication if the device is locked, then open the existing capture flow. The user enters and reviews the request and chooses when to save. If the user cancels authentication, leave the workspace as it was.
+Use a button labeled “Capture Task” with the Followthrough lightning bolt. After the user allows capture notifications in Followthrough Settings, the control posts a New Task notification. Press and hold the banner to see the branded preview. Select Capture Task to type or dictate details with the system keyboard. On a locked device, require authentication before performing an action. The workflow keeps Followthrough in the background and requires no separate shortcut.
 
-Reuse the app’s capture route for the foreground flow. The existing “Capture a task” shortcut takes input and submits it in the background, so the control needs a separate action that opens the composer. [App routing](../native/App/WorkspaceStore.swift) · [Existing App Intent](../native/Shared/CaptureIntent.swift) · [Opening an app from a control](https://developer.apple.com/documentation/widgetkit/creating-controls-to-perform-actions-across-the-system)
+Save Task submits the reply through the same capture queue used by the existing “Capture a task” shortcut. The capture syncs quietly and shows “Task added” with “Press and hold for details” once confirmed. The expanded receipt shows the saved task’s details in a scrollable view with a single Open task action. If a capture creates multiple tasks, group their individual receipts so each opens the task it previews. Keep task details out of the banners.
+
+When the expanded capture prompt can show an eligible Up Next task, offer Mark Complete and Postpone to Next Workday as applicable. Check the displayed task’s identity and revision before accepting either action. Postponing follows the Watch workday and deadline rules. [Capture control](../native/Shared/ControlCaptureIntent.swift) · [Capture queue and task actions](../native/App/WorkspaceStore.swift) · [Notification text input](https://developer.apple.com/documentation/usernotifications/untextinputnotificationaction)
 
 ## Deferred
 
@@ -31,4 +33,6 @@ Circular and inline accessories, Live Activities, and new Mac and Apple Watch su
 
 - On a physical iPhone and iPad, add both entries from their respective galleries. Confirm direct Lock Screen control placement on supported configurations and launch from Control Center with the device already unlocked.
 - Verify that Up Next shows the task name and opens the correct task after unlocking. Check the empty workspace, no usable snapshot, offline snapshot, and a task removed since the last sync. When iOS hides private widget content, check that the display and VoiceOver use generic status.
-- Launch Capture Task while locked and verify that successful authentication opens the composer. Cancel authentication and confirm the composer stays closed and no task is created. Confirm the workspace changes only after the user saves from the composer.
+- Tap Capture Task from Control Center and the Lock Screen. Verify that the New Task preview opens the keyboard, accepts a typed or dictated reply, and keeps Followthrough in the background. Test canceling authentication or dismissing the prompt, and confirm that only Save Task submits the capture.
+- Expand the Task added receipt. Scroll through the task details, then verify that Open task opens the displayed task. Check that a delayed capture stays quiet until it syncs and that a capture that creates multiple tasks shows the grouped receipts.
+- Use a test workspace to check the Up Next actions against the task displayed on the card. Change the task before selecting an action to check stale previews. Check the capture-only state with an empty plan and hidden previews.
