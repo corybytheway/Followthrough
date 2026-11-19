@@ -33,5 +33,13 @@ struct VerifyCaptureReceipt {
         try check("Inconsistent partial responses stay unconfirmed", response([first], returned: [first, second]).confirmedCapture(group: "request-a") == nil)
         try check("A confirmed smaller batch reports its actual count", response([other, first], returned: [first]).confirmedCapture(group: "request-a")?.count == 1)
         try check("Duplicate workspace IDs cannot inflate the count", response([first, first], returned: [first]).confirmedCapture(group: "request-a") == nil)
+
+        var controlCapture = PendingMutation(endpoint: "api/native/inbox", body: ["source": .string("Test capture")], title: "Test capture")
+        let legacyData = try JSONEncoder().encode(controlCapture)
+        let legacyCapture = try JSONDecoder().decode(PendingMutation.self, from: legacyData)
+        try check("Older pending captures load with no notification receipt flag", legacyCapture.sendsCaptureReceipt == nil)
+        controlCapture.sendsCaptureReceipt = true
+        let restored = try JSONDecoder().decode(PendingMutation.self, from: JSONEncoder().encode(controlCapture))
+        try check("A queued Control Center capture keeps its receipt flag after reload", restored.id == controlCapture.id && restored.sendsCaptureReceipt == true)
     }
 }

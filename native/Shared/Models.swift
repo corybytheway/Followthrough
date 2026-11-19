@@ -270,6 +270,7 @@ struct PendingMutation: Codable, Identifiable, Sendable {
     var title: String
     var createdAt = Date()
     var baseTask: FTTask?
+    var sendsCaptureReceipt: Bool? = nil
 }
 struct MutationResult: Decodable, Sendable {
     struct Result: Decodable, Sendable { var tasks: [FTTask]? }
@@ -304,6 +305,7 @@ struct CaptureReceipt: Identifiable, Sendable {
 }
 struct SharedPreview: Codable, Sendable {
     var title: String; var taskId: String?; var project: String?; var remaining: String?; var updatedAt: Date
+    var hasSyncedWorkspace: Bool? = nil
 }
 extension Date {
     static func iso(_ value: String) -> Date? {
